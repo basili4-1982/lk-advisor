@@ -1,0 +1,41 @@
+{
+  "trace_id": "tr-7f3a",
+  "client_id": "smb-001",
+  "intent": "renewal",
+  "recommendations": [
+    {
+      "product_id": "prod-101",
+      "sku": "SL-LIC-101",
+      "title": "Продление лицензии на 12 месяцев",
+      "type": "renewal",
+      "score": 0.91,
+      "rank": 1,
+      "reason": "Лицензия истекает через 14 дней, продление сохраняет текущие условия.",
+      "evidence": [
+        {"source": "license", "value": "lic-456, end 2026-12-03"},
+        {"source": "purchase", "value": "prod-789, 2025-12-03"}
+      ],
+      "constraints": [],
+      "price": {"amount": 42000, "currency": "RUB"},
+      "expires_at": "2026-12-03"
+    },
+    {
+      "product_id": "prod-102",
+      "sku": "SL-LIC-102",
+      "title": "Старший тариф на 12 месяцев",
+      "type": "upsell",
+      "score": 0.78,
+      "rank": 2,
+      "reason": "В текущем тарифе 10 мест, у клиента занято 9.",
+      "evidence": [
+        {"source": "license", "value": "lic-456, seats 10"},
+        {"source": "usage", "value": "seats_used 9"}
+      ],
+      "constraints": [],
+      "price": {"amount": 64000, "currency": "RUB"},
+      "expires_at": "2026-12-03"
+    }
+  ],
+  "fallback": false,
+  "generated_at": "2026-11-19T15:00:00Z"
+}

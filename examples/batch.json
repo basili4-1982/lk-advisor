@@ -1,0 +1,5 @@
+{
+  "client_ids": ["smb-001", "smb-002", "smb-003"],
+  "event": "login",
+  "limit": 1
+}

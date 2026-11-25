@@ -1,0 +1,10 @@
+{
+  "client_id": "smb-001",
+  "event": "license_view",
+  "context": {
+    "license_id": "lic-456",
+    "product_id": "prod-789"
+  },
+  "limit": 3,
+  "locale": "ru-RU"
+}

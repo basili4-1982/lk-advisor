@@ -1,0 +1,6 @@
+client_id,event,context,expected_product_id,expected_type,acceptable_alternatives
+smb-001,license_view,lic-456,prod-101,renewal,prod-102
+smb-002,order_view,ord-123,prod-210,cross_sell,prod-211|prod-212
+smb-003,login,,prod-305,upsell,prod-306
+smb-004,login,,,none,
+smb-005,document_download,doc-777,prod-410,cross_sell,prod-411

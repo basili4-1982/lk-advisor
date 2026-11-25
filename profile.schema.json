@@ -1,0 +1,107 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ClientProfile",
+  "type": "object",
+  "required": ["client_id", "schema_version", "updated_at", "facts", "affinities", "needs", "lifecycle"],
+  "additionalProperties": false,
+  "properties": {
+    "client_id": {"type": "string"},
+    "schema_version": {"type": "string", "const": "1.0"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "facts": {
+      "type": "object",
+      "required": ["segment", "industry", "size", "tenure_months", "active_licenses", "renewals_next_90d", "events_30d"],
+      "additionalProperties": false,
+      "properties": {
+        "segment": {"type": "string", "enum": ["SMB", "MID", "ENT", "unknown"]},
+        "industry": {"type": "string"},
+        "size": {"type": "string"},
+        "region": {"type": "string"},
+        "tenure_months": {"type": "integer", "minimum": 0},
+        "active_licenses": {"type": "integer", "minimum": 0},
+        "renewals_next_90d": {"type": "integer", "minimum": 0},
+        "events_30d": {"type": "integer", "minimum": 0},
+        "last_order": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "order_id": {"type": "string"},
+            "status": {"type": "string"},
+            "date": {"type": "string", "format": "date"}
+          }
+        },
+        "environment": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "os": {"type": "string"},
+            "ram_gb": {"type": "number", "minimum": 0},
+            "cpu": {"type": "string"},
+            "gpu": {"type": "string"},
+            "source": {"type": "string", "enum": ["purchase", "telemetry", "inferred", "unknown"]},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+          }
+        }
+      }
+    },
+    "affinities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "id", "score", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "type": {"type": "string", "enum": ["domain", "category", "task", "vendor"]},
+          "id": {"type": "string"},
+          "score": {"type": "number", "minimum": 0, "maximum": 1},
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"$ref": "#/definitions/evidence"}
+          }
+        }
+      }
+    },
+    "needs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tag", "score", "evidence"],
+        "additionalProperties": false,
+        "properties": {
+          "tag": {"type": "string"},
+          "score": {"type": "number", "minimum": 0, "maximum": 1},
+          "evidence": {
+            "type": "array",
+            "minItems": 1,
+            "items": {"$ref": "#/definitions/evidence"}
+          }
+        }
+      }
+    },
+    "lifecycle": {
+      "type": "string",
+      "enum": ["new", "active", "renewal_due", "cyclic", "at_risk", "churned"]
+    },
+    "price_sensitivity": {
+      "type": "string",
+      "enum": ["low", "medium", "high", "unknown"]
+    },
+    "summary": {"type": "string", "maxLength": 600}
+  },
+  "definitions": {
+    "evidence": {
+      "type": "object",
+      "required": ["source", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "source": {
+          "type": "string",
+          "enum": ["purchase", "license", "order", "event", "catalog", "taxonomy", "rule", "environment"]
+        },
+        "value": {"type": "string"},
+        "date": {"type": "string", "format": "date"}
+      }
+    }
+  }
+}

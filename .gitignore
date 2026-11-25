@@ -1,0 +1,27 @@
+# binaries
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# data: raw and generated
+/data/raw/
+/data/generated/
+*.db
+*.sqlite
+*.sqlite3
+*.parquet
+
+# coverage and editors
+coverage.*
+.idea/
+.vscode/
+.DS_Store
