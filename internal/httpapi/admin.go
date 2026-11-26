@@ -267,9 +267,15 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="toolbar">
             <button id="experiment-seed" class="secondary">Создать демо-гипотезу</button>
             <button id="experiment-refresh" class="secondary small">Обновить</button>
-            <input id="experiment-search" type="search" placeholder="Поиск по базе знаний…" style="max-width:240px">
+            <input id="experiment-search" type="search" placeholder="Поиск по базе знаний…" style="max-width:220px">
+            <select id="experiment-decision-filter" style="max-width:170px">
+              <option value="">Все решения</option>
+              <option value="promote">promote</option>
+              <option value="reject">reject</option>
+              <option value="extend">extend</option>
+            </select>
             <button id="experiment-search-btn" class="secondary small">Найти</button>
-            <span class="hint">Одна гипотеза: назначение → exposure → метрики → решение. Данные пишутся в experiment_events.</span>
+            <span class="hint">Синтетика: 50 клиентов × 10 сессий. Назначение → exposure → метрики → решение.</span>
           </div>
           <div id="experiments-list"></div>
           <div id="experiment-knowledge"></div>
@@ -513,6 +519,9 @@ async function loadExperiments(){
       var guard='<div class="hint" style="margin-top:8px">Guardrails: renewal '+pct(c.renewal_rate)+' → '+pct(t.renewal_rate)+', upsell '+pct(c.upsell_rate)+' → '+pct(t.upsell_rate)+', fallback '+pct(c.fallback_rate)+' → '+pct(t.fallback_rate)+'</div>';
       var g=x.guardrail||{};
       var reasons=(g.reasons||[]).join('; ');
+      var gBadge=g.blocked
+        ? '<span class="pill" style="background:#fef3c7;color:#92400e">guardrail: '+esc(g.suggested||'extend')+'</span>'
+        : '<span class="pill" style="background:#dcfce7;color:#166534">guardrail ok</span>';
       var guardWarn=g.blocked?'<div class="hint" style="color:#92400e;margin-top:6px">Guardrail: '+esc(reasons||'сработал')+' → рекомендуем '+esc(g.suggested||'extend')+'. Promote остановлен.</div>':'';
       var promoteDisabled=g.blocked?' disabled':'';
       var decisions='<div class="toolbar" style="margin-top:8px">'+
@@ -525,7 +534,7 @@ async function loadExperiments(){
         '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">'+
           '<div><div class="form-title" style="margin:0">'+esc(x.title)+'</div>'+
           '<div class="hint">'+esc(x.hypothesis)+'</div></div>'+
-          '<span class="pill">'+esc(x.status)+'</span></div>'+
+          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+gBadge+'<span class="pill">'+esc(x.status)+'</span></div></div>'+
         '<div class="hint" style="margin:8px 0">Скоуп: '+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' · '+
           esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+' · '+esc(x.metric)+'</div>'+
         table+guard+guardWarn+decisions+decided+'</div>';
@@ -535,7 +544,8 @@ async function loadExperiments(){
 async function loadKnowledge(){
   try {
     var q=encodeURIComponent((el('experiment-search')||{}).value||'');
-    var d=await api('GET','/v1/admin/experiments/knowledge?q='+q);
+    var dec=encodeURIComponent((el('experiment-decision-filter')||{}).value||'');
+    var d=await api('GET','/v1/admin/experiments/knowledge?q='+q+'&decision='+dec);
     var rows=d.items||[];
     var title='<div class="form-title" style="margin-top:18px">База знаний</div>';
     if(!rows.length){ el('experiment-knowledge').innerHTML=title+'<div class="empty">Пока нет завершённых гипотез</div>'; return; }
@@ -847,6 +857,7 @@ el('experiment-seed').addEventListener('click', async function(){
 });
 el('experiment-refresh').addEventListener('click', function(){ loadExperiments(); loadKnowledge(); });
 el('experiment-search-btn').addEventListener('click', loadKnowledge);
+el('experiment-decision-filter').addEventListener('change', loadKnowledge);
 el('experiment-search').addEventListener('keydown', function(e){ if(e.key==='Enter') loadKnowledge(); });
 el('experiments-list').addEventListener('click', async function(ev){
   var mode=ev.target.dataset.expDecision, id=ev.target.dataset.expId;

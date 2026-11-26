@@ -171,7 +171,8 @@ python3 analysis/consensus_backtest.py \
 Отчёты:
 
 - `analysis/seasonality_report.md` — сезонность, recency, окно продления;
-- `analysis/consensus_report.md` — add-on разрезов к гибриду и абляции.
+- `analysis/consensus_report.md` — add-on разрезов к гибриду и абляции;
+- `analysis/cohort_configs.md` — офисная когорта с экспериментом и без.
 
 Главные выводы:
 

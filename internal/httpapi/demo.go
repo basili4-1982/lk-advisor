@@ -76,7 +76,7 @@ a{color:var(--blue)}
 </style>
 </head>
 <body>
-<header><div class="wrap header-row"><div class="brand"><div class="logo">LK</div><div><h1>LK Advisor</h1><div class="sub">Личный кабинет · демо для жюри</div></div></div><div class="head-links"><a class="admin-link" href="/demo/graph">Граф связей</a><a class="admin-link" href="/admin">Настройка правил</a></div></div></header>
+<header><div class="wrap header-row"><div class="brand"><div class="logo">LK</div><div><h1>LK Advisor</h1><div class="sub">Личный кабинет · демо для жюри</div></div></div><div class="head-links"><a class="admin-link" href="/demo/graph">Граф связей</a><a class="admin-link" href="/admin#experiments">Гипотезы</a><a class="admin-link" href="/admin">Настройка правил</a></div></div></header>
 <main class="wrap">
   <div class="tabs" id="tabs"></div>
   <div class="client" id="client"></div>
