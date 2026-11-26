@@ -87,6 +87,17 @@ table.registry td{vertical-align:middle}
 table.registry th,table.registry td{padding:6px 8px}
 .clip{display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .clip-sm{max-width:180px}
+.ev{display:inline-flex;align-items:center;gap:6px;max-width:100%}
+.ev-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;flex:0 0 auto}
+.ev-attribute{background:#6d28d9}
+.ev-co_purchase{background:#1d4ed8}
+.ev-llm{background:#b45309}
+.ev-manual{background:#047857}
+.ev-more{color:var(--muted);font-size:11px}
+.ev-list{display:grid;gap:6px;margin:8px 0}
+.ev-row{display:flex;gap:8px;align-items:flex-start;font-size:12px}
+.ev-kind{color:var(--muted);min-width:92px;font-weight:600}
+.ev-note{background:#f8fafc;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;color:#374151;margin:8px 0}
 th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #f0f1f5;vertical-align:top}
 th{background:#fafafa;color:var(--muted);font-weight:600;position:sticky;top:0;z-index:1}
 tr:hover td{background:#fcfcff}
@@ -450,7 +461,7 @@ var lastOps = [];
 var REG_STATUS = {candidate: 'Кандидат', active: 'Активна', rejected: 'Отклонена', stale: 'Устарела', expired: 'Истекла', superseded: 'Заменена'};
 var REG_PROV = {manual: 'Ручная', co_purchase: 'Co-purchase', llm: 'LLM', attribute: 'Атрибуты', rule: 'Правило', import: 'Импорт'};
 var REG_SELECTED = {};
-var REG_PAGE = {items: [], total: 0, familyLabels: {}};
+var REG_PAGE = {items: [], total: 0, familyLabels: {}, familyCounts: {}};
 var REG_VIEW = '';
 
 function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -789,6 +800,7 @@ el('dataset-candidates').addEventListener('click', async function(ev){
 });
 function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
 function familyLabel(id){ return REG_PAGE.familyLabels[id] || id || '—'; }
+function familyCount(id){ return REG_PAGE.familyCounts[id] || 0; }
 function positionRegistryTip(t, x, y){
   var w=t.offsetWidth, h=t.offsetHeight;
   var left=Math.min(x+14, window.innerWidth-w-8);
@@ -807,16 +819,44 @@ function showRegistryTip(text, x, y){
 function hideRegistryTip(){ el('registry-tip').classList.remove('on'); }
 function regProvLabel(p){ return REG_PROV[p] || p || '—'; }
 function regWhen(v){ if(!v) return '—'; var d=new Date(v); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU'); }
-function regEvidence(ev){
-  if(!ev || !ev.length) return '—';
-  return ev.map(function(e){
-    var label = (e.kind ? e.kind+': ' : '') + (e.summary || '');
-    return '<span class="pill type">'+esc(label)+'</span>';
-  }).join(' ');
+var EV_KIND = {attribute: 'Атрибут', co_purchase: 'Co-purchase', llm: 'LLM', manual: 'Ручная', rule: 'Правило', spec: 'Спецификация'};
+function evidenceText(e){
+  if(!e) return '';
+  var kind=e.kind||'', d=e.details||{};
+  if(kind==='attribute'){
+    var gid=d.product_group||'';
+    if(!gid && e.summary){ var m=/product_group=([^;,\s]+)/.exec(e.summary); if(m) gid=m[1]; }
+    var label=gid?familyLabel(gid):'';
+    var n=gid?familyCount(gid):0;
+    return 'Одна группа: '+(label||gid||e.summary||'—')+(n?' · '+n+' тов.':'');
+  }
+  if(kind==='co_purchase'){
+    var orders=d.orders, b2b=d.b2b;
+    if(orders) return 'Куплено вместе: '+orders+' зак.'+(b2b?', B2B '+b2b:'');
+    return e.summary || 'совместные покупки';
+  }
+  if(kind==='manual') return e.summary ? 'Ручное подтверждение: '+e.summary : 'Ручное подтверждение';
+  if(kind==='llm') return 'LLM: '+(e.summary || 'предложение модели');
+  return (EV_KIND[kind]?EV_KIND[kind]+': ':'')+(e.summary || '');
 }
-function regEvidenceText(ev){
-  if(!ev || !ev.length) return '';
-  return ev.map(function(e){ return (e.kind?e.kind+': ':'')+(e.summary||''); }).join('; ');
+function evidenceCell(ev){
+  if(!ev || !ev.length) return '—';
+  var first=ev[0], kind=first.kind||'';
+  var more=ev.length>1 ? '<span class="ev-more">+'+(ev.length-1)+'</span>' : '';
+  return '<span class="ev"><i class="ev-dot ev-'+esc(kind)+'"></i><span class="clip clip-sm">'+esc(evidenceText(first))+'</span>'+more+'</span>';
+}
+function evidenceList(ev){
+  if(!ev || !ev.length) return '<div class="hint">Доказательств нет — связь создана вручную.</div>';
+  return '<div class="ev-list">'+ev.map(function(e){
+    return '<div class="ev-row"><i class="ev-dot ev-'+esc(e.kind||'')+'"></i><span class="ev-kind">'+esc(EV_KIND[e.kind]||e.kind||'—')+'</span><span>'+esc(evidenceText(e))+'</span></div>';
+  }).join('')+'</div>';
+}
+function evidenceNote(r){
+  if(r.type==='variant_of') return 'Структурная связь: оба SKU входят в одну продуктовую группу, поэтому это вариант одного продукта, а не новый продукт.';
+  if(r.type==='adjacent_task') return 'Связь предложена по совместным покупкам. Подтвердите, что это дополнение по задаче, а не случайное совпадение в заказе.';
+  if(r.type==='upgrade') return 'Связь означает переход на старшую редакцию или тариф того же продукта.';
+  if(r.type==='accessory') return 'Связь означает, что один товар нужен для работы другого.';
+  return '';
 }
 function registryQuery(){
   var p=[];
@@ -840,7 +880,11 @@ async function loadRegistry(){
     REG_PAGE.items = data.items || [];
     REG_PAGE.total = data.total || REG_PAGE.items.length;
     REG_PAGE.familyLabels = metrics.family_labels || {};
-    (metrics.family_options || []).forEach(function(g){ if (!REG_PAGE.familyLabels[g.value]) REG_PAGE.familyLabels[g.value] = g.label; });
+    REG_PAGE.familyCounts = {};
+    (metrics.family_options || []).forEach(function(g){
+      if (!REG_PAGE.familyLabels[g.value]) REG_PAGE.familyLabels[g.value] = g.label;
+      REG_PAGE.familyCounts[g.value] = g.count;
+    });
     renderRegistryMetrics(metrics);
     fillRegistrySelects(metrics);
     renderRegistry();
@@ -897,7 +941,7 @@ function renderRegistry(){
       '<td><span class="pill '+(r.status==='active'?'on':(r.status==='rejected'?'off':'q'))+'">'+esc(regStatusLabel(r.status))+'</span></td>'+
       '<td>'+esc(regProvLabel(r.provenance_kind))+'</td>'+
       '<td>'+Math.round((r.confidence||0)*100)+'%</td>'+
-      '<td><span class="clip clip-sm" title="'+esc(regEvidenceText(r.evidence))+'">'+regEvidence(r.evidence)+'</span></td>'+
+      '<td>'+evidenceCell(r.evidence)+'</td>'+
       '<td><span class="clip clip-sm">'+esc(familyLabel(r.from_family))+'</span></td>'+
       '<td>'+regWhen(r.valid_until)+'</td>'+
       '<td>v'+esc(r.version||1)+'</td>'+
@@ -913,7 +957,7 @@ function renderRegistryDetail(id){
   el('registry-detail').innerHTML =
     '<div class="form-title">'+esc(r.from_title||r.from_item_id)+' → '+esc(r.to_title||r.to_item_id)+'</div>'+
     '<div class="hint">'+esc(typeTitle(r.type))+' · '+esc(regStatusLabel(r.status))+' · '+esc(regProvLabel(r.provenance_kind))+' · '+Math.round((r.confidence||0)*100)+'%</div>'+
-    '<div style="margin:8px 0">'+regEvidence(r.evidence)+'</div>'+
+    evidenceList(r.evidence)+'<div class="ev-note">'+esc(evidenceNote(r))+'</div>'+
     '<div class="hint">Семейство: '+esc(familyLabel(r.from_family))+' → '+esc(familyLabel(r.to_family))+' · версия '+esc(r.version||1)+
       (r.rejection_reason?' · причина отказа: '+esc(r.rejection_reason):'')+'</div>'+
     '<div class="toolbar" style="margin-top:8px">'+

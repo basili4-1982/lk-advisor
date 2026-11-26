@@ -97,7 +97,8 @@ func generateVariants(ctx context.Context, dbc *sql.DB, only []string) (int, err
 		       'общий product_group',
 		       jsonb_build_array(jsonb_build_object(
 		           'kind', 'attribute',
-		           'summary', 'product_group=' || i.product_group)),
+		           'summary', 'общий product_group',
+		           'details', jsonb_build_object('product_group', i.product_group))),
 		       'attribute', 'attribute', now()
 		FROM lk_items i
 		JOIN groups g ON g.product_group = i.product_group

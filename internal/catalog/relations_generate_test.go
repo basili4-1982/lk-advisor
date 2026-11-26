@@ -29,6 +29,15 @@ func TestGenerateVariantRelations(t *testing.T) {
 	if active != 2 {
 		t.Fatalf("active variant_of = %d", active)
 	}
+	var summary, group string
+	if err := dbc.QueryRowContext(ctx, `SELECT evidence->0->>'summary',
+		evidence->0->'details'->>'product_group'
+		FROM relations WHERE type='variant_of' LIMIT 1`).Scan(&summary, &group); err != nil {
+		t.Fatal(err)
+	}
+	if summary != "общий product_group" || group == "" {
+		t.Fatalf("variant evidence = %q / %q", summary, group)
+	}
 }
 
 func TestGenerateCoPurchaseSkipsRejected(t *testing.T) {
