@@ -42,7 +42,9 @@ def main() -> None:
     sales = pd.read_excel(path, sheet_name="Продажи", dtype=str)
     clients = pd.read_excel(path, sheet_name="Клиенты", dtype=str)
 
-    sales = sales.drop_duplicates(["order_id", "item_id"]).copy()
+    # One purchase event is an order instance: (order_id, order_week).
+    # The same order_id may legally appear in different weeks in the feed.
+    sales = sales.drop_duplicates(["order_id", "order_week", "item_id"]).copy()
     sales["order_week"] = pd.to_datetime(sales["order_week"]).dt.date
     sales["item_id"] = sales["item_id"].str.strip()
     sales["item_name"] = sales["item_name"].fillna("").str.strip()
@@ -62,7 +64,7 @@ def main() -> None:
     pairs: Counter[tuple[str, str]] = Counter()
     pair_b2b: Counter[tuple[str, str]] = Counter()
     pair_b2c: Counter[tuple[str, str]] = Counter()
-    for order_id, group in sales.groupby("order_id"):
+    for (_order_id, _order_week), group in sales.groupby(["order_id", "order_week"]):
         ids = sorted(set(group.item_id))
         if len(ids) < 2:
             continue
@@ -128,10 +130,20 @@ def main() -> None:
         conn.close()
 
     covered = len({x for pair in pairs for x in pair})
+    weeks = sales.groupby("order_id")["order_week"].agg(["min", "max"])
+    multi_week = int((weeks["min"] != weeks["max"]).sum())
+    cross_cut = int((
+        (weeks["min"] <= pd.Timestamp("2026-08-31").date())
+        & (weeks["max"] >= pd.Timestamp("2026-09-07").date())
+    ).sum())
     print("imported:")
     print("  items", len(items))
     print("  clients", len(clients))
-    print("  orders", sales.order_id.nunique())
+    print("  orders (unique order_id)", sales.order_id.nunique())
+    print("  order instances (order_id, order_week)",
+          sales[["order_id", "order_week"]].drop_duplicates().shape[0])
+    print("  multi-week orders", multi_week)
+    print("  cross-cut orders (excluded from eval)", cross_cut)
     print("  sales rows", len(sales))
     print("  co-purchase pairs", len(pairs))
     print("  pairs count>=2", sum(1 for n in pairs.values() if n >= 2))

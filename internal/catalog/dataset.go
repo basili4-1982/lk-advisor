@@ -10,15 +10,24 @@ import (
 
 // DatasetCoverage is the relation-completion report for the real dataset.
 type DatasetCoverage struct {
-	Items         int `json:"items"`
-	Clients       int `json:"clients"`
-	Orders        int `json:"orders"`
-	Pairs         int `json:"pairs"`
-	FrequentPairs int `json:"frequent_pairs"`
-	ItemsInPairs  int `json:"items_in_pairs"`
-	SoloItems     int `json:"solo_items"`
-	Candidates    int `json:"candidates"`
+	Items           int `json:"items"`
+	Clients         int `json:"clients"`
+	Orders          int `json:"orders"`
+	OrderInstances  int `json:"order_instances"`
+	MultiWeekOrders int `json:"multi_week_orders"`
+	CrossCutOrders  int `json:"cross_cut_orders"`
+	Pairs           int `json:"pairs"`
+	FrequentPairs   int `json:"frequent_pairs"`
+	ItemsInPairs    int `json:"items_in_pairs"`
+	SoloItems       int `json:"solo_items"`
+	Candidates      int `json:"candidates"`
 }
+
+// Dataset train/test cut used by analysis/evaluate.py.
+const (
+	datasetTrainEnd  = "2026-08-31"
+	datasetTestStart = "2026-09-07"
+)
 
 // CoPurchase is one frequent co-purchase pair.
 type CoPurchase struct {
@@ -43,6 +52,28 @@ func LoadDatasetCoverage(ctx context.Context, dbc *sql.DB) (DatasetCoverage, err
 		return c, err
 	}
 	if err := dbc.QueryRowContext(ctx, `SELECT count(DISTINCT order_id) FROM lk_orders`).Scan(&c.Orders); err != nil {
+		return c, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(*) FROM (
+			SELECT DISTINCT order_id, order_week FROM lk_orders
+		) x`).Scan(&c.OrderInstances); err != nil {
+		return c, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(*) FROM (
+			SELECT order_id FROM lk_orders
+			GROUP BY order_id
+			HAVING count(DISTINCT order_week) > 1
+		) x`).Scan(&c.MultiWeekOrders); err != nil {
+		return c, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(*) FROM (
+			SELECT order_id FROM lk_orders
+			GROUP BY order_id
+			HAVING min(order_week) <= $1::date AND max(order_week) >= $2::date
+		) x`, datasetTrainEnd, datasetTestStart).Scan(&c.CrossCutOrders); err != nil {
 		return c, err
 	}
 	if err := dbc.QueryRowContext(ctx, `SELECT count(*) FROM co_purchase_pairs`).Scan(&c.Pairs); err != nil {

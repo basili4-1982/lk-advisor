@@ -57,7 +57,7 @@ def main() -> None:
     ax = fig.add_subplot(gs[1, 0])
     labels = ["B2B A", "B2B B", "B2C A", "B2C B"]
     baseline = [3.6, 5.1, 19.4, 19.2]
-    ours = [9.87, 12.32, 19.44, 19.23]
+    ours = [9.44, 12.25, 19.44, 19.23]
     x = range(len(labels))
     ax.bar([i - 0.18 for i in x], baseline, width=0.36, label="baseline", color="#c8102e")
     ax.bar([i + 0.18 for i in x], ours, width=0.36, label="наша модель", color="#1d4ed8")

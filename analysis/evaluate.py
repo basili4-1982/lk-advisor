@@ -72,8 +72,11 @@ class Model:
             .sort_values(ascending=False)
         )
 
-        # Co-purchase pairs are built from unique multi-item orders.
-        orders = train.groupby("order_id")["item_id"].apply(lambda x: sorted(set(x)))
+        # Co-purchase pairs are built from order instances: (order_id, order_week).
+        # The same order_id may span weeks, so grouping by order_id alone would merge them.
+        orders = train.groupby(["order_id", "order_week"])["item_id"].apply(
+            lambda x: sorted(set(x))
+        )
         pairs: collections.Counter[tuple[str, str]] = collections.Counter()
         self.item_pop: collections.Counter[str] = collections.Counter()
         for items in orders:
@@ -140,6 +143,12 @@ def evaluate(model: Model, ids: set[str], group: str) -> tuple[float, float, int
     return sum(values) / len(values), filled / len(ids), len(ids)
 
 
+def cross_cut_orders(sales: pd.DataFrame) -> set[str]:
+    weeks = sales.groupby("order_id")["order_week"].agg(["min", "max"])
+    mask = (weeks["min"] <= TRAIN_END) & (weeks["max"] >= TEST_START)
+    return set(weeks[mask].index)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--dataset", required=True, type=Path)
@@ -147,12 +156,25 @@ def main() -> None:
     args = parser.parse_args()
 
     sales, clients = load(args.dataset)
+    cross_cut = cross_cut_orders(sales)
+    excluded_rows = int(sales["order_id"].isin(cross_cut).sum())
+    sales = sales[~sales["order_id"].isin(cross_cut)].copy()
+    print(
+        f"excluded cross-cut orders={len(cross_cut)} rows={excluded_rows} "
+        f"(no future leakage into train/test)"
+    )
     train, test, train_items, test_new, group_a, group_b = split(sales)
     model = Model(train, train_items)
     model.test_new = test_new
 
     print("Dataset:", args.dataset)
-    print(f"clients={len(clients)} sales={len(sales)} train_orders={train.order_id.nunique()} test_orders={test.order_id.nunique()}")
+    train_instances = train[["order_id", "order_week"]].drop_duplicates().shape[0]
+    test_instances = test[["order_id", "order_week"]].drop_duplicates().shape[0]
+    print(
+        f"clients={len(clients)} sales={len(sales)} "
+        f"train_orders={train.order_id.nunique()} train_instances={train_instances} "
+        f"test_orders={test.order_id.nunique()} test_instances={test_instances}"
+    )
     print(f"Group A={len(group_a)}  Group B={len(group_b)}")
 
     rows = []

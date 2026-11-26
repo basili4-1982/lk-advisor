@@ -34,12 +34,32 @@ func TestDatasetCoverageDeltaAndCandidateReview(t *testing.T) {
 	}
 	defer dbc.ExecContext(ctx, `DELETE FROM co_purchase_pairs WHERE item_a=$1 AND item_b=$2`, a, b)
 
+	dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE order_id IN ('test-order-multi','test-order-cross')`)
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO lk_orders (order_id, client_id, order_week, item_id) VALUES
+		('test-order-multi', 'test-client', '2026-08-01', $1),
+		('test-order-multi', 'test-client', '2026-08-08', $1),
+		('test-order-cross', 'test-client', '2026-08-31', $2),
+		('test-order-cross', 'test-client', '2026-09-07', $2)`, a, b); err != nil {
+		t.Fatal(err)
+	}
+	defer dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE order_id IN ('test-order-multi','test-order-cross')`)
+
 	mid, err := catalog.LoadDatasetCoverage(ctx, dbc)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if mid.Items != before.Items+2 || mid.Pairs != before.Pairs+1 {
 		t.Fatalf("before=%+v mid=%+v", before, mid)
+	}
+	if mid.Orders != before.Orders+2 || mid.OrderInstances != before.OrderInstances+4 {
+		t.Fatalf("orders before=%+v mid=%+v", before, mid)
+	}
+	if mid.MultiWeekOrders != before.MultiWeekOrders+2 {
+		t.Fatalf("multi-week before=%+v mid=%+v", before, mid)
+	}
+	if mid.CrossCutOrders != before.CrossCutOrders+1 {
+		t.Fatalf("cross-cut before=%+v mid=%+v", before, mid)
 	}
 
 	ok, err := catalog.InsertDatasetCandidate(ctx, dbc, a, b, "adjacent_task", 0.8,

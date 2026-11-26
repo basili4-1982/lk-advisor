@@ -564,11 +564,15 @@ async function reviewDecision(decision, items){
 async function loadDataset(){
   try {
     var c=await api('GET','/v1/admin/dataset/coverage');
-    el('dataset-cards').innerHTML = [
+    var cards = [
       ['Товары', c.items], ['Клиенты', c.clients], ['Заказы', c.orders],
+      ['Инстансы заказов', c.order_instances], ['В нескольких неделях', c.multi_week_orders],
+      ['Пересекают срез', c.cross_cut_orders],
       ['Пары', c.pairs], ['Пары ≥2', c.frequent_pairs], ['Без связей', c.solo_items],
       ['Кандидаты', c.candidates]
-    ].map(function(x){ return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>'; }).join('');
+    ];
+    var note = c.cross_cut_orders ? '<div class="hint" style="width:100%;margin:4px 0 0;color:#92400e">Заказы, пересекающие срез, исключаются из офлайн-оценки: иначе будущее попадает в train.</div>' : '';
+    el('dataset-cards').innerHTML = cards.map(function(x){ return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>'; }).join('') + note;
     var p=await api('GET','/v1/admin/dataset/co-purchases?limit=50');
     var cnd=await api('GET','/v1/admin/dataset/candidates?limit=50');
     var rows=cnd.items||[];
