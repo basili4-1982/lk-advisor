@@ -20,7 +20,8 @@ const adminHTML = `<!doctype html>
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 .top{background:linear-gradient(135deg,#070b14 0%,#111827 60%,#1f2937 100%);color:#fff;padding:18px 0;border-bottom:1px solid rgba(255,255,255,.07);box-shadow:0 8px 28px rgba(15,23,42,.16)}
-.wrap{max-width:1240px;margin:0 auto;padding:0 24px}
+.wrap{max-width:none;margin:0;padding:0}
+.top .wrap{padding:0 16px}
 .top .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px}
 .brand{display:flex;align-items:center;gap:12px}
 .logo{background:linear-gradient(135deg,#e11d48,#991b1b);color:#fff;font-weight:800;border-radius:11px;width:42px;height:42px;display:grid;place-items:center;font-size:14px;letter-spacing:.5px;box-shadow:0 8px 22px rgba(225,29,72,.3)}
@@ -28,23 +29,30 @@ body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system
 .brand small{color:#94a3b8}
 nav a{color:#cbd5e1;text-decoration:none;margin-left:18px}
 nav a:hover{color:#fff}
-main{padding:28px 0 60px}
-h1{font-size:28px;margin:0 0 6px;letter-spacing:-.02em}
-.lead{color:var(--muted);margin:0 0 20px;max-width:760px}
-.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:0 3px 12px rgba(15,23,42,.035);transition:.15s}
+main{padding:10px 0 20px}
+h1{font-size:24px;margin:0 0 6px;letter-spacing:-.02em}
+.lead{color:var(--muted);margin:0 0 14px;max-width:900px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 3px 12px rgba(15,23,42,.035);transition:.15s}
 .stat:hover{transform:translateY(-1px);box-shadow:0 10px 26px rgba(15,23,42,.07)}
-.stat b{display:block;font-size:22px}
+.stat b{display:block;font-size:20px}
 .stat span{color:var(--muted);font-size:12px}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
 .layout.registry-mode{grid-template-columns:minmax(0,1fr)}
+body.registry-mode main{padding-top:8px}
+body.registry-mode h1{display:none}
+body.registry-mode .top{padding:10px 0}
+body.registry-mode .lead{display:none}
+body.registry-mode .hero-stats{display:none}
+body.registry-mode .panel{border-left:0;border-right:0;border-radius:0}
+body.registry-mode .tabs{border-radius:0}
 .layout.registry-mode .side{display:none}
 .panel,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(15,23,42,.045)}
 .panel{padding:0;overflow:hidden}
-.tabs{display:flex;gap:4px;padding:10px;border-bottom:1px solid var(--line);background:#fbfbfd;flex-wrap:wrap}
-.tab{border:0;background:transparent;padding:9px 14px;border-radius:9px;cursor:pointer;color:var(--muted);font-weight:600}
+.tabs{display:flex;gap:4px;padding:8px;border-bottom:1px solid var(--line);background:#fbfbfd;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
+.tab{border:0;background:transparent;padding:7px 11px;border-radius:8px;cursor:pointer;color:var(--muted);font-weight:600;white-space:nowrap}
 .tab.on{background:#fff;color:var(--ink);box-shadow:0 1px 4px rgba(15,23,42,.08)}
-.tabbody{padding:18px}
+.tabbody{padding:12px}
 .card{padding:16px}
 .card h3{margin:0 0 10px;font-size:15px}
 .grid{display:grid;gap:10px}
@@ -58,20 +66,27 @@ textarea{min-height:92px;resize:vertical}
 button{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--red);color:#fff}
 button.secondary{background:#eef2ff;color:var(--blue)}
 button.ghost{background:transparent;color:var(--red);padding:5px 8px}
-button.small{padding:7px 10px;font-size:12px}
+button.small{padding:6px 9px;font-size:12px}
 button:disabled{opacity:.5;cursor:not-allowed}
 .row{display:flex;gap:10px;align-items:end;flex-wrap:wrap}
 .row > *{min-width:0}
-.formbox{background:#fafafa;border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:16px}
+.formbox{background:#fafafa;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
 .form-title{font-weight:800;margin-bottom:10px}
-.toolbar{display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap}
-.toolbar input{max-width:280px}
-.toolbar select{max-width:220px}
-.tablewrap{border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:560px}
+.toolbar{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center}
+.toolbar input{max-width:200px;padding:6px 8px;font-size:13px}
+.toolbar select{max-width:170px;padding:6px 8px;font-size:13px}
+.toolbar-filters{display:flex;gap:6px;flex-wrap:wrap}
+#registry-metrics{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+#registry-metrics .stat{padding:6px 10px;border-radius:9px;box-shadow:none}
+#registry-metrics .stat b{display:inline;font-size:15px;margin-right:6px}
+#registry-metrics .stat span{font-size:11px}
+.tablewrap{border:1px solid var(--line);border-radius:0;overflow:auto;max-height:calc(100vh - 190px);min-height:220px}
 table{border-collapse:collapse;width:100%;font-size:13px}
-table.registry{table-layout:fixed}
-table.registry td{overflow:hidden;text-overflow:ellipsis}
-table.registry td:nth-child(2),table.registry td:nth-child(3){white-space:nowrap}
+table.registry{table-layout:auto}
+table.registry td{vertical-align:middle}
+table.registry th,table.registry td{padding:6px 8px}
+.clip{display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
+.clip-sm{max-width:180px}
 th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #f0f1f5;vertical-align:top}
 th{background:#fafafa;color:var(--muted);font-weight:600;position:sticky;top:0;z-index:1}
 tr:hover td{background:#fcfcff}
@@ -110,7 +125,23 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 .toast.show{opacity:1;transform:none}
 .toast.err{background:#991b1b}
 .hidden{display:none!important}
+@media(max-width:1350px){
+  table.registry th:nth-child(9),table.registry td:nth-child(9),
+  table.registry th:nth-child(10),table.registry td:nth-child(10),
+  table.registry th:nth-child(11),table.registry td:nth-child(11){display:none}
+  .clip{max-width:200px}
+}
 @media(max-width:980px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.g4{grid-template-columns:1fr 1fr}.top .wrap{align-items:flex-start}}
+@media(max-width:760px){
+  .wrap{padding:0}
+  .top .wrap{padding:0 10px}
+  h1{font-size:19px}
+  .tabbody{padding:9px}
+  .toolbar input,.toolbar select{max-width:none;flex:1 1 140px}
+  table.registry th:nth-child(6),table.registry td:nth-child(6){display:none}
+  .clip{max-width:150px}
+  #registry-metrics .stat{flex:1 1 45%}
+}
 </style>
 </head>
 <body>
@@ -121,7 +152,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 <main class="wrap">
   <h1>Правила рекомендаций</h1>
   <p class="lead">Связи товаров, ограничения и веса меняются здесь и сразу попадают в движок. ИИ-помощник переводит фразу в изменение, показывает его и применяет только после подтверждения.</p>
-  <div class="stats">
+  <div class="stats hero-stats">
     <div class="stat"><b id="st-products">—</b><span>товаров в каталоге</span></div>
     <div class="stat"><b id="st-relations">—</b><span>связей между товарами</span></div>
     <div class="stat"><b id="st-rules">—</b><span>правил и ограничений</span></div>
@@ -181,6 +212,8 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="stats" id="registry-metrics" style="margin-bottom:12px"></div>
           <div class="toolbar">
             <input id="registry-search" placeholder="Поиск по товару или id" style="max-width:220px">
+            <button id="registry-filters-toggle" class="secondary small">Фильтры</button>
+            <div id="registry-filters" class="toolbar-filters hidden">
             <select id="registry-type"><option value="">Все типы</option></select>
             <select id="registry-status">
               <option value="">Все статусы</option>
@@ -199,6 +232,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="attribute">Атрибуты</option>
             </select>
             <select id="registry-family"><option value="">Все семейства</option></select>
+            </div>
             <button class="secondary small" data-view="all">Все</button>
             <button class="secondary small" data-view="disputed">Спорные</button>
             <button class="secondary small" data-view="expiring">Истекают</button>
@@ -207,13 +241,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button id="registry-sweep" class="secondary small">Проверить TTL</button>
             <span class="hint" id="registry-count"></span>
           </div>
-          <div class="tablewrap"><table class="registry" style="min-width:1180px">
-            <colgroup>
-              <col style="width:36px"><col style="width:250px"><col style="width:250px">
-              <col style="width:90px"><col style="width:90px"><col style="width:100px">
-              <col style="width:78px"><col style="width:200px"><col style="width:130px">
-              <col style="width:90px"><col style="width:60px">
-            </colgroup>
+          <div class="tablewrap"><table class="registry">
             <thead><tr>
               <th><input type="checkbox" id="registry-all" style="width:auto"></th>
               <th>Источник</th><th>Цель</th><th>Тип</th><th>Статус</th>
@@ -767,6 +795,10 @@ function regEvidence(ev){
     return '<span class="pill type">'+esc(label)+'</span>';
   }).join(' ');
 }
+function regEvidenceText(ev){
+  if(!ev || !ev.length) return '';
+  return ev.map(function(e){ return (e.kind?e.kind+': ':'')+(e.summary||''); }).join('; ');
+}
 function registryQuery(){
   var p=[];
   function add(k,v){ if(v!=='' && v!=null) p.push(encodeURIComponent(k)+'='+encodeURIComponent(v)); }
@@ -840,14 +872,14 @@ function renderRegistry(){
   el('registry-body').innerHTML = rows.map(function(r){
     return '<tr data-reg-id="'+r.id+'">'+
       '<td><input type="checkbox" data-reg-check="'+r.id+'" style="width:auto"'+(REG_SELECTED[r.id]?' checked':'')+'></td>'+
-      '<td>'+esc(r.from_title||r.from_item_id)+'</td>'+
-      '<td>'+esc(r.to_title||r.to_item_id)+'</td>'+
+      '<td><span class="clip" title="'+esc(r.from_title||r.from_item_id)+'">'+esc(r.from_title||r.from_item_id)+'</span></td>'+
+      '<td><span class="clip" title="'+esc(r.to_title||r.to_item_id)+'">'+esc(r.to_title||r.to_item_id)+'</span></td>'+
       '<td><span class="pill type">'+esc(typeTitle(r.type))+'</span></td>'+
       '<td><span class="pill '+(r.status==='active'?'on':(r.status==='rejected'?'off':'q'))+'">'+esc(regStatusLabel(r.status))+'</span></td>'+
       '<td>'+esc(regProvLabel(r.provenance_kind))+'</td>'+
       '<td>'+Math.round((r.confidence||0)*100)+'%</td>'+
-      '<td>'+regEvidence(r.evidence)+'</td>'+
-      '<td>'+esc(familyLabel(r.from_family))+'</td>'+
+      '<td><span class="clip clip-sm" title="'+esc(regEvidenceText(r.evidence))+'">'+regEvidence(r.evidence)+'</span></td>'+
+      '<td><span class="clip clip-sm">'+esc(familyLabel(r.from_family))+'</span></td>'+
       '<td>'+regWhen(r.valid_until)+'</td>'+
       '<td>v'+esc(r.version||1)+'</td>'+
     '</tr>';
@@ -1020,6 +1052,7 @@ document.querySelectorAll('.tab').forEach(function(b){
     document.querySelectorAll('.tabbody > div').forEach(function(x){x.classList.add('hidden');});
     b.classList.add('on'); el('tab-'+b.dataset.tab).classList.remove('hidden');
     document.querySelector('.layout').classList.toggle('registry-mode', b.dataset.tab === 'registry');
+    document.body.classList.toggle('registry-mode', b.dataset.tab === 'registry');
     if (b.dataset.tab === 'analytics') loadAnalytics();
     if (b.dataset.tab === 'dataset') loadDataset();
     if (b.dataset.tab === 'registry') loadRegistry();
@@ -1027,6 +1060,7 @@ document.querySelectorAll('.tab').forEach(function(b){
     if (b.dataset.tab === 'validation') loadReview();
   });
 });
+el('registry-filters-toggle').addEventListener('click', function(){ el('registry-filters').classList.toggle('hidden'); });
 el('registry-search').addEventListener('keyup', function(ev){ if (ev.key==='Enter') loadRegistry(); });
 ['registry-type','registry-status','registry-source','registry-family'].forEach(function(id){
   el(id).addEventListener('change', loadRegistry);
