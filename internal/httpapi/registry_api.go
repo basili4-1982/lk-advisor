@@ -13,15 +13,16 @@ import (
 func registryFilterFromRequest(r *http.Request) catalog.RelationFilter {
 	q := r.URL.Query()
 	f := catalog.RelationFilter{
-		Query:      strings.TrimSpace(q.Get("q")),
-		Types:      nonEmptyValues(q["type"]),
-		Statuses:   nonEmptyValues(q["status"]),
-		Provenance: nonEmptyValues(q["source"]),
-		Family:     strings.TrimSpace(q.Get("family")),
-		Audience:   strings.TrimSpace(q.Get("audience")),
-		OrgType:    strings.TrimSpace(q.Get("org_type")),
-		OwnerID:    strings.TrimSpace(q.Get("owner")),
-		Sort:       strings.TrimSpace(q.Get("sort")),
+		Query:           strings.TrimSpace(q.Get("q")),
+		Types:           nonEmptyValues(q["type"]),
+		Statuses:        nonEmptyValues(q["status"]),
+		Provenance:      nonEmptyValues(q["source"]),
+		Family:          strings.TrimSpace(q.Get("family")),
+		Audience:        strings.TrimSpace(q.Get("audience")),
+		OrgType:         strings.TrimSpace(q.Get("org_type")),
+		OwnerID:         strings.TrimSpace(q.Get("owner")),
+		Sort:            strings.TrimSpace(q.Get("sort")),
+		ExcludeVariants: q.Get("exclude_variants") == "1" || q.Get("exclude") == "variants",
 	}
 	if v, err := strconv.Atoi(q.Get("limit")); err == nil {
 		f.Limit = v

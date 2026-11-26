@@ -15,21 +15,22 @@ import (
 // RelationFilter narrows the relation registry listing.
 // Zero values mean "no filter"; user input always goes through SQL parameters.
 type RelationFilter struct {
-	Query         string   `json:"query"`
-	IDs           []int64  `json:"ids"`
-	Types         []string `json:"types"`
-	Statuses      []string `json:"statuses"`
-	Provenance    []string `json:"provenance"`
-	Family        string   `json:"family"`
-	Audience      string   `json:"audience"`
-	OrgType       string   `json:"org_type"`
-	OwnerID       string   `json:"owner_id"`
-	MinConfidence float64  `json:"min_confidence"`
-	MaxConfidence float64  `json:"max_confidence"`
-	ExpiringDays  int      `json:"expiring_days"`
-	Limit         int      `json:"limit"`
-	Offset        int      `json:"offset"`
-	Sort          string   `json:"sort"`
+	Query           string   `json:"query"`
+	IDs             []int64  `json:"ids"`
+	ExcludeVariants bool     `json:"exclude_variants"`
+	Types           []string `json:"types"`
+	Statuses        []string `json:"statuses"`
+	Provenance      []string `json:"provenance"`
+	Family          string   `json:"family"`
+	Audience        string   `json:"audience"`
+	OrgType         string   `json:"org_type"`
+	OwnerID         string   `json:"owner_id"`
+	MinConfidence   float64  `json:"min_confidence"`
+	MaxConfidence   float64  `json:"max_confidence"`
+	ExpiringDays    int      `json:"expiring_days"`
+	Limit           int      `json:"limit"`
+	Offset          int      `json:"offset"`
+	Sort            string   `json:"sort"`
 }
 
 // RelationEvidence is one reason the registry keeps an edge.
@@ -191,6 +192,9 @@ func buildRelationWhere(f RelationFilter) (string, []any) {
 	if len(f.IDs) > 0 {
 		n := add(pq.Array(f.IDs))
 		conds = append(conds, fmt.Sprintf(`r.id = ANY($%d)`, n))
+	}
+	if f.ExcludeVariants {
+		conds = append(conds, `r.type <> 'variant_of'`)
 	}
 	if q := strings.TrimSpace(f.Query); q != "" {
 		n := add("%" + q + "%")

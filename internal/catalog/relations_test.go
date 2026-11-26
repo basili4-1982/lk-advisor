@@ -345,3 +345,37 @@ func TestRegistryMetrics(t *testing.T) {
 		}
 	}
 }
+
+func TestListRegistryExcludesVariants(t *testing.T) {
+	dbc := store.OpenTestDB(t)
+	ctx := context.Background()
+	seedRegistry(t, dbc)
+	defer cleanRegistry(t, dbc)
+
+	if _, err := dbc.ExecContext(ctx, `INSERT INTO relations
+		(from_item_id,to_item_id,type,confidence,status,provenance_kind,source)
+		VALUES ('reg-d','reg-a','variant_of',0.99,'active','attribute','attribute')`); err != nil {
+		t.Fatal(err)
+	}
+
+	all, err := catalog.ListRegistryRelations(ctx, dbc, catalog.RelationFilter{Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if all.Total != 4 {
+		t.Fatalf("all total = %d, want 4", all.Total)
+	}
+	semantic, err := catalog.ListRegistryRelations(ctx, dbc,
+		catalog.RelationFilter{ExcludeVariants: true, Limit: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if semantic.Total != 3 {
+		t.Fatalf("semantic total = %d, want 3", semantic.Total)
+	}
+	for _, r := range semantic.Items {
+		if r.Type == "variant_of" {
+			t.Fatal("variant_of leaked into the semantic view")
+		}
+	}
+}

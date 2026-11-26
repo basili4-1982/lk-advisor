@@ -258,7 +258,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             </select>
             <select id="registry-family"><option value="">Все семейства</option></select>
             </div>
-            <button class="secondary small" data-view="all">Все</button>
+            <button class="secondary small" data-view="all">Смысловые</button>
             <button class="secondary small" data-view="disputed">Спорные</button>
             <button class="secondary small" data-view="expiring">Истекают</button>
             <button class="secondary small" data-view="structural">Структурные</button>
@@ -920,6 +920,7 @@ function registryQuery(){
   function add(k,v){ if(v!=='' && v!=null) p.push(encodeURIComponent(k)+'='+encodeURIComponent(v)); }
   add('q', el('registry-search').value.trim());
   add('type', el('registry-type').value);
+  if (el('registry-type').value !== 'variant_of') add('exclude_variants','1');
   add('status', el('registry-status').value);
   add('source', el('registry-source').value);
   add('family', el('registry-family').value);
