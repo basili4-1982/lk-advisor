@@ -89,6 +89,9 @@ table.registry th,table.registry td{padding:4px 6px}
 .clip-sm{max-width:180px}
 .pair{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pair-delta{margin:0 2px}
+.pair .arrow{color:#9ca3af}
+.pair-from{color:#111827}
+.pair-to{color:#111827;font-weight:600}
 .pair-delta del{color:#b91c1c;text-decoration:line-through}
 .pair-delta ins{color:#047857;text-decoration:none;font-weight:700}
 .rel-pair{display:flex;align-items:center;gap:6px;min-width:0}
@@ -910,26 +913,41 @@ function commonPair(from, to){
   while(s>0 && !boundary(from[from.length-s])) s--;
   return {p:p, s:s};
 }
+var SHORT_STOP = {};
+('предоставление доступа доступ сервисам сервиса сервис право права использования использование '+
+ 'программы программа эвм лицензия лицензии лицензионный неисключительное неисключительная неисключительный '+
+ 'дистрибутив программного обеспечение обеспечения установочный комплект формуляр сертификат сопровождение '+
+ 'пакет пакета базовый для на по и в с от до шт учетную учетная запись записей пользователя пользователь '+
+ 'рабочее рабочего место места месяц месяца месяцев год года лет версии версия исполнение исполнения '+
+ 'редакция редакции издание количество количеством неограниченное неограниченного последующие последующих '+
+ 'годы подписки подписка продление продления ключ активации активация электронный электронная носитель носителя '+
+ 'ндс руб рублей all lng retail online download pack license licence edition device year base russian '+
+ 'pk lic dwnl dwnld esd nr ce only for with and the к ко об о')
+  .split(' ').forEach(function(w){ SHORT_STOP[w]=1; });
+function shortTitle(t){
+  t=String(t||'').replace(/[«»"]/g,' ').replace(/\s+/g,' ').trim();
+  var toks=t.split(' '), out=[];
+  for (var i=0;i<toks.length;i++){
+    var raw=toks[i];
+    var key=raw.toLowerCase().replace(/^[.,;:()\-]+|[.,;:()\-]+$/g,'');
+    if (!key) continue;
+    if (SHORT_STOP[key]) continue;
+    if (/^\d+-(device|user|year|month|day|мес|год|польз)/i.test(key)) continue;
+    if (/^\d+$/.test(key) && Number(key) <= 3) continue;
+    out.push(raw.replace(/^[.,;:()\-]+|[.,;:()\-]+$/g,''));
+    if (out.length >= 6) break;
+  }
+  var text=out.join(' ');
+  if (!text) text=t;
+  if (text.length > 52) text=text.slice(0,49).trim()+'…';
+  return text;
+}
 function pairCell(from, to){
   from=String(from||''); to=String(to||'');
   var full=esc(from)+' → '+esc(to);
-  var c=commonPair(from,to);
-  var prefix=from.slice(0,c.p).trim();
-  var suffix=from.slice(from.length-c.s).trim();
-  var fromMid=from.slice(c.p, from.length-c.s).trim();
-  var toMid=to.slice(c.p, to.length-c.s).trim();
-  var sim=(c.p+c.s)/Math.max(from.length,to.length,1);
-  if (sim>=0.5 && fromMid.length<=60 && toMid.length<=60 && (fromMid || toMid)) {
-    var pre=prefix.length>40?prefix.slice(0,40)+'…':prefix;
-    var suf=suffix.length>30?suffix.slice(0,30)+'…':suffix;
-    var delta='<span class="pair-delta">['+
-      (fromMid?'<del>'+esc(fromMid)+'</del>':'')+
-      (fromMid&&toMid?' → ':'')+
-      (toMid?'<ins>'+esc(toMid)+'</ins>':'')+
-      ']</span>';
-    return '<span class="pair" data-tip="'+full+'">'+esc(pre)+' '+delta+' '+esc(suf)+'</span>';
-  }
-  return '<div class="rel-pair"><span class="clip" data-tip="'+esc(from)+'">'+esc(from)+'</span><span class="arrow">→</span><span class="clip" data-tip="'+esc(to)+'">'+esc(to)+'</span></div>';
+  var a=shortTitle(from), b=shortTitle(to);
+  if (a===b){ a=from; b=to; }
+  return '<span class="pair" data-tip="'+full+'"><span class="pair-from">'+esc(a)+'</span><span class="arrow"> → </span><span class="pair-to">'+esc(b)+'</span></span>';
 }
 function evidenceCell(ev){
   if(!ev || !ev.length) return '—';
