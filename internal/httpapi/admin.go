@@ -87,11 +87,11 @@ table.registry td{vertical-align:middle}
 table.registry th,table.registry td{padding:4px 6px}
 .clip{display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .clip-sm{max-width:180px}
-.pair{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.pair-delta{margin:0 2px}
-.pair .arrow{color:#9ca3af}
+.pair{display:block;line-height:1.3;min-width:0}
+.pair-from,.pair-to{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pair-from{color:#111827}
 .pair-to{color:#111827;font-weight:600}
+.pair-to .arrow{color:#9ca3af;margin-right:5px;font-weight:400}
 .pair-delta del{color:#b91c1c;text-decoration:line-through}
 .pair-delta ins{color:#047857;text-decoration:none;font-weight:700}
 .rel-pair{display:flex;align-items:center;gap:6px;min-width:0}
@@ -941,9 +941,31 @@ function abbreviateTitle(t){
   });
   return t;
 }
+var ACRONYM_SKIP = {'СКЗИ':1,'ПО':1,'ЭВМ':1,'ОС':1,'ПК':1,'АРМ':1,'БД':1,'СУБД':1,'API':1,'SDK':1,'CPU':1,'RAM':1,'РФ':1,'СС':1};
+function acronymOf(keys){
+  var code='';
+  for (var i=0;i<keys.length;i++){
+    if (/^[А-ЯЁA-Z]{2,6}$/.test(keys[i]) && !ACRONYM_SKIP[keys[i]]) code=keys[i];
+  }
+  if (!code) return '';
+  var ver='';
+  for (var j=0;j<keys.length;j++){
+    if (/^\d+(\.\d+){1,3}$/.test(keys[j])) { ver=keys[j]; break; }
+  }
+  return code+(ver?' '+ver:'');
+}
+function licenseKind(s){
+  s=String(s||'').toLowerCase();
+  if (/установочн|дистрибутив|download|dwnl/.test(s)) return 'distr';
+  if (/клиентск/.test(s)) return 'client';
+  if (/серверн/.test(s)) return 'server';
+  if (/формуляр/.test(s)) return 'form';
+  if (/лицензи/.test(s)) return 'license';
+  return '';
+}
 function shortTitle(t){
   t=String(t||'').replace(/[«»"]/g,' ').replace(/\s+/g,' ').trim();
-  var toks=t.split(' '), out=[];
+  var toks=t.split(' '), out=[], keys=[];
   for (var i=0;i<toks.length;i++){
     var raw=toks[i];
     var key=raw.toLowerCase().replace(/^[.,;:()\-]+|[.,;:()\-]+$/g,'');
@@ -951,6 +973,7 @@ function shortTitle(t){
     if (SHORT_STOP[key]) continue;
     if (/^\d+-(device|user|year|month|day|мес|год|польз)/i.test(key)) continue;
     if (/^\d+$/.test(key) && Number(key) <= 3) continue;
+    keys.push(key);
     out.push(raw.replace(/^[.,;:()\-]+|[.,;:()\-]+$/g,''));
     if (out.length >= 6) break;
   }
@@ -960,6 +983,13 @@ function shortTitle(t){
   text=text.split(' ').filter(function(w,i,arr){
     return i===0 || w.toLowerCase()!==arr[i-1].toLowerCase();
   }).join(' ');
+  if (text.length > 28) {
+    var acr=acronymOf(keys);
+    if (acr) {
+      var kind=licenseKind(t);
+      text=acr+(kind?' · '+kind:'');
+    }
+  }
   if (text.length > 52) text=text.slice(0,49).trim()+'…';
   return text;
 }
@@ -968,7 +998,7 @@ function pairCell(from, to){
   var full=esc(from)+' → '+esc(to);
   var a=shortTitle(from), b=shortTitle(to);
   if (a===b){ a=from; b=to; }
-  return '<span class="pair" data-tip="'+full+'"><span class="pair-from">'+esc(a)+'</span><span class="arrow"> → </span><span class="pair-to">'+esc(b)+'</span></span>';
+  return '<span class="pair" data-tip="'+full+'"><span class="pair-from">'+esc(a)+'</span><span class="pair-to"><span class="arrow">→</span>'+esc(b)+'</span></span>';
 }
 function evidenceCell(ev){
   if(!ev || !ev.length) return '—';
