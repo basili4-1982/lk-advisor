@@ -200,8 +200,8 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
   <div class="layout">
     <section class="panel">
       <div class="tabs">
-        <button class="tab on" data-tab="relations">Связи товаров</button>
-        <button class="tab" data-tab="registry">Каталог v5</button>
+        <button class="tab on" data-tab="registry">Каталог v5</button>
+        <button class="tab" data-tab="relations">Синтетика (демо)</button>
         <button class="tab" data-tab="validation">Валидация <span class="pill q hidden" id="review-badge">0</span></button>
         <button class="tab" data-tab="types">Типы связей</button>
         <button class="tab" data-tab="rules">Правила</button>
@@ -212,7 +212,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
         <button class="tab" data-tab="assistant">ИИ-помощник</button>
       </div>
       <div class="tabbody">
-        <div id="tab-relations">
+        <div id="tab-relations" class="hidden">
           <div class="formbox" style="border-color:#dbe2ff;background:#f8faff">
             <div class="form-title">Агент разметки</div>
             <p class="hint">Выберите пару товаров — агент предложит тип из активных шаблонов, уверенность и объяснение. Ничего не сохраняется без подтверждения.</p>
@@ -247,7 +247,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           </table></div>
         </div>
 
-        <div id="tab-registry" class="hidden">
+        <div id="tab-registry">
           <div class="stats" id="registry-metrics" style="margin-bottom:12px"></div>
           <div class="toolbar">
             <input id="registry-search" placeholder="Поиск по товару или id">
@@ -1646,11 +1646,16 @@ async function applyAssistant(){
     await load();
   } catch(e){ toast(e.message,true); }
 }
-if (location.hash) {
-  var initialTab = document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]');
-  if (initialTab) initialTab.click();
-}
-load().then(loadReview).catch(function(e){ toast('Не удалось загрузить состояние: '+e.message, true); });
+load().then(function(){
+  var target = location.hash ? document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]') : null;
+  if (target) target.click();
+  else if (document.querySelector('.tab.on').dataset.tab === 'registry') loadRegistry();
+  return loadReview();
+}).catch(function(e){ toast('Не удалось загрузить состояние: '+e.message, true); });
+window.addEventListener('hashchange', function(){
+  var target = document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]');
+  if (target) target.click();
+});
 </script>
 </body>
 </html>`
