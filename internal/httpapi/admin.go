@@ -73,10 +73,11 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .row > *{min-width:0}
 .formbox{background:#fafafa;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
 .form-title{font-weight:800;margin-bottom:10px}
-.toolbar{display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap;align-items:center}
-.toolbar input{flex:1 1 200px;max-width:320px;padding:4px 7px;font-size:12px}
+.toolbar{display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap;align-items:center;justify-content:flex-start}
+.toolbar input{flex:0 1 240px;max-width:240px;padding:4px 7px;font-size:12px}
 #registry-note{flex:1 1 280px;max-width:none}
-.toolbar select{flex:1 1 130px;padding:4px 6px;font-size:12px}
+.toolbar select{flex:0 1 150px;padding:4px 6px;font-size:12px}
+#registry-confidence{flex:0 0 190px;max-width:190px}
 .toolbar-filters{display:flex;gap:6px;flex-wrap:wrap;flex:1 1 auto}
 #registry-metrics{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 4px;font-size:12px;color:var(--muted)}
 #registry-metrics b{color:var(--ink);font-size:13px}
@@ -278,7 +279,6 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <select id="registry-family"><option value="">Все семейства</option></select>
             </div>
             <button class="secondary small" data-view="all">Смысловые</button>
-            <button class="secondary small" data-view="high">Высокая</button>
             <button class="secondary small" data-view="disputed">Спорные</button>
             <button class="secondary small" data-view="expiring">Истекают</button>
             <button class="secondary small" data-view="structural">Структурные</button>
