@@ -119,3 +119,37 @@ func TestRegistryMetricsEndpoint(t *testing.T) {
 		t.Fatalf("metrics = %d %s", rec.Code, rec.Body.String())
 	}
 }
+
+func TestRegistrySweepEndpoint(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	clean := func() {
+		dbc.ExecContext(ctx, `DELETE FROM relations WHERE from_item_id LIKE 'reg-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'reg-%'`)
+	}
+	clean()
+	defer clean()
+	for _, id := range []string{"reg-a", "reg-b"} {
+		dbc.ExecContext(ctx, `INSERT INTO lk_items (item_id,title,category,product_group)
+			VALUES ($1,$1,'security','REG-G1')`, id)
+	}
+	dbc.ExecContext(ctx, `INSERT INTO relations
+		(from_item_id,to_item_id,type,confidence,status,provenance_kind,source,valid_until)
+		VALUES ('reg-a','reg-b','accessory',0.8,'active','manual','manual', now()-interval '1 day')`)
+	dbc.ExecContext(ctx, `INSERT INTO relations
+		(from_item_id,to_item_id,type,confidence,status,provenance_kind,source,revalidate_after)
+		VALUES ('reg-a','reg-b','upgrade',0.7,'candidate','manual','manual', now()-interval '1 day')`)
+
+	rec := doJSON(t, h, http.MethodPost, "/v1/admin/registry/sweep", `{}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("sweep: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Stale   int `json:"stale"`
+		Expired int `json:"expired"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Stale != 1 || out.Expired != 1 {
+		t.Fatalf("sweep = %+v, want stale=1 expired=1", out)
+	}
+}

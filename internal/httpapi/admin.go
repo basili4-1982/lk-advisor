@@ -197,6 +197,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button class="secondary small" data-view="expiring">Истекают</button>
             <button class="secondary small" data-view="structural">Структурные</button>
             <button id="registry-generate" class="small">Сгенерировать</button>
+            <button id="registry-sweep" class="secondary small">Проверить TTL</button>
             <span class="hint" id="registry-count"></span>
           </div>
           <div class="tablewrap"><table>
@@ -1031,6 +1032,13 @@ el('registry-confirm').addEventListener('click', function(){ registryBulk('confi
 el('registry-reject').addEventListener('click', function(){ registryBulk('reject'); });
 el('registry-defer').addEventListener('click', function(){ registryBulk('defer'); });
 el('registry-generate').addEventListener('click', registryGenerate);
+el('registry-sweep').addEventListener('click', async function(){
+  try {
+    var out=await api('POST','/v1/admin/registry/sweep',{});
+    toast('Stale: '+out.stale+', истекло: '+out.expired);
+    await loadRegistry();
+  } catch(e){ toast(e.message,true); }
+});
 el('rel-search').addEventListener('input', renderRelations);
 el('rel-filter-type').addEventListener('change', renderRelations);
 el('rel-filter-status').addEventListener('change', renderRelations);

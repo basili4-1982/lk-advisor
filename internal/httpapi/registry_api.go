@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
 )
@@ -180,4 +181,17 @@ func (h *handler) adminRegistryGenerate(w http.ResponseWriter, r *http.Request) 
 	}
 	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "registry.generate", res)
 	writeJSON(w, http.StatusOK, res)
+}
+
+func (h *handler) adminRegistrySweep(w http.ResponseWriter, r *http.Request) {
+	stale, expired, err := catalog.SweepRelations(r.Context(), h.db, time.Now())
+	if err != nil {
+		h.logger.Error("registry sweep", "err", err)
+		writeError(w, http.StatusInternalServerError, "registry sweep error")
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "registry.sweep", map[string]int{
+		"stale": stale, "expired": expired,
+	})
+	writeJSON(w, http.StatusOK, map[string]int{"stale": stale, "expired": expired})
 }
