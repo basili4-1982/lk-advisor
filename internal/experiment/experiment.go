@@ -173,10 +173,12 @@ func LoadRunning(ctx context.Context, dbc *sql.DB, audience, industry, strategy 
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
 		       e.strategy, e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
-		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
+		       e.from_id, e.to_id, COALESCE(lf.title, pf.title, ''), COALESCE(lt.title, pt.title, ''),
 		       e.relation_type, e.treatment, e.owner, e.created_at,
 		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
 		FROM experiments e
+		LEFT JOIN lk_items lf ON lf.item_id = e.from_id
+		LEFT JOIN lk_items lt ON lt.item_id = e.to_id
 		LEFT JOIN products pf ON pf.id = e.from_id
 		LEFT JOIN products pt ON pt.id = e.to_id
 		WHERE e.status = 'running'
@@ -204,10 +206,12 @@ func List(ctx context.Context, dbc *sql.DB) ([]Experiment, error) {
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
 		       e.strategy, e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
-		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
+		       e.from_id, e.to_id, COALESCE(lf.title, pf.title, ''), COALESCE(lt.title, pt.title, ''),
 		       e.relation_type, e.treatment, e.owner, e.created_at,
 		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
 		FROM experiments e
+		LEFT JOIN lk_items lf ON lf.item_id = e.from_id
+		LEFT JOIN lk_items lt ON lt.item_id = e.to_id
 		LEFT JOIN products pf ON pf.id = e.from_id
 		LEFT JOIN products pt ON pt.id = e.to_id
 		ORDER BY e.created_at DESC`)
@@ -482,10 +486,12 @@ func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) (
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
 		       e.strategy, e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
-		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
+		       e.from_id, e.to_id, COALESCE(lf.title, pf.title, ''), COALESCE(lt.title, pt.title, ''),
 		       e.relation_type, e.treatment, e.owner, e.created_at,
 		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
 		FROM experiments e
+		LEFT JOIN lk_items lf ON lf.item_id = e.from_id
+		LEFT JOIN lk_items lt ON lt.item_id = e.to_id
 		LEFT JOIN products pf ON pf.id = e.from_id
 		LEFT JOIN products pt ON pt.id = e.to_id
 		WHERE e.status = 'completed'
@@ -523,48 +529,131 @@ func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) (
 
 // SeedBadDemo creates a deliberately wrong hypothesis for time-to-reject tests.
 func SeedBadDemo(ctx context.Context, dbc *sql.DB) error {
-	const id = "exp-coreldraw-bad"
-	if _, err := dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id = $1`, id); err != nil {
-		return fmt.Errorf("reset bad experiment: %w", err)
-	}
-	_, err := dbc.ExecContext(ctx, `
-		INSERT INTO experiments
-			(id, title, hypothesis, status, audience, industry, strategy, metric, guardrails,
-			 variants, traffic_split, from_id, to_id, relation_type, treatment, owner, started_at)
-		VALUES ($1, $2, $3, 'running', 'b2b', '', 'hybrid', 'conversion',
-		        'renewal, upsell, fallback',
-		        $4::jsonb, 0.5, 'prod-office-suite', 'prod-sl-43', 'alternative',
-		        'force_relation', 'demo', now())`,
-		id,
-		"CorelDRAW как альтернатива Office для офисного сотрудника",
-		"Показ CorelDRAW офисному сотруднику повышает конверсию",
-		`[{"name":"control","weight":0.5},{"name":"treatment","weight":0.5}]`)
-	if err != nil {
-		return fmt.Errorf("seed bad experiment: %w", err)
-	}
-	return nil
+	return seedCatalogExperiment(ctx, dbc, "exp-coreldraw-bad", true)
 }
 
-// SeedDemo creates/resets the vertical-slice experiment.
+// SeedDemo creates/resets the vertical-slice experiment on a catalog pair.
 func SeedDemo(ctx context.Context, dbc *sql.DB) error {
-	const id = "exp-pdf-b2b"
-	if _, err := dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id = $1`, id); err != nil {
-		return fmt.Errorf("reset demo experiment: %w", err)
+	return seedCatalogExperiment(ctx, dbc, "exp-pdf-b2b", false)
+}
+
+func seedCatalogExperiment(ctx context.Context, dbc *sql.DB, id string, bad bool) error {
+	tx, err := dbc.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("seed experiment: begin: %w", err)
 	}
-	_, err := dbc.ExecContext(ctx, `
+	defer func() { _ = tx.Rollback() }()
+
+	var fromID, toID, relationType string
+	order := "DESC"
+	if bad {
+		order = "ASC"
+	}
+	err = tx.QueryRowContext(ctx, `
+		SELECT r.from_item_id, r.to_item_id, r.type
+		FROM relations r
+		WHERE r.status IN ('candidate','active') AND r.type <> 'variant_of'
+		ORDER BY r.confidence `+order+`, r.id LIMIT 1`).Scan(&fromID, &toID, &relationType)
+	if err != nil {
+		return fmt.Errorf("seed experiment: no catalog relation: %w", err)
+	}
+	fromName := clipName(catalogItemName(ctx, tx, fromID), 54)
+	toName := clipName(catalogItemName(ctx, tx, toID), 54)
+	title := fmt.Sprintf("Показ «%s» после «%s»", toName, fromName)
+	hypothesis := fmt.Sprintf("Показ «%s» после «%s» повышает конверсию в B2B", toName, fromName)
+	status, decision, note := "running", "", ""
+	if bad {
+		status, decision = "completed", "reject"
+		note = "auto guardrail: primary metric хуже контроля на 4.7 п.п."
+		hypothesis = fmt.Sprintf("Показ «%s» офисному клиенту повышает конверсию", toName)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM experiments WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("seed experiment: reset: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO experiments
 			(id, title, hypothesis, status, audience, industry, strategy, metric, guardrails,
-			 variants, traffic_split, from_id, to_id, relation_type, treatment, owner, started_at)
-		VALUES ($1, $2, $3, 'running', 'b2b', '', 'hybrid', 'conversion',
-		        'не терять renewal и upsell; следить за fallback',
-		        $4::jsonb, 0.5, 'prod-office-suite', 'prod-pdf', 'adjacent_task',
-		        'force_relation', 'demo', now())`,
-		id,
-		"PDF Toolkit как следующий шаг после Office",
-		"Показ PDF Toolkit в слоте 3 повышает конверсию в B2B",
-		`[{"name":"control","weight":0.5},{"name":"treatment","weight":0.5}]`)
-	if err != nil {
-		return fmt.Errorf("seed demo experiment: %w", err)
+			 variants, traffic_split, from_id, to_id, relation_type, treatment, owner,
+			 started_at, decision, decision_note, decided_at)
+		VALUES ($1, $2, $3, $4, 'b2b', '', 'hybrid', 'conversion',
+		        'renewal, upsell, fallback', $5::jsonb, 0.5, $6, $7, $8,
+		        'force_relation', 'demo', now(), $9, $10,
+		        CASE WHEN $9 = '' THEN NULL ELSE now() END)`,
+		id, title, hypothesis, status,
+		`[{"name":"control","weight":0.5},{"name":"treatment","weight":0.5}]`,
+		fromID, toID, relationType, decision, note); err != nil {
+		return fmt.Errorf("seed experiment: insert: %w", err)
+	}
+	if bad {
+		if err := seedVariantEvents(ctx, tx, id, fromID, toID, "control", 150, 8, 86, 47, 108, 23); err != nil {
+			return err
+		}
+		if err := seedVariantEvents(ctx, tx, id, fromID, toID, "treatment", 150, 127, 84, 40, 114, 24); err != nil {
+			return err
+		}
+	} else {
+		if err := seedVariantEvents(ctx, tx, id, fromID, toID, "control", 250, 29, 21, 7, 190, 50); err != nil {
+			return err
+		}
+		if err := seedVariantEvents(ctx, tx, id, fromID, toID, "treatment", 250, 233, 170, 66, 180, 60); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func clipName(s string, limit int) string {
+	r := []rune(strings.TrimSpace(s))
+	if len(r) <= limit {
+		return string(r)
+	}
+	cut := string(r[:limit])
+	if i := strings.LastIndex(cut, " "); i > limit/2 {
+		cut = cut[:i]
+	}
+	return strings.TrimRight(cut, " ,.;:-") + "…"
+}
+
+func catalogItemName(ctx context.Context, q interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}, itemID string) string {
+	var name string
+	_ = q.QueryRowContext(ctx, `
+		SELECT COALESCE(NULLIF(a.short_name, ''), i.title)
+		FROM lk_items i
+		LEFT JOIN item_aliases a ON a.item_id = i.item_id
+		WHERE i.item_id = $1`, itemID).Scan(&name)
+	return name
+}
+
+func seedVariantEvents(ctx context.Context, tx *sql.Tx, expID, fromID, toID, variant string,
+	exposures, targetExposures, clicks, purchases, renewalShown, upsellShown int) error {
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO experiment_events
+			(experiment_id, client_id, variant, product_id, event, renewal_shown, upsell_shown, fallback)
+		SELECT $1, 'demo-' || ((g % 25) + 1), $2,
+		       CASE WHEN g <= $3 THEN $4 ELSE $5 END, 'exposed',
+		       CASE WHEN g <= $6 THEN 1 ELSE 0 END,
+		       CASE WHEN g <= $7 THEN 1 ELSE 0 END, false
+		FROM generate_series(1, $8) g`,
+		expID, variant, targetExposures, toID, fromID, renewalShown, upsellShown, exposures); err != nil {
+		return fmt.Errorf("seed experiment: exposures: %w", err)
+	}
+	if clicks > 0 {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO experiment_events (experiment_id, client_id, variant, product_id, event)
+			SELECT $1, 'demo-' || ((g % 25) + 1), $2, $3, 'clicked'
+			FROM generate_series(1, $4) g`, expID, variant, toID, clicks); err != nil {
+			return fmt.Errorf("seed experiment: clicks: %w", err)
+		}
+	}
+	if purchases > 0 {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO experiment_events (experiment_id, client_id, variant, product_id, event)
+			SELECT $1, 'demo-' || ((g % 25) + 1), $2, $3, 'purchased'
+			FROM generate_series(1, $4) g`, expID, variant, toID, purchases); err != nil {
+			return fmt.Errorf("seed experiment: purchases: %w", err)
+		}
 	}
 	return nil
 }

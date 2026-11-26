@@ -26,6 +26,11 @@ func TestExperimentLifecycle(t *testing.T) {
 	if err := experiment.SeedDemo(ctx, dbc); err != nil {
 		t.Fatal(err)
 	}
+	// The demo seed now ships with illustrative events; this test isolates the
+	// single-exposure lifecycle from them.
+	if _, err := dbc.ExecContext(ctx, `DELETE FROM experiment_events WHERE experiment_id = 'exp-pdf-b2b'`); err != nil {
+		t.Fatal(err)
+	}
 	defer dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad')`)
 
 	list, err := experiment.List(ctx, dbc)
@@ -118,11 +123,17 @@ func TestExperimentLifecycle(t *testing.T) {
 	if _, err := experiment.Decide(ctx, dbc, "exp-pdf-b2b", "reject", "test"); err != nil {
 		t.Fatal(err)
 	}
-	knowledge, err := experiment.SearchKnowledge(ctx, dbc, "PDF", "reject")
+	knowledge, err := experiment.SearchKnowledge(ctx, dbc, "", "reject")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(knowledge) != 1 || knowledge[0].ID != "exp-pdf-b2b" {
+	found := false
+	for _, item := range knowledge {
+		if item.ID == "exp-pdf-b2b" {
+			found = true
+		}
+	}
+	if !found {
 		t.Fatalf("knowledge = %+v", knowledge)
 	}
 }

@@ -37,7 +37,7 @@ func TestExperimentEndpoints(t *testing.T) {
 		t.Fatalf("decision: %d %s", rec.Code, rec.Body.String())
 	}
 
-	rec = doJSON(t, h, http.MethodGet, "/v1/admin/experiments/knowledge?q=PDF", "")
+	rec = doJSON(t, h, http.MethodGet, "/v1/admin/experiments/knowledge?decision=reject", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("knowledge: %d %s", rec.Code, rec.Body.String())
 	}
@@ -50,7 +50,13 @@ func TestExperimentEndpoints(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &knowledge); err != nil {
 		t.Fatal(err)
 	}
-	if len(knowledge.Items) != 1 || knowledge.Items[0].Decision != "reject" {
+	found := false
+	for _, item := range knowledge.Items {
+		if item.ID == "exp-pdf-b2b" && item.Decision == "reject" {
+			found = true
+		}
+	}
+	if !found {
 		t.Fatalf("knowledge = %+v", knowledge.Items)
 	}
 }

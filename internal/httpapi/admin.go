@@ -521,7 +521,8 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 
         <div id="tab-experiments" class="hidden">
           <div class="toolbar">
-            <button id="experiment-seed">Запустить демо-гипотезу</button>
+            <button id="experiment-seed">Демо-успех</button>
+            <button id="experiment-bad" class="secondary small">Смоделировать провал</button>
             <button id="experiment-refresh" class="secondary small">Обновить</button>
             <input id="experiment-search" type="search" placeholder="Поиск по базе знаний…" style="max-width:220px">
             <select id="experiment-decision-filter" style="max-width:170px">
@@ -1800,7 +1801,11 @@ el('review-list').addEventListener('click', function(ev){
   if (r) reviewDecision(mode, [r]);
 });
 el('experiment-seed').addEventListener('click', async function(){
-  try { await api('POST','/v1/admin/experiments/demo',{}); toast('Демо-гипотеза создана'); loadExperiments(); loadKnowledge(); }
+  try { await api('POST','/v1/admin/experiments/demo',{}); toast('Демо-успех создан'); loadExperiments(); loadKnowledge(); }
+  catch(e){ toast(e.message,true); }
+});
+el('experiment-bad').addEventListener('click', async function(){
+  try { await api('POST','/v1/admin/experiments/bad-demo',{}); toast('Демо-провал создан'); loadExperiments(); loadKnowledge(); }
   catch(e){ toast(e.message,true); }
 });
 el('experiment-refresh').addEventListener('click', function(){ loadExperiments(); loadKnowledge(); });
