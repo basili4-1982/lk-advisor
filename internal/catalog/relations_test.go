@@ -200,17 +200,135 @@ func TestRegistryMetrics(t *testing.T) {
 	seedRegistry(t, dbc)
 	defer cleanRegistry(t, dbc)
 
+	// Extend the shared seed into the "metrics fixture": 4 active, 1 candidate,
+	// 1 rejected, 1 stale edge over reg-a..reg-d.
+	//   active accessory  a->b  (target b, expiring in 10 days)
+	//   active bundle     b->c  (target c)
+	//   active compat.    a->c  (target c)
+	//   active adjacent   b->d  (target d)
+	//   stale  bundle     c->d
+	// Active target degrees: c=2, b=1, d=1 -> 3 targets, top 1% = 1 target (c),
+	// so HubTop1Pct = 2/4 = 50%. StaleShare = stale/(active+stale) = 1/5 = 20%.
+	// Distinct items touched by active edges = reg-a..reg-d = 4.
+	extra := []struct {
+		from, to, typ, status, provenance string
+		confidence                        float64
+	}{
+		{"reg-b", "reg-c", "bundle", "active", "manual", 0.80},
+		{"reg-a", "reg-c", "compatibility", "active", "manual", 0.85},
+		{"reg-b", "reg-d", "adjacent_task", "active", "manual", 0.70},
+		{"reg-c", "reg-d", "bundle", "stale", "attribute", 0.55},
+	}
+	for _, e := range extra {
+		if _, err := dbc.ExecContext(ctx, `
+			INSERT INTO relations
+				(from_item_id, to_item_id, type, confidence, status, provenance_kind, source)
+			VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+			e.from, e.to, e.typ, e.confidence, e.status, e.provenance); err != nil {
+			t.Fatalf("metrics fixture edge %s->%s: %v", e.from, e.to, err)
+		}
+	}
+	if _, err := dbc.ExecContext(ctx, `
+		UPDATE relations SET valid_until = now() + interval '10 days'
+		WHERE from_item_id = 'reg-a' AND to_item_id = 'reg-b'`); err != nil {
+		t.Fatalf("metrics fixture expiring edge: %v", err)
+	}
+
 	m, err := catalog.RegistryMetrics(ctx, dbc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Active != 1 || m.Candidates != 1 || m.Rejected != 1 {
+
+	if m.Total != 7 || m.Active != 4 || m.Candidates != 1 || m.Rejected != 1 || m.Stale != 1 {
 		t.Fatalf("status metrics = %+v", m)
 	}
-	if m.ItemsWithActive < 2 || m.ItemsTotal < 3 {
-		t.Fatalf("coverage metrics = %+v", m)
+	if m.Expiring30 != 1 {
+		t.Fatalf("expiring metrics = %d, want 1", m.Expiring30)
 	}
-	if m.ByType["accessory"] != 1 || m.ByProvenance["co_purchase"] != 1 {
-		t.Fatalf("group metrics = %+v", m)
+	if m.ItemsWithActive != 4 {
+		t.Fatalf("items with active = %d, want 4", m.ItemsWithActive)
+	}
+	// ItemsTotal spans the whole shared lk_items table, so CoveragePct is
+	// asserted against its exact definition rather than a fixed number.
+	if want := 100 * float64(m.ItemsWithActive) / float64(m.ItemsTotal); m.CoveragePct != want {
+		t.Fatalf("coverage = %v, want %v (items %d/%d)", m.CoveragePct, want, m.ItemsWithActive, m.ItemsTotal)
+	}
+	if m.StaleShare != 20 {
+		t.Fatalf("stale share = %v, want 20", m.StaleShare)
+	}
+	if m.HubTop1Pct != 50 {
+		t.Fatalf("hub top1 = %v, want 50", m.HubTop1Pct)
+	}
+
+	if m.ByType["accessory"] != 1 || m.ByType["bundle"] != 2 ||
+		m.ByType["compatibility"] != 1 || m.ByType["adjacent_task"] != 2 ||
+		m.ByType["upgrade"] != 1 {
+		t.Fatalf("by type = %+v", m.ByType)
+	}
+	if m.ByProvenance["co_purchase"] != 1 || m.ByProvenance["manual"] != 4 {
+		t.Fatalf("by provenance = %+v", m.ByProvenance)
+	}
+
+	// Families is capped at the first 100 distinct groups of the whole shared
+	// lk_items table, so the fixture's REG-* groups fall outside that window.
+	// Assert the contract exactly: Families is the sorted, distinct prefix of at
+	// most 100 groups, and the cap is really applied.
+	allRows, err := dbc.QueryContext(ctx, `
+		SELECT DISTINCT product_group FROM lk_items
+		WHERE product_group <> '' ORDER BY 1`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var all []string
+	for allRows.Next() {
+		var family string
+		if err := allRows.Scan(&family); err != nil {
+			t.Fatal(err)
+		}
+		all = append(all, family)
+	}
+	if err := allRows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	allRows.Close()
+
+	want := all
+	if len(want) > 100 {
+		want = want[:100]
+	}
+	if len(m.Families) != len(want) {
+		t.Fatalf("families = %d, want %d (distinct groups %d)", len(m.Families), len(want), len(all))
+	}
+	for i := range want {
+		if m.Families[i] != want[i] {
+			t.Fatalf("families[%d] = %q, want %q", i, m.Families[i], want[i])
+		}
+	}
+	// The fixture groups exist and are therefore reachable when the table has
+	// fewer than 100 groups; on the shared dataset they sort past the cap.
+	inWindow := len(all) <= 100
+	for _, g := range []string{"REG-G1", "REG-G2"} {
+		found := false
+		for _, f := range all {
+			if f == g {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("fixture group %s missing from lk_items", g)
+		}
+		if inWindow {
+			present := false
+			for _, f := range m.Families {
+				if f == g {
+					present = true
+					break
+				}
+			}
+			if !present {
+				t.Fatalf("fixture group %s missing from families %v", g, m.Families)
+			}
+		}
 	}
 }
