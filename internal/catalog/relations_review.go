@@ -34,6 +34,12 @@ type decisionSpec struct {
 // writes one relation_events row with action='review', actor_kind='human' and
 // the full row before/after as JSON.
 func ReviewRegistryRelation(ctx context.Context, dbc *sql.DB, id int64, decision, note, actor string, expectedVersion int) (RegistryRelation, error) {
+	note = strings.TrimSpace(note)
+	spec, err := reviewDecision(decision, note)
+	if err != nil {
+		return RegistryRelation{}, err
+	}
+
 	tx, err := dbc.BeginTx(ctx, nil)
 	if err != nil {
 		return RegistryRelation{}, fmt.Errorf("review relation: begin: %w", err)
@@ -41,10 +47,9 @@ func ReviewRegistryRelation(ctx context.Context, dbc *sql.DB, id int64, decision
 	defer func() { _ = tx.Rollback() }()
 
 	var currentVersion int
-	var before []byte
 	if err := tx.QueryRowContext(ctx,
-		`SELECT version, to_jsonb(r) FROM relations r WHERE r.id = $1 FOR UPDATE`,
-		id).Scan(&currentVersion, &before); err != nil {
+		`SELECT version FROM relations r WHERE r.id = $1 FOR UPDATE`,
+		id).Scan(&currentVersion); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return RegistryRelation{}, ErrRelationNotFound
 		}
@@ -54,9 +59,13 @@ func ReviewRegistryRelation(ctx context.Context, dbc *sql.DB, id int64, decision
 		return RegistryRelation{}, ErrVersionConflict
 	}
 
-	spec, err := reviewDecision(decision, note)
+	beforeRel, err := loadRegistryRelation(ctx, tx, id)
 	if err != nil {
 		return RegistryRelation{}, err
+	}
+	before, err := json.Marshal(beforeRel)
+	if err != nil {
+		return RegistryRelation{}, fmt.Errorf("review relation: encode before: %w", err)
 	}
 
 	query := fmt.Sprintf(`UPDATE relations
@@ -75,7 +84,7 @@ func ReviewRegistryRelation(ctx context.Context, dbc *sql.DB, id int64, decision
 	if n, err := res.RowsAffected(); err != nil {
 		return RegistryRelation{}, fmt.Errorf("review relation: affected: %w", err)
 	} else if n != 1 {
-		return RegistryRelation{}, ErrVersionConflict
+		return RegistryRelation{}, ErrRelationNotFound
 	}
 
 	rel, err := loadRegistryRelation(ctx, tx, id)
@@ -120,11 +129,18 @@ func reviewDecision(decision, note string) (decisionSpec, error) {
 		return decisionSpec{
 			status: "rejected",
 			extra: `,
+			    approved_by = '',
+			    approved_at = NULL,
 			    rejection_reason = $3,
 			    rejected_until = now() + interval '90 days'`,
 		}, nil
 	case "defer":
-		return decisionSpec{status: "candidate"}, nil
+		return decisionSpec{
+			status: "candidate",
+			extra: `,
+			    approved_by = '',
+			    approved_at = NULL`,
+		}, nil
 	default:
 		return decisionSpec{}, fmt.Errorf("review relation: unknown decision %q", decision)
 	}
@@ -166,10 +182,17 @@ func loadRegistryRelation(ctx context.Context, q queryer, id int64) (RegistryRel
 // so each one gets its own version check and audit event. Concurrent edits are
 // skipped rather than aborting the whole batch, and only successes are counted.
 func BulkReviewRelations(ctx context.Context, dbc *sql.DB, f RelationFilter, decision, note, actor string) (int, error) {
-	if len(f.IDs) == 0 && len(f.Types) == 0 && f.MinConfidence <= 0 {
+	if decision != "confirm" && decision != "reject" && decision != "defer" {
+		return 0, fmt.Errorf("bulk review: unknown decision %q", decision)
+	}
+	if len(f.IDs) == 0 && len(f.Types) == 0 && !(f.MinConfidence > 0) {
 		return 0, ErrCriterionRequired
 	}
-	if decision == "reject" && strings.TrimSpace(note) == "" {
+	if len(f.Statuses) == 0 {
+		f.Statuses = []string{"candidate"}
+	}
+	note = strings.TrimSpace(note)
+	if decision == "reject" && note == "" {
 		return 0, ErrNoteRequired
 	}
 
@@ -229,7 +252,7 @@ func SweepRelations(ctx context.Context, dbc *sql.DB, now time.Time) (stale, exp
 	defer func() { _ = tx.Rollback() }()
 
 	res, err := tx.ExecContext(ctx, `
-		UPDATE relations SET status = 'stale', updated_at = now()
+		UPDATE relations SET status = 'stale', version = version + 1, updated_at = now()
 		WHERE status IN ('candidate', 'active')
 		  AND revalidate_after IS NOT NULL
 		  AND revalidate_after < $1`, now)
@@ -243,7 +266,7 @@ func SweepRelations(ctx context.Context, dbc *sql.DB, now time.Time) (stale, exp
 	stale = int(n)
 
 	res, err = tx.ExecContext(ctx, `
-		UPDATE relations SET status = 'expired', updated_at = now()
+		UPDATE relations SET status = 'expired', version = version + 1, updated_at = now()
 		WHERE status = 'active'
 		  AND valid_until IS NOT NULL
 		  AND valid_until < $1`, now)
@@ -255,6 +278,13 @@ func SweepRelations(ctx context.Context, dbc *sql.DB, now time.Time) (stale, exp
 		return 0, 0, fmt.Errorf("sweep relations: expired affected: %w", err)
 	}
 	expired = int(n)
+
+	if stale == 0 && expired == 0 {
+		if err := tx.Commit(); err != nil {
+			return 0, 0, fmt.Errorf("sweep relations: commit: %w", err)
+		}
+		return 0, 0, nil
+	}
 
 	payload, err := json.Marshal(map[string]int{"stale": stale, "expired": expired})
 	if err != nil {
