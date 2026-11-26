@@ -222,6 +222,9 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 			Score:              c.Score,
 			FeedbackMultiplier: c.FeedbackMultiplier,
 			Exploration:        c.Exploration,
+			SourceProductID:    c.SourceProductID,
+			RelationType:       c.RelationType,
+			CandidateID:        c.CandidateID,
 			Rank:               i + 1,
 			Evidence:           c.Evidence,
 			Constraints:        c.Constraints,
@@ -266,6 +269,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		shownItems = append(shownItems, analytics.Item{
 			ProductID: c.Product.ID, Type: c.Type, Reason: "top_3",
 			Detail: detail, Source: itemSource, Rank: i + 1, Score: c.Score,
+			CandidateID: c.CandidateID, SourceProductID: c.SourceProductID, RelationType: c.RelationType,
 		})
 	}
 	skippedItems := make([]analytics.Item, 0, len(rejected)+len(allowed))

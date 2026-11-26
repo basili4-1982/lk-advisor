@@ -39,7 +39,8 @@ func Candidates(in Input) []model.Candidate {
 		}
 	}
 
-	add := func(productID, typ string, relevance, urgency, affinity, confidence float64, evidence ...model.Evidence) {
+	add := func(productID, typ string, relevance, urgency, affinity, confidence float64,
+		sourceID, relationType string, evidence ...model.Evidence) {
 		if productID == "" || seen[productID] || lowerThanOwned[productID] {
 			return
 		}
@@ -55,16 +56,23 @@ func Candidates(in Input) []model.Candidate {
 				Value:  fmt.Sprintf("скидка %.0f%% до %s", promo.Discount, promo.ValidTo.Format("2006-01-02")),
 			})
 		}
+		candidateID := ""
+		if sourceID != "" && relationType != "" {
+			candidateID = sourceID + "|" + relationType + "|" + productID
+		}
 		out = append(out, model.Candidate{
-			Product:    p,
-			Type:       typ,
-			Relevance:  relevance,
-			Urgency:    urgency,
-			Affinity:   affinity,
-			Margin:     normalizeMargin(p.Price),
-			Confidence: confidence,
-			Promo:      promo,
-			Evidence:   evidence,
+			Product:         p,
+			Type:            typ,
+			Relevance:       relevance,
+			Urgency:         urgency,
+			Affinity:        affinity,
+			Margin:          normalizeMargin(p.Price),
+			Confidence:      confidence,
+			Promo:           promo,
+			Evidence:        evidence,
+			SourceProductID: sourceID,
+			RelationType:    relationType,
+			CandidateID:     candidateID,
 		})
 	}
 
@@ -88,7 +96,7 @@ func Candidates(in Input) []model.Candidate {
 			if d < 0 || d > 90 {
 				continue
 			}
-			add(l.ProductID, "renewal", 1.0, urgencyFromDays(d), 0.9, 0.9, licenseEvidence(l))
+			add(l.ProductID, "renewal", 1.0, urgencyFromDays(d), 0.9, 0.9, l.ProductID, "renewal", licenseEvidence(l))
 		} else {
 			if hasActiveRenewal || d >= 0 || d < -30 {
 				continue
@@ -96,7 +104,7 @@ func Candidates(in Input) []model.Candidate {
 			if p, ok := in.Product(l.ProductID); !ok || p.Status == "discontinued" {
 				continue
 			}
-			add(l.ProductID, "renewal", 1.0, 1.0, 0.9, 0.9, expiredEvidence(l))
+			add(l.ProductID, "renewal", 1.0, 1.0, 0.9, 0.9, l.ProductID, "renewal", expiredEvidence(l))
 		}
 		for _, r := range in.Relations {
 			behavior := in.RelationBehavior(r.Type)
@@ -105,7 +113,7 @@ func Candidates(in Input) []model.Candidate {
 				if l.Status == "expired" {
 					urgency = 1.0
 				}
-				add(r.ToID, "renewal", 0.8, urgency, r.Confidence, r.Confidence, relationEvidence(r, in))
+				add(r.ToID, "renewal", 0.8, urgency, r.Confidence, r.Confidence, r.FromID, r.Type, relationEvidence(r, in))
 			}
 		}
 	}
@@ -121,9 +129,9 @@ func Candidates(in Input) []model.Candidate {
 		}
 		switch in.RelationBehavior(r.Type) {
 		case "upsell":
-			add(r.ToID, "upsell", 1.0*weight, 0, r.Confidence*weight, r.Confidence, relationEvidence(r, in))
+			add(r.ToID, "upsell", 1.0*weight, 0, r.Confidence*weight, r.Confidence, r.FromID, r.Type, relationEvidence(r, in))
 		case "bundle":
-			add(r.ToID, "upsell", 0.8*weight, 0, r.Confidence*weight, r.Confidence, relationEvidence(r, in))
+			add(r.ToID, "upsell", 0.8*weight, 0, r.Confidence*weight, r.Confidence, r.FromID, r.Type, relationEvidence(r, in))
 		}
 	}
 
@@ -137,7 +145,7 @@ func Candidates(in Input) []model.Candidate {
 		if weight == 0 {
 			continue
 		}
-		add(r.ToID, "cross_sell", relationRelevance(behavior)*weight, 0, r.Confidence*weight, r.Confidence, relationEvidence(r, in))
+		add(r.ToID, "cross_sell", relationRelevance(behavior)*weight, 0, r.Confidence*weight, r.Confidence, r.FromID, r.Type, relationEvidence(r, in))
 	}
 
 	// Alternative: a similar product for the same job, not a full replacement.
@@ -149,7 +157,7 @@ func Candidates(in Input) []model.Candidate {
 		if weight == 0 {
 			continue
 		}
-		add(r.ToID, "alternative", 0.6*weight, 0, r.Confidence*0.8, r.Confidence, relationEvidence(r, in))
+		add(r.ToID, "alternative", 0.6*weight, 0, r.Confidence*0.8, r.Confidence, r.FromID, r.Type, relationEvidence(r, in))
 	}
 
 	// Analog: replacements for discontinued products.
@@ -159,7 +167,7 @@ func Candidates(in Input) []model.Candidate {
 			if weight == 0 {
 				continue
 			}
-			add(r.ToID, "analog", 1.0*weight, 0, r.Confidence*weight, r.Confidence, relationEvidence(r, in))
+			add(r.ToID, "analog", 1.0*weight, 0, r.Confidence*weight, r.Confidence, r.FromID, r.Type, relationEvidence(r, in))
 		}
 	}
 
@@ -200,7 +208,7 @@ func Candidates(in Input) []model.Candidate {
 				Value:  fmt.Sprintf("акция: скидка %.0f%% до %s", promo.Discount, promo.ValidTo.Format("2006-01-02")),
 			}
 		}
-		add(toID, "alternative", 0.5*weight, 0, 0.7*weight, 0.8, ev)
+		add(toID, "alternative", 0.5*weight, 0, 0.7*weight, 0.8, fromID, "substitute", ev)
 	}
 
 	return out

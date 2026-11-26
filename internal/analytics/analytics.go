@@ -24,13 +24,16 @@ type Meta struct {
 
 // Item is one shown or skipped recommendation.
 type Item struct {
-	ProductID string
-	Type      string
-	Reason    string
-	Detail    string
-	Source    string
-	Rank      int
-	Score     float64
+	ProductID       string
+	Type            string
+	Reason          string
+	Detail          string
+	Source          string
+	Rank            int
+	Score           float64
+	CandidateID     string
+	SourceProductID string
+	RelationType    string
 }
 
 // ProductStat aggregates one product over a period.
@@ -123,11 +126,12 @@ func insertEvent(ctx context.Context, tx *sql.Tx, traceID, clientID, productID, 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO recommendation_events
 			(trace_id, client_id, product_id, event, reason, detail, rank, score, type, source,
-			 strategy, audience, weights_version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			 strategy, audience, weights_version, candidate_id, source_product_id, relation_type)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
 		traceID, clientID, productID, event, item.Reason, item.Detail,
 		item.Rank, item.Score, item.Type, item.Source,
-		meta.Strategy, meta.Audience, meta.WeightsVersion)
+		meta.Strategy, meta.Audience, meta.WeightsVersion,
+		item.CandidateID, item.SourceProductID, item.RelationType)
 	if err != nil {
 		return fmt.Errorf("analytics event: %w", err)
 	}
@@ -136,19 +140,22 @@ func insertEvent(ctx context.Context, tx *sql.Tx, traceID, clientID, productID, 
 
 // Record stores a user action (click or purchase) for a shown item.
 func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, event string) error {
-	var owner, strategyName, audience, weightsVersion string
+	var owner, strategyName, audience, weightsVersion, candidateID, sourceID, relationType string
 	var rank int
 	err := dbc.QueryRowContext(ctx, `
 		SELECT r.client_id, r.strategy, r.audience, r.weights_version,
-		       COALESCE((
-		           SELECT e.rank FROM recommendation_events e
-		           WHERE e.trace_id = r.trace_id
-		             AND e.product_id = $2
-		             AND e.event = 'shown'
-		           ORDER BY e.id LIMIT 1
-		       ), 0)
-		FROM recommendation_requests r WHERE r.trace_id = $1`, traceID, productID).
-		Scan(&owner, &strategyName, &audience, &weightsVersion, &rank)
+		       COALESCE(e.rank, 0), COALESCE(e.candidate_id, ''),
+		       COALESCE(e.source_product_id, ''), COALESCE(e.relation_type, '')
+		FROM recommendation_requests r
+		LEFT JOIN LATERAL (
+			SELECT rank, candidate_id, source_product_id, relation_type
+			FROM recommendation_events
+			WHERE trace_id = r.trace_id AND product_id = $2 AND event = 'shown'
+			ORDER BY id LIMIT 1
+		) e ON true
+		WHERE r.trace_id = $1`, traceID, productID).
+		Scan(&owner, &strategyName, &audience, &weightsVersion, &rank,
+			&candidateID, &sourceID, &relationType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrTraceNotFound
 	}
@@ -161,9 +168,10 @@ func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, even
 	_, err = dbc.ExecContext(ctx, `
 		INSERT INTO recommendation_events
 			(trace_id, client_id, product_id, event, reason, source, rank,
-			 strategy, audience, weights_version)
-		VALUES ($1, $2, $3, $4, 'user', 'client', $5, $6, $7, $8)`,
-		traceID, clientID, productID, event, rank, strategyName, audience, weightsVersion)
+			 strategy, audience, weights_version, candidate_id, source_product_id, relation_type)
+		VALUES ($1, $2, $3, $4, 'user', 'client', $5, $6, $7, $8, $9, $10, $11)`,
+		traceID, clientID, productID, event, rank, strategyName, audience, weightsVersion,
+		candidateID, sourceID, relationType)
 	if err != nil {
 		return fmt.Errorf("analytics record: %w", err)
 	}

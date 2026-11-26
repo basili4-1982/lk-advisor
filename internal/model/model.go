@@ -153,6 +153,9 @@ type Candidate struct {
 	Score              float64    `json:"score"`
 	FeedbackMultiplier float64    `json:"feedback_multiplier,omitempty"`
 	Exploration        bool       `json:"exploration,omitempty"`
+	SourceProductID    string     `json:"source_product_id,omitempty"`
+	RelationType       string     `json:"relation_type,omitempty"`
+	CandidateID        string     `json:"candidate_id,omitempty"`
 	Promo              *Promotion `json:"promo,omitempty"`
 	Constraints        []string   `json:"constraints,omitempty"`
 	Evidence           []Evidence `json:"-"`
@@ -188,6 +191,9 @@ type Recommendation struct {
 	Score              float64       `json:"score"`
 	FeedbackMultiplier float64       `json:"feedback_multiplier,omitempty"`
 	Exploration        bool          `json:"exploration,omitempty"`
+	SourceProductID    string        `json:"source_product_id,omitempty"`
+	RelationType       string        `json:"relation_type,omitempty"`
+	CandidateID        string        `json:"candidate_id,omitempty"`
 	Rank               int           `json:"rank"`
 	Reason             string        `json:"reason"`
 	Factors            *ScoreFactors `json:"factors,omitempty"`

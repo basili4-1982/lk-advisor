@@ -63,6 +63,8 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("POST /v1/admin/analytics/auto-review", h.adminAutoReview)
 	mux.HandleFunc("POST /v1/admin/relations", h.adminUpsertRelation)
 	mux.HandleFunc("DELETE /v1/admin/relations", h.adminDeleteRelation)
+	mux.HandleFunc("GET /v1/admin/relations/performance", h.adminRelationPerformance)
+	mux.HandleFunc("POST /v1/admin/relations/auto-review", h.adminAutoReviewRelations)
 	mux.HandleFunc("GET /v1/admin/relations/review", h.adminReviewQueue)
 	mux.HandleFunc("POST /v1/admin/relations/review", h.adminReviewDecision)
 	mux.HandleFunc("GET /v1/admin/solo-products", h.adminSoloProducts)

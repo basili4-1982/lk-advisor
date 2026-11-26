@@ -280,6 +280,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <div id="analytics-strategies"></div>
           </div>
           <div class="formbox" style="margin-top:16px"><div class="form-title">Кандидаты на проверку связей <button id="health-flag" class="secondary small" style="margin-left:8px">Пометить связи</button></div><div id="analytics-health"></div></div>
+          <div class="formbox" style="margin-top:16px"><div class="form-title">Работающие связи <button id="relation-auto" class="secondary small" style="margin-left:8px">Авто-решение бандита</button></div><div id="relation-perf"></div></div>
           <div class="grid g2" style="margin-top:16px">
             <div class="formbox" style="margin:0"><div class="form-title">Что показываем</div><div id="analytics-products"></div></div>
             <div class="formbox" style="margin:0"><div class="form-title">Что не показываем</div><div id="analytics-skips"></div></div>
@@ -465,6 +466,7 @@ async function loadAnalytics(){
   } catch(e){ el('analytics-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
   loadStrategies();
   loadHealth();
+  loadRelationPerf();
 }
 async function loadHealth(){
   try {
@@ -475,6 +477,15 @@ async function loadHealth(){
     }).join('');
     el('analytics-health').innerHTML = '<div style="margin-bottom:8px">'+types+'</div>' + (low || '<div class="empty">Явных проблем нет</div>');
   } catch(e){ el('analytics-health').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
+}
+async function loadRelationPerf(){
+  try {
+    var d=await api('GET','/v1/admin/relations/performance');
+    var rows=d.items||[];
+    el('relation-perf').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>Связь</th><th>Тип</th><th>Показ</th><th>Клик</th><th>CTR</th><th>Покупка</th><th>Статус</th></tr></thead><tbody>'+
+      rows.map(function(x){ return '<tr><td>'+esc(x.title_from)+' → '+esc(x.title_to)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+x.shown+'</td><td>'+x.clicks+'</td><td>'+pct(x.ctr)+'</td><td>'+x.purchases+'</td><td>'+esc(x.status)+'</td></tr>'; }).join('')+'</tbody></table></div>' :
+      '<div class="empty">Пока нет показов с привязкой к связи</div>';
+  } catch(e){ el('relation-perf').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 async function loadStrategies(){
   try {
@@ -638,7 +649,7 @@ function renderRules(){
       '<div><span class="pill type">'+esc(RULE_TYPES[r.type]||r.type)+'</span> <button class="ghost small" data-rule-del="'+esc(r.id)+'">Удалить</button></div></div>';
   }).join('');
 }
-var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','dataset.co_purchase_suggest':'Связи из co-purchase созданы','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
+var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','dataset.co_purchase_suggest':'Связи из co-purchase созданы','relations.auto_review':'Связи проверены бандитом','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
 function renderAudit(){
   var list = state.audit || [];
   if (!list.length) { el('audit-list').textContent='Пока нет изменений'; return; }
@@ -734,6 +745,10 @@ el('review-list').addEventListener('click', function(ev){
   if (!mode) return;
   var r=reviewItems[Number(ev.target.dataset.reviewIndex)];
   if (r) reviewDecision(mode, [r]);
+});
+el('relation-auto').addEventListener('click', async function(){
+  try { var d=await api('POST','/v1/admin/relations/auto-review',{min_shown:20,min_ctr:0.03}); toast('Продвинуто: '+d.promoted+', отклонено: '+d.rejected); loadRelationPerf(); }
+  catch(e){ toast(e.message,true); }
 });
 el('analytics-refresh').addEventListener('click', loadAnalytics);
 el('analytics-days').addEventListener('change', loadAnalytics);
