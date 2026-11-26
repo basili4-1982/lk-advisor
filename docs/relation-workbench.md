@@ -130,6 +130,18 @@ Co-purchase-кандидаты при генерации получают `reval
 - массовые действия: подтвердить, отклонить, отложить; причина отказа обязательна;
 - генерация и TTL-проверка.
 
+## Догрузка новых позиций
+
+Инкрементальный импорт не удаляет связи и алиасы:
+
+```bash
+python3 analysis/import_items.py --csv new_positions.csv
+python3 analysis/import_items.py --dataset new_dataset.xlsx
+python3 analysis/import_items.py --dataset new_dataset.xlsx --orders
+```
+
+`--orders` обновляет клиентов/заказы и пересобирает co-purchase; после него нажмите «Сгенерировать». Полная перезагрузка `import_dataset.py` по-прежнему делает `TRUNCATE` и подходит только для чистой БД.
+
 ## Короткие имена
 
 Полные названия товаров — юридические простыни, поэтому Workbench показывает короткое имя:

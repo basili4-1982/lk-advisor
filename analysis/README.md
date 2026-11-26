@@ -109,6 +109,35 @@
 4. Перенести гибрид в демо-сервис и показать граф связей.
 5. Сравнить с baseline на питче по A/B, B2B/B2C.
 
+## Догрузка новых позиций
+
+Полная перезагрузка (`import_dataset.py`) делает `TRUNCATE` и убивает связи и алиасы. Для обновления каталога есть инкрементальный импорт:
+
+```bash
+# только новые/изменённые позиции из CSV
+python3 analysis/import_items.py --csv new_positions.csv
+
+# новые позиции из свежего XLSX (лист «Продажи»)
+python3 analysis/import_items.py --dataset Датасет_Рекомендации_ЛК_v6.xlsx
+
+# плюс новые клиенты/заказы и пересборка co-purchase
+python3 analysis/import_items.py --dataset Датасет_Рекомендации_ЛК_v6.xlsx --orders
+```
+
+CSV:
+
+```csv
+item_id,title,sku,product_group,available,category
+SKU-123,"Название позиции",SKU-123,G123,true,security
+```
+
+Поведение:
+
+- `lk_items` обновляется по `item_id` (`INSERT … ON CONFLICT DO UPDATE`);
+- существующие `relations`, `relation_events` и `item_aliases` не трогаются;
+- `--orders` дополнительно обновляет `lk_clients`/`lk_orders` и пересобирает `co_purchase_pairs` из истории заказов;
+- после `--orders` нажмите «Сгенерировать» в «Каталоге», чтобы обновить кандидатов.
+
 ## Воспроизведение
 
 ```bash
