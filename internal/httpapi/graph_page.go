@@ -305,6 +305,7 @@ function showNode(n){
 }
 function focusNode(n){
   if(!graph||!n)return;
+  userInteracted=true;autoFitDone=true;
   const d=180,dist=Math.hypot(n.x||0,n.y||0,n.z||0)||1,ratio=1+d/dist;
   graph.cameraPosition({x:(n.x||0)*ratio,y:(n.y||0)*ratio,z:(n.z||0)*ratio},n,900);
 }
