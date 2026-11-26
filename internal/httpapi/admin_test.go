@@ -305,7 +305,7 @@ func TestAdminPageHasRegistryWorkbench(t *testing.T) {
 	body := rec.Body.String()
 	for _, needle := range []string{
 		`data-tab="registry"`, `id="tab-registry"`, `id="registry-metrics"`,
-		`id="registry-detail"`, `id="registry-generate"`, `id="registry-import"`, `id="registry-import-modal"`, `function loadRegistry`,
+		`id="registry-detail"`, `id="registry-generate"`, `id="registry-import"`, `id="registry-import-modal"`, `id="registry-reset"`, `id="registry-reset-modal"`, `function loadRegistry`,
 	} {
 		if !strings.Contains(body, needle) {
 			t.Errorf("admin page missing %s", needle)

@@ -243,3 +243,25 @@ func (h *handler) adminRegistryImportItems(w http.ResponseWriter, r *http.Reques
 	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "registry.import_items", res)
 	writeJSON(w, http.StatusOK, res)
 }
+
+func (h *handler) adminRegistryReset(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Confirm string `json:"confirm"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if req.Confirm != "RESET" {
+		writeError(w, http.StatusBadRequest, `send {"confirm":"RESET"}`)
+		return
+	}
+	res, err := catalog.ResetCatalog(r.Context(), h.db)
+	if err != nil {
+		h.logger.Error("registry reset", "err", err)
+		writeError(w, http.StatusInternalServerError, "reset error")
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "registry.reset", res)
+	writeJSON(w, http.StatusOK, res)
+}

@@ -369,3 +369,11 @@ func TestRegistryImportItemsUpload(t *testing.T) {
 		t.Fatalf("title = %q", title)
 	}
 }
+
+func TestRegistryResetRequiresConfirm(t *testing.T) {
+	h, _ := setupAPI(t)
+	rec := doJSON(t, h, http.MethodPost, "/v1/admin/registry/reset", `{}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("reset without confirm = %d, want 400", rec.Code)
+	}
+}

@@ -283,6 +283,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button class="secondary small" data-view="structural">Структурные</button>
             <button id="registry-generate" class="small">Сгенерировать</button>
             <button id="registry-import" class="secondary small">Импорт</button>
+            <button id="registry-reset" class="ghost small">Сбросить каталог</button>
             <button id="registry-sweep" class="secondary small">Проверить TTL</button>
             <span class="hint" id="registry-count"></span>
           </div>
@@ -492,6 +493,18 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
     <div class="toolbar" style="margin-top:14px;justify-content:flex-end">
       <button id="registry-confirm-no" class="secondary small">Отмена</button>
       <button id="registry-confirm-yes" class="small">Подтвердить</button>
+    </div>
+  </div>
+</div>
+<div class="modal hidden" id="registry-reset-modal">
+  <div class="modal-box">
+    <div class="form-title">Сбросить каталог?</div>
+    <div class="hint">Будут удалены все связи, события, алиасы и импортированные позиции.
+      Останется только чистый каталог v5 — 817 позиций. Затем кандидаты будут собраны заново.
+      Действие необратимо.</div>
+    <div class="toolbar" style="margin-top:14px;justify-content:flex-end">
+      <button id="registry-reset-no" class="secondary small">Отмена</button>
+      <button id="registry-reset-yes" class="small">Сбросить</button>
     </div>
   </div>
 </div>
@@ -1567,6 +1580,17 @@ el('registry-confirm-modal').addEventListener('click', function(ev){ if (ev.targ
 el('registry-reject').addEventListener('click', function(){ registryBulk('reject'); });
 el('registry-defer').addEventListener('click', function(){ registryBulk('defer'); });
 el('registry-generate').addEventListener('click', registryGenerate);
+el('registry-reset').addEventListener('click', function(){ el('registry-reset-modal').classList.remove('hidden'); });
+el('registry-reset-no').addEventListener('click', function(){ el('registry-reset-modal').classList.add('hidden'); });
+el('registry-reset-modal').addEventListener('click', function(ev){ if (ev.target === this) this.classList.add('hidden'); });
+el('registry-reset-yes').addEventListener('click', async function(){
+  el('registry-reset-modal').classList.add('hidden');
+  try {
+    var res=await api('POST','/v1/admin/registry/reset',{confirm:'RESET'});
+    toast('Каталог сброшен: удалено '+res.items_removed+', связей '+res.relations);
+    await loadRegistry();
+  } catch(e){ toast(e.message,true); }
+});
 el('registry-import').addEventListener('click', function(){
   el('registry-import-result').textContent='';
   el('registry-import-file').value='';
