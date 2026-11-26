@@ -125,6 +125,9 @@ table.registry th,table.registry td{padding:4px 6px}
 #tab-dataset .stat span{font-size:14px}
 #tab-dataset table{font-size:15px}
 #tab-dataset th,#tab-dataset td{padding:11px 12px}
+.method{display:grid;gap:4px;margin:8px 0 14px;font-size:13.5px;line-height:1.45;color:#374151}
+.method b{color:#111827}
+.method code{background:#f3f4f6;padding:0 4px;border-radius:4px;font-size:12.5px}
 button.danger{background:#7f1d1d;color:#fff;padding:12px 22px;font-size:14px;border-radius:10px;font-weight:800}
 button.danger:hover{background:#991b1b}
 .pair-qual{display:inline-block;font-size:10px;font-weight:600;color:#6b7280;background:#f1f5f9;border-radius:4px;padding:0 4px;vertical-align:1px}
@@ -445,6 +448,14 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 
           <div class="formbox">
             <div class="form-title">P@3: baseline против нашей модели</div>
+            <div class="method">
+              <div><b>P@3</b> = среднее по клиентам <code>hits / 3</code>. Рекомендуем ровно 3 новых item_id; если товаров меньше трёх — недостающие позиции считаются промахом.</div>
+              <div><b>Срез:</b> train — заказы до 31.08.2026, test — с 07.09.2026; корзина = <code>(order_id, order_week)</code>.</div>
+              <div><b>Группы:</b> A — есть покупки в train и хотя бы один новый товар в test (337 клиентов); B — подмножество A с ровно одним товаром в истории (172).</div>
+              <div><b>Baseline:</b> popularity — число уникальных клиентов в train; co-purchase — пары из одной корзины, тай-брейк по популярности и item_id.</div>
+              <div><b>Наша модель:</b> B2B — co-purchase (<code>3×count/√popularity</code>) + 0.5×popularity + 0.2×совпадение слов в названии; B2C — popularity.</div>
+              <div><b>Variant share:</b> попадание считается вариантом, если <code>product_group</code> угаданного товара уже есть в истории клиента.</div>
+            </div>
             <div class="chart">
               <div class="chart-row"><span>A · все</span><div class="chart-bars">
                 <div class="chart-col"><b>5.44</b><i style="height:36%"></i><span>popularity</span></div>
