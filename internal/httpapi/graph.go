@@ -24,7 +24,18 @@ func (h *handler) demoGraph(w http.ResponseWriter, r *http.Request) {
 	period := r.URL.Query().Get("period")
 	industry := r.URL.Query().Get("industry")
 	segment := r.URL.Query().Get("segment")
-	graph, err := catalog.LoadDemoGraphFiltered(r.Context(), h.db, audience, industry, segment, period, soloLimit)
+	page, pageSize := 1, 1000
+	if raw := r.URL.Query().Get("page"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			page = v
+		}
+	}
+	if raw := r.URL.Query().Get("page_size"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			pageSize = v
+		}
+	}
+	graph, err := catalog.LoadDemoGraphPage(r.Context(), h.db, audience, industry, segment, period, page, pageSize, soloLimit)
 	if err != nil {
 		h.logger.Error("demo graph", "err", err)
 		writeError(w, http.StatusInternalServerError, "demo graph error")

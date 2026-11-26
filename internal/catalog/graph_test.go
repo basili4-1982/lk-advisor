@@ -182,3 +182,44 @@ func TestDemoGraphSegmentFilter(t *testing.T) {
 		t.Fatalf("filter label = %q", graph.FilterLabel)
 	}
 }
+
+func TestDemoGraphPaginationExternalLinks(t *testing.T) {
+	dbc := store.OpenTestDB(t)
+	ctx := context.Background()
+	if err := store.Migrate(ctx, dbc); err != nil {
+		t.Fatal(err)
+	}
+	clean := func() {
+		dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE item_id LIKE 'graph-page-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_clients WHERE client_id LIKE 'graph-page-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'graph-page-%'`)
+	}
+	clean()
+	defer clean()
+	for _, item := range []string{"graph-page-a", "graph-page-b"} {
+		dbc.ExecContext(ctx, `INSERT INTO lk_items (item_id, title, category) VALUES ($1, $1, 'security')`, item)
+	}
+	for i := 1; i <= 3; i++ {
+		cid := "graph-page-client-" + string(rune('0'+i))
+		dbc.ExecContext(ctx, `INSERT INTO lk_clients (client_id, client_group) VALUES ($1, 'B2B')`, cid)
+		dbc.ExecContext(ctx, `
+			INSERT INTO lk_orders (order_id, client_id, order_week, item_id) VALUES
+			($1, $2, '2026-08-01', 'graph-page-a'),
+			($1, $2, '2026-08-01', 'graph-page-b')`,
+			"graph-page-order-"+string(rune('0'+i)), cid)
+	}
+
+	graph, err := catalog.LoadDemoGraphPage(ctx, dbc, "b2b", "", "", "", 1, 1, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if graph.TotalPages < 2 || len(graph.Nodes) != 1 {
+		t.Fatalf("pagination = page %d/%d nodes=%d", graph.Page, graph.TotalPages, len(graph.Nodes))
+	}
+	if len(graph.ExternalEdges) == 0 {
+		t.Fatalf("expected external edge, got none")
+	}
+	if graph.Nodes[0].ExternalCount == 0 {
+		t.Fatalf("external count not set: %+v", graph.Nodes[0])
+	}
+}

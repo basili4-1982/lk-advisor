@@ -11,14 +11,15 @@ import (
 
 // GraphNode is one public item in the demo relation graph.
 type GraphNode struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Category  string `json:"category"`
-	Family    string `json:"family"`
-	Buyers    int    `json:"buyers"`
-	B2CBuyers int    `json:"b2c_buyers"`
-	Degree    int    `json:"degree"`
-	Solo      bool   `json:"solo"`
+	ID            string `json:"id"`
+	Title         string `json:"title"`
+	Category      string `json:"category"`
+	Family        string `json:"family"`
+	ExternalCount int    `json:"external_count"`
+	Buyers        int    `json:"buyers"`
+	B2CBuyers     int    `json:"b2c_buyers"`
+	Degree        int    `json:"degree"`
+	Solo          bool   `json:"solo"`
 
 	PeriodBuyers  int     `json:"period_buyers"`
 	PrevBuyers    int     `json:"prev_buyers"`
@@ -38,6 +39,18 @@ type GraphEdge struct {
 	B2BCount  int    `json:"b2b_count"`
 	B2CCount  int    `json:"b2c_count"`
 	B2CHidden bool   `json:"b2c_hidden"`
+}
+
+// ExternalEdge is a link from the current page to a node on another page.
+type ExternalEdge struct {
+	From       string `json:"from"`
+	To         string `json:"to"`
+	Title      string `json:"title"`
+	TargetPage int    `json:"target_page"`
+	Count      int    `json:"count"`
+	B2BCount   int    `json:"b2b_count"`
+	B2CCount   int    `json:"b2c_count"`
+	B2CHidden  bool   `json:"b2c_hidden"`
 }
 
 // GraphPeriod is one selectable month in the demo timeline.
@@ -71,6 +84,11 @@ type DemoGraph struct {
 	PublicPairs   int                 `json:"public_pairs"`
 	SegmentItems  int                 `json:"segment_items"`
 	SegmentHidden int                 `json:"segment_hidden"`
+	Page          int                 `json:"page"`
+	PageSize      int                 `json:"page_size"`
+	TotalNodes    int                 `json:"total_nodes"`
+	TotalPages    int                 `json:"total_pages"`
+	ExternalEdges []ExternalEdge      `json:"external_edges"`
 
 	Period            string        `json:"period"`
 	PeriodLabel       string        `json:"period_label"`
@@ -99,6 +117,12 @@ func LoadDemoGraphAt(ctx context.Context, dbc *sql.DB, audience, period string, 
 // industry/segment. Segment filters recompute public items and pairs inside
 // the segment, so k-anonymity is enforced per segment.
 func LoadDemoGraphFiltered(ctx context.Context, dbc *sql.DB, audience, industry, segment, period string, soloLimit int) (DemoGraph, error) {
+	return LoadDemoGraphPage(ctx, dbc, audience, industry, segment, period, 1, 1000, soloLimit)
+}
+
+// LoadDemoGraphPage paginates the public graph and returns external links to
+// nodes that live on other pages.
+func LoadDemoGraphPage(ctx context.Context, dbc *sql.DB, audience, industry, segment, period string, page, pageSize, soloLimit int) (DemoGraph, error) {
 	audience = strings.ToLower(strings.TrimSpace(audience))
 	if audience != "b2c" {
 		audience = "b2b"
@@ -154,6 +178,7 @@ func LoadDemoGraphFiltered(ctx context.Context, dbc *sql.DB, audience, industry,
 
 	period = strings.TrimSpace(period)
 	if period == "" || period == "all" {
+		paginateGraph(&graph, page, pageSize)
 		return graph, nil
 	}
 	start, err := time.Parse("2006-01", period)
@@ -171,6 +196,7 @@ func LoadDemoGraphFiltered(ctx context.Context, dbc *sql.DB, audience, industry,
 	graph.PeriodItems = periodItems
 	graph.PeriodPublicItems = publicPeriod
 	graph.PeriodHiddenItems = periodItems - publicPeriod
+	paginateGraph(&graph, page, pageSize)
 	return graph, nil
 }
 
@@ -474,6 +500,102 @@ func loadSegmentGraph(ctx context.Context, dbc *sql.DB, audience, industry, segm
 		SegmentItems:  segmentItems,
 		SegmentHidden: segmentItems - len(nodes),
 	}, nil
+}
+
+func paginateGraph(g *DemoGraph, page, pageSize int) {
+	if pageSize <= 0 {
+		pageSize = 1000
+	}
+	if pageSize > 2000 {
+		pageSize = 2000
+	}
+	sort.SliceStable(g.Nodes, func(i, j int) bool {
+		a, b := g.Nodes[i], g.Nodes[j]
+		if a.Degree != b.Degree {
+			return a.Degree > b.Degree
+		}
+		if a.Buyers != b.Buyers {
+			return a.Buyers > b.Buyers
+		}
+		return a.ID < b.ID
+	})
+	total := len(g.Nodes)
+	g.TotalNodes = total
+	g.TotalPages = (total + pageSize - 1) / pageSize
+	if g.TotalPages == 0 {
+		g.TotalPages = 1
+	}
+	if page < 1 {
+		page = 1
+	}
+	if page > g.TotalPages {
+		page = g.TotalPages
+	}
+	g.Page = page
+	g.PageSize = pageSize
+	start := (page - 1) * pageSize
+	end := start + pageSize
+	if start > total {
+		start = total
+	}
+	if end > total {
+		end = total
+	}
+	pageNodes := g.Nodes[start:end]
+	pageIndex := map[string]int{}
+	for i := range pageNodes {
+		pageIndex[pageNodes[i].ID] = i
+	}
+	allIndex := map[string]int{}
+	for i, n := range g.Nodes {
+		allIndex[n.ID] = i
+	}
+	internal := make([]GraphEdge, 0, len(g.Edges))
+	external := make([]ExternalEdge, 0)
+	for _, e := range g.Edges {
+		_, aIn := pageIndex[e.Source]
+		_, bIn := pageIndex[e.Target]
+		switch {
+		case aIn && bIn:
+			internal = append(internal, e)
+		case aIn != bIn:
+			from, to := e.Source, e.Target
+			if !aIn {
+				from, to = e.Target, e.Source
+			}
+			idx, ok := allIndex[to]
+			if !ok {
+				continue
+			}
+			targetPage := idx/pageSize + 1
+			title := to
+			for _, n := range g.Nodes {
+				if n.ID == to {
+					title = n.Title
+					break
+				}
+			}
+			external = append(external, ExternalEdge{
+				From: from, To: to, Title: title, TargetPage: targetPage,
+				Count: e.Count, B2BCount: e.B2BCount, B2CCount: e.B2CCount, B2CHidden: e.B2CHidden,
+			})
+			if i, ok := pageIndex[from]; ok {
+				pageNodes[i].ExternalCount++
+			}
+		}
+	}
+	sort.Slice(external, func(i, j int) bool {
+		if external[i].Count != external[j].Count {
+			return external[i].Count > external[j].Count
+		}
+		if external[i].From != external[j].From {
+			return external[i].From < external[j].From
+		}
+		return external[i].To < external[j].To
+	})
+	g.Nodes = pageNodes
+	g.Edges = internal
+	g.ExternalEdges = external
 }
 
 func loadAggregateGraph(ctx context.Context, dbc *sql.DB, audience string, soloLimit int) (DemoGraph, error) {

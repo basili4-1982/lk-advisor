@@ -27,7 +27,19 @@ label.toggle input{accent-color:#1d4ed8}
 .status{color:var(--muted);font-size:12px;min-width:70px;text-align:right}
 .link{color:var(--muted);text-decoration:none;font-size:13px;border:1px solid var(--line);padding:7px 11px;border-radius:9px}
 .link:hover{color:#fff;border-color:rgba(96,165,250,.5)}
-main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 72px)}
+.filterbar{height:52px;display:flex;align-items:center;gap:8px;padding:0 20px;background:rgba(11,18,32,.9);border-bottom:1px solid var(--line);overflow-x:auto}
+.filterbar .seg{flex:none}
+.timebox{display:flex;align-items:center;gap:8px;background:rgba(15,23,42,.8);border:1px solid var(--line);border-radius:9px;padding:5px 10px;flex:none}
+.timebox input[type=range]{width:120px;accent-color:#1d4ed8}
+.timebox span{font-size:11.5px;color:var(--muted);white-space:nowrap;min-width:96px;text-align:right}
+.filter-select{background:rgba(15,23,42,.8);border:1px solid var(--line);border-radius:9px;color:var(--text);padding:8px 10px;font:inherit;font-size:12.5px;max-width:190px;outline:none;flex:none}
+.filter-select:focus{border-color:rgba(96,165,250,.55)}
+.pager{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:6px;align-items:center;background:rgba(11,18,32,.9);border:1px solid var(--line);border-radius:10px;padding:5px 7px;z-index:3}
+.pager button{background:rgba(15,23,42,.9);border:1px solid var(--line);color:var(--text);border-radius:7px;padding:4px 9px;cursor:pointer;font:inherit;font-size:14px}
+.pager button:disabled{opacity:.3;cursor:default}
+.pager span{font-size:11px;color:var(--muted);min-width:52px;text-align:center}
+.pager select{background:rgba(15,23,42,.9);border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:4px 6px;font:inherit;font-size:11px}
+main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
 .graph-wrap{position:relative;min-width:0;overflow:hidden;height:100%}
 #graph{position:absolute;inset:0}
 #graph canvas{display:block;width:100%;height:100%}
@@ -66,26 +78,29 @@ main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 72px)}
     <div><h1>Граф связей</h1><p>Публичный слой датасета v3 · совместные покупки</p></div>
   </div>
   <div class="controls">
-    <div class="seg">
-      <button data-audience="b2b" class="active">B2B</button>
-      <button data-audience="b2c">B2C</button>
-    </div>
-    <select id="family-filter" class="filter-select" title="Семейство"></select>
-    <select id="industry-filter" class="filter-select" title="Отрасль"></select>
-    <select id="segment-filter" class="filter-select" title="Сегмент"></select>
-    <div class="timebox"><input id="time" type="range" min="0" max="0" value="0"><span id="period-label">Все время</span></div>
     <input id="search" type="search" placeholder="Найти товар…">
     <label class="toggle"><input id="solo" type="checkbox"> solo</label>
     <a class="link" href="/">Кабинет</a>
     <span class="status" id="status"></span>
   </div>
 </header>
+<div class="filterbar">
+  <div class="seg">
+    <button data-audience="b2b" class="active">B2B</button>
+    <button data-audience="b2c">B2C</button>
+  </div>
+  <select id="family-filter" class="filter-select" title="Семейство"></select>
+  <select id="industry-filter" class="filter-select" title="Отрасль"></select>
+  <select id="segment-filter" class="filter-select" title="Сегмент"></select>
+  <div class="timebox"><input id="time" type="range" min="0" max="0" value="0"><span id="period-label">Все время</span></div>
+</div>
 <main>
   <section class="graph-wrap" id="graph-wrap">
     <div class="stats" id="stats"></div>
     <div id="graph"></div>
     <div class="legend" id="legend"></div>
     <div class="hint">Клик по узлу — карточка и связи. Вращение — мышь, колесо — масштаб.</div>
+    <div class="pager"><button id="prev-page" title="Назад">‹</button><span id="page-label">1 / 1</span><button id="next-page" title="Вперёд">›</button><select id="page-size" title="Точек на странице"><option value="250">250</option><option value="500">500</option><option value="1000" selected>1000</option></select></div>
   </section>
   <aside class="panel" id="panel"></aside>
 </main>
@@ -98,7 +113,7 @@ const COLORS={security:'#f87171',office:'#60a5fa',graphics:'#c084fc',backup:'#4a
 const CAT_RU={security:'Безопасность',office:'Офис',graphics:'Графика',backup:'Бэкап',devtools:'Разработка',training:'Обучение',other:'Другое'};
 let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null;
 let audience='b2b',soloOn=false,categoryFilter=null,search='',initialIndustry=new URLSearchParams(location.search).get('industry')||'',initialSegment=new URLSearchParams(location.search).get('segment')||'',initialFamily=new URLSearchParams(location.search).get('family')||'',industryFilter=initialIndustry,segmentFilter=initialSegment,familyFilter=initialFamily;
-let periods=[],currentPeriod='',initialPeriod=new URLSearchParams(location.search).get('period')||'';
+let periods=[],currentPeriod='',initialPeriod=new URLSearchParams(location.search).get('period')||'',page=Math.max(1,parseInt(new URLSearchParams(location.search).get('page')||'1',10)||1),pageSize=Math.max(250,Math.min(1000,parseInt(new URLSearchParams(location.search).get('page_size')||'1000',10)||1000)),totalPages=1;
 let graph=null;
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function fmt(n){return Number(n||0).toLocaleString('ru-RU')}
@@ -111,7 +126,7 @@ function initGraph(){
     .nodeId('id')
     .nodeVal(nodeVal)
     .nodeColor(nodeColor)
-    .nodeLabel(n=>n.title)
+    .nodeLabel(n=>n.title+(n.external_count?' · '+n.external_count+' за страницей':''))
     .nodeOpacity(.92)
     .nodeRelSize(7)
     .linkColor(linkColor)
@@ -154,6 +169,7 @@ function nodeColor(n){
   if(hover&&hover.id===n.id)return '#f8fafc';
   if(q&&n.title.toLowerCase().indexOf(q)>=0)return '#f8fafc';
   if(dim)return '#1e293b';
+  if(n.external_count>0)return '#fbbf24';
   if(n.solo)return '#64748b';
   return COLORS[n.category]||COLORS.other;
 }
@@ -183,20 +199,23 @@ function populateFilters(){
   fillFilter('industry-filter',DATA.industries,'Все отрасли',industryFilter);
   fillFilter('segment-filter',DATA.segments,'Все сегменты',segmentFilter);
 }
-async function load(){
+async function load(focusId){
   $('status').textContent='Загружаю…';
-  const r=await fetch('/v1/demo/graph?audience='+audience+'&industry='+encodeURIComponent(industryFilter)+'&segment='+encodeURIComponent(segmentFilter)+'&period='+encodeURIComponent(initialPeriod)+'&solo_limit=1000');
+  const r=await fetch('/v1/demo/graph?audience='+audience+'&industry='+encodeURIComponent(industryFilter)+'&segment='+encodeURIComponent(segmentFilter)+'&period='+encodeURIComponent(initialPeriod)+'&page='+page+'&page_size='+pageSize+'&solo_limit=1000');
   if(!r.ok)throw new Error('HTTP '+r.status);
   DATA=await r.json();
   periods=DATA.periods||[];currentPeriod=DATA.period||'';
-  populateFilters();
+  page=DATA.page||1;totalPages=DATA.total_pages||1;pageSize=DATA.page_size||pageSize;
+  populateFilters();updatePager();
   selected=null;hover=null;showNode(null);
   nodes=DATA.nodes.map(n=>Object.assign({},n));
   byId={};nodes.forEach(n=>byId[n.id]=n);
   edges=DATA.edges.map(e=>Object.assign({},e));
   if(!graph)initGraph();
   graph.graphData({nodes:nodes,links:edges});
-  drawStats();drawLegend();updateTimeControl();selectInitial();
+  drawStats();drawLegend();updateTimeControl();
+  if(focusId&&byId[focusId]){showNode(byId[focusId]);setTimeout(()=>focusNode(byId[focusId]),700)}
+  else selectInitial();
   setTimeout(()=>{if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))},1200);
   $('status').textContent='';
 }
@@ -208,10 +227,16 @@ function applyPeriod(d){
 }
 async function loadPeriod(value){
   $('status').textContent='Считаю…';
-  const r=await fetch('/v1/demo/graph?audience='+audience+'&industry='+encodeURIComponent(industryFilter)+'&segment='+encodeURIComponent(segmentFilter)+'&period='+encodeURIComponent(value)+'&solo_limit=1000');
+  const r=await fetch('/v1/demo/graph?audience='+audience+'&industry='+encodeURIComponent(industryFilter)+'&segment='+encodeURIComponent(segmentFilter)+'&period='+encodeURIComponent(value)+'&page='+page+'&page_size='+pageSize+'&solo_limit=1000');
   if(!r.ok)throw new Error('HTTP '+r.status);
   applyPeriod(await r.json());
   $('status').textContent='';
+}
+function updatePager(){
+  $('page-label').textContent=page+' / '+totalPages;
+  $('prev-page').disabled=page<=1;
+  $('next-page').disabled=page>=totalPages;
+  $('page-size').value=String(pageSize);
 }
 function drawStats(){
   const c=DATA.coverage;
@@ -220,12 +245,14 @@ function drawStats(){
     ? [['Товары в сегменте',DATA.segment_items],['Публичные',DATA.public_items],['Связи',DATA.public_pairs],['В связях',DATA.connected],['Solo',DATA.public_solo],['Скрыто k',DATA.segment_hidden]]
     : [['Публичные товары',c.public_items],['Публичные связи',c.public_pairs],['В связях',DATA.connected],['Solo',DATA.public_solo],['Скрыто k<3',c.suppressed_items],['Скрыто B2C k<5',c.suppressed_b2c_items]];
   if(familyFilter){cards.push(['В семействе',nodes.filter(n=>n.family===familyFilter).length])}
+  if((DATA.external_edges||[]).length){cards.push(['За страницей',DATA.external_edges.length])}
   if(DATA.period){cards.push(['Спрос за период',DATA.period_public_items]);cards.push(['Скрыто за период',DATA.period_hidden_items])}
   $('stats').innerHTML=cards.map(x=>'<div class="stat"><b>'+fmt(x[1])+'</b><span>'+esc(x[0])+'</span></div>').join('');
 }
 function drawLegend(){
   const counts={};nodes.forEach(n=>{counts[n.category]=(counts[n.category]||0)+1});
   let h='<button class="leg '+(categoryFilter===null?'active':'')+'" data-cat="all"><i style="background:#e2e8f0"></i>Все</button>';
+  if((DATA.external_edges||[]).length)h+='<span class="leg"><i style="background:#fbbf24"></i>за страницей</span>';
   Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).forEach(c=>{
     h+='<button class="leg '+(categoryFilter===c?'active':'')+'" data-cat="'+esc(c)+'"><i style="background:'+(COLORS[c]||COLORS.other)+'"></i>'+esc(CAT_RU[c]||c)+' · '+counts[c]+'</button>';
   });
@@ -249,10 +276,13 @@ function showNode(n){
   if(n.solo){h+='<div class="note">Публичных связей нет. Кандидат на достройку: co-client, семейство товаров, атрибуты или сервис.</div>'}
   else{h+='<h3>С этим покупают</h3><div>';nb.slice(0,14).forEach(x=>{h+='<button class="nb" data-id="'+esc(x.node.id)+'"><span>'+esc(x.node.title)+'</span><b>'+x.count+'</b></button>'});h+='</div>'}
   if(n.family){h+='<div class="actions" style="margin-top:10px"><button class="secondary" id="show-family">Показать семейство «'+esc(n.family)+'»</button></div>'}
+  const ext=(DATA.external_edges||[]).filter(e=>e.from===n.id);
+  if(ext.length){h+='<h3>За пределами страницы</h3><div>';ext.slice(0,12).forEach(e=>{h+='<button class="nb" data-ext-id="'+esc(e.to)+'" data-ext-page="'+e.target_page+'"><span>'+esc(e.title)+'</span><b>стр. '+e.target_page+'</b></button>'});h+='</div>'}
   h+='<div class="foot">Показаны только публичные связи: у товара ≥3 покупателя, у B2B-пары ≥3 совместных покупки. B2C-счётчики меньше 5 скрыты.</div>';
   $('panel').innerHTML=h;
   $('panel').querySelectorAll('.nb').forEach(b=>b.onclick=()=>{const x=byId[b.dataset.id];if(x){showNode(x);focusNode(x)}});
   const sf=$('show-family');if(sf)sf.onclick=()=>{familyFilter=n.family||'';fillFilter('family-filter',DATA.families,'Все семейства',familyFilter);drawStats();refresh()};
+  $('panel').querySelectorAll('[data-ext-id]').forEach(b=>b.onclick=()=>{page=Number(b.dataset.extPage)||1;load(b.dataset.extId)});
 }
 function focusNode(n){
   if(!graph||!n)return;
@@ -275,6 +305,9 @@ function selectInitial(){
   else n=byId[q];
   if(n){showNode(n);setTimeout(()=>focusNode(n),700)}
 }
+$('prev-page').addEventListener('click',()=>{if(page>1){page--;load()}});
+$('next-page').addEventListener('click',()=>{if(page<totalPages){page++;load()}});
+$('page-size').addEventListener('change',e=>{pageSize=Number(e.target.value)||1000;page=1;load()});
 $('family-filter').addEventListener('change',e=>{familyFilter=e.target.value;drawStats();refresh();if(selected)showNode(selected)});
 $('industry-filter').addEventListener('change',e=>{industryFilter=e.target.value;familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})});
 $('segment-filter').addEventListener('change',e=>{segmentFilter=e.target.value;familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})});
