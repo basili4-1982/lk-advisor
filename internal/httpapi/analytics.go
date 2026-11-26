@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/basili4-1982/lk-advisor/internal/analytics"
+	"github.com/basili4-1982/lk-advisor/internal/catalog"
 )
 
 type eventRequest struct {
@@ -55,6 +56,51 @@ func (h *handler) recordEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"recorded": true})
+}
+
+func (h *handler) adminAnalyticsHealth(w http.ResponseWriter, r *http.Request) {
+	days := 7
+	if raw := r.URL.Query().Get("days"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			days = v
+		}
+	}
+	minShown := 50
+	if raw := r.URL.Query().Get("min_shown"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			minShown = v
+		}
+	}
+	report, err := analytics.BuildHealth(r.Context(), h.db, days, minShown, h.now())
+	if err != nil {
+		h.logger.Error("analytics health", "err", err)
+		writeError(w, http.StatusInternalServerError, "analytics health error")
+		return
+	}
+	writeJSON(w, http.StatusOK, report)
+}
+
+func (h *handler) adminAutoReview(w http.ResponseWriter, r *http.Request) {
+	report, err := analytics.BuildHealth(r.Context(), h.db, 7, 50, h.now())
+	if err != nil {
+		h.logger.Error("auto review", "err", err)
+		writeError(w, http.StatusInternalServerError, "auto review error")
+		return
+	}
+	ids := make([]string, 0, len(report.LowClick))
+	for _, p := range report.LowClick {
+		ids = append(ids, p.ProductID)
+	}
+	flagged, err := catalog.FlagRelationsForReview(r.Context(), h.db, ids,
+		"авто: 50+ показов и 0 кликов, проверить карточку или связь")
+	if err != nil {
+		h.logger.Error("flag relations", "err", err)
+		writeError(w, http.StatusInternalServerError, "flag error")
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "analytics-agent", "relations.auto_flag",
+		map[string]any{"products": ids, "flagged": flagged})
+	writeJSON(w, http.StatusOK, map[string]any{"products": len(ids), "flagged": flagged})
 }
 
 func (h *handler) adminAnalytics(w http.ResponseWriter, r *http.Request) {

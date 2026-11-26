@@ -44,13 +44,14 @@ type adminRule struct {
 }
 
 type adminState struct {
-	Products      []adminProduct            `json:"products"`
-	Relations     []model.Relation          `json:"relations"`
-	Rules         []adminRule               `json:"rules"`
-	Weights       model.Weights             `json:"weights"`
-	Clients       []model.Client            `json:"clients"`
-	Audit         []catalog.AdminAuditEntry `json:"audit"`
-	RelationTypes []model.RelationType      `json:"relation_types"`
+	Products          []adminProduct            `json:"products"`
+	Relations         []model.Relation          `json:"relations"`
+	Rules             []adminRule               `json:"rules"`
+	Weights           model.Weights             `json:"weights"`
+	WeightsByAudience map[string]model.Weights  `json:"weights_by_audience"`
+	Clients           []model.Client            `json:"clients"`
+	Audit             []catalog.AdminAuditEntry `json:"audit"`
+	RelationTypes     []model.RelationType      `json:"relation_types"`
 }
 
 func (h *handler) adminState(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +80,13 @@ func (h *handler) loadAdminState(ctx context.Context) (adminState, error) {
 	weights, err := catalog.LoadWeights(ctx, h.db)
 	if err != nil {
 		return adminState{}, err
+	}
+	weightsByAudience := map[string]model.Weights{"default": weights}
+	for _, aud := range []string{"b2b", "b2c"} {
+		w, werr := catalog.LoadWeightsForAudience(ctx, h.db, aud)
+		if werr == nil {
+			weightsByAudience[aud] = w
+		}
 	}
 	clients, err := catalog.AllClients(ctx, h.db)
 	if err != nil {
@@ -112,7 +120,8 @@ func (h *handler) loadAdminState(ctx context.Context) (adminState, error) {
 	}
 	return adminState{
 		Products: compact, Relations: relations, Rules: enriched,
-		Weights: weights, Clients: clients, Audit: audit, RelationTypes: relationTypes,
+		Weights: weights, WeightsByAudience: weightsByAudience,
+		Clients: clients, Audit: audit, RelationTypes: relationTypes,
 	}, nil
 }
 
@@ -375,9 +384,34 @@ func (h *handler) adminDeleteRule(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) adminSaveWeights(w http.ResponseWriter, r *http.Request) {
-	var weights model.Weights
-	if err := json.NewDecoder(r.Body).Decode(&weights); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	var weights model.Weights
+	audience := ""
+	if wraw, ok := raw["weights"]; ok {
+		if err := json.Unmarshal(wraw, &weights); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid weights")
+			return
+		}
+		if araw, ok := raw["audience"]; ok {
+			_ = json.Unmarshal(araw, &audience)
+		}
+	} else {
+		body, _ := json.Marshal(raw)
+		if err := json.Unmarshal(body, &weights); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid weights")
+			return
+		}
+	}
+	audience = strings.TrimSpace(audience)
+	if audience == "default" {
+		audience = ""
+	}
+	if audience != "" && audience != "b2b" && audience != "b2c" {
+		writeError(w, http.StatusBadRequest, "audience должен быть b2b, b2c или default")
 		return
 	}
 	if weights.IsZero() {
@@ -385,13 +419,42 @@ func (h *handler) adminSaveWeights(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	weights = weights.Normalize()
-	if err := catalog.SaveWeights(r.Context(), h.db, weights); err != nil {
+	if err := catalog.SaveWeightsForAudience(r.Context(), h.db, audience, weights); err != nil {
 		h.logger.Error("save weights", "err", err)
 		writeError(w, http.StatusInternalServerError, "weights save error")
 		return
 	}
-	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "weights.update", weights)
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "weights.update",
+		map[string]any{"audience": audience, "weights": weights})
 	writeJSON(w, http.StatusOK, weights)
+}
+
+func (h *handler) adminStrategies(w http.ResponseWriter, r *http.Request) {
+	stats, err := catalog.StrategyStats(r.Context(), h.db)
+	if err != nil {
+		h.logger.Error("strategies", "err", err)
+		writeError(w, http.StatusInternalServerError, "strategies error")
+		return
+	}
+	auto, _ := catalog.AutoStrategy(r.Context(), h.db)
+	writeJSON(w, http.StatusOK, map[string]any{"auto": auto, "stats": stats})
+}
+
+func (h *handler) adminSetAutoStrategy(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := catalog.SetAutoStrategy(r.Context(), h.db, req.Enabled); err != nil {
+		h.logger.Error("auto strategy", "err", err)
+		writeError(w, http.StatusInternalServerError, "strategy save error")
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "strategy.auto", req)
+	writeJSON(w, http.StatusOK, map[string]bool{"enabled": req.Enabled})
 }
 
 func (h *handler) relationTypeFor(ctx context.Context, code string) (model.RelationType, error) {

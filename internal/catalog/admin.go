@@ -386,3 +386,23 @@ func SoloProducts(ctx context.Context, dbc *sql.DB, limit int) ([]model.Product,
 	}
 	return out, total, rows.Err()
 }
+
+// FlagRelationsForReview marks incoming relations of low-click products for human review.
+func FlagRelationsForReview(ctx context.Context, dbc *sql.DB, productIDs []string, note string) (int, error) {
+	if len(productIDs) == 0 {
+		return 0, nil
+	}
+	res, err := dbc.ExecContext(ctx, `
+		UPDATE product_relations
+		SET review_note = $1,
+		    reviewed_by = '',
+		    reviewed_at = NULL
+		WHERE to_id = ANY($2)
+		  AND status IN ('confirmed', 'llm_suggested')`,
+		note, pq.Array(productIDs))
+	if err != nil {
+		return 0, fmt.Errorf("flag relations: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return int(n), nil
+}

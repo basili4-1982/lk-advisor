@@ -232,6 +232,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="formbox weights">
             <div class="form-title">Формула оценки</div>
             <p class="hint">Итоговый балл = сумма «фактор × вес». Веса нормализуются к 100%.</p>
+            <div class="grid" style="margin-bottom:10px"><div><label>Сегмент</label><select id="weight-audience"><option value="default">Общие</option><option value="b2b">B2B</option><option value="b2c">B2C</option></select></div></div>
             <div id="weight-rows"></div>
             <div class="sum" id="weight-sum"></div>
             <button id="weight-save">Сохранить веса</button>
@@ -251,6 +252,12 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <span class="hint">Показы и пропуски пишутся автоматически. Клики и покупки — через <code>POST /v1/events</code>.</span>
           </div>
           <div class="stats" id="analytics-cards" style="margin-bottom:0"></div>
+          <div class="formbox" style="margin-top:16px">
+            <div class="form-title">Стратегии и авто-А/Б</div>
+            <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><input type="checkbox" id="auto-strategy" style="width:auto"> Авто-перераспределение трафика</label>
+            <div id="analytics-strategies"></div>
+          </div>
+          <div class="formbox" style="margin-top:16px"><div class="form-title">Кандидаты на проверку связей <button id="health-flag" class="secondary small" style="margin-left:8px">Пометить связи</button></div><div id="analytics-health"></div></div>
           <div class="grid g2" style="margin-top:16px">
             <div class="formbox" style="margin:0"><div class="form-title">Что показываем</div><div id="analytics-products"></div></div>
             <div class="formbox" style="margin:0"><div class="form-title">Что не показываем</div><div id="analytics-skips"></div></div>
@@ -333,6 +340,8 @@ function byTitle(a,b){ return a.title.localeCompare(b.title, 'ru'); }
 
 async function load(){
   state = await api('GET','/v1/admin/state');
+  state.weights = state.weights || {};
+  state.weights_by_audience = state.weights_by_audience || {default: state.weights};
   state.products.sort(byTitle);
   el('st-products').textContent = state.products.length;
   el('st-relations').textContent = state.relations.length;
@@ -432,6 +441,28 @@ async function loadAnalytics(){
       return '<div class="rule"><div><b>'+esc(reasonTitle(r.reason))+'</b><small>'+esc(r.sample||'')+'</small></div><div class="pill type">'+r.count+'</div></div>';
     }).join('') : '<div class="empty">Пропусков пока нет</div>';
   } catch(e){ el('analytics-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
+  loadStrategies();
+  loadHealth();
+}
+async function loadHealth(){
+  try {
+    var d=await api('GET','/v1/admin/analytics/health?days='+encodeURIComponent(el('analytics-days').value)+'&min_shown=50');
+    var types=(d.types||[]).map(function(t){ return '<span class="pill type">'+esc(t.type)+' · CTR '+pct(t.ctr)+'</span>'; }).join(' ');
+    var low=(d.low_click||[]).map(function(p){
+      return '<div class="rule"><div><b>'+esc(title(p.product_id))+'</b><small>'+esc(p.product_id)+' · показов '+p.shown+', кликов 0</small></div><span class="pill q">в карантин?</span></div>';
+    }).join('');
+    el('analytics-health').innerHTML = '<div style="margin-bottom:8px">'+types+'</div>' + (low || '<div class="empty">Явных проблем нет</div>');
+  } catch(e){ el('analytics-health').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
+}
+async function loadStrategies(){
+  try {
+    var d=await api('GET','/v1/admin/strategies');
+    el('auto-strategy').checked=!!d.auto;
+    var rows=d.stats||[];
+    el('analytics-strategies').innerHTML = rows.length ? '<table><thead><tr><th>Сегмент</th><th>Стратегия</th><th>Показ</th><th>Клик</th><th>Покупка</th><th>CTR</th></tr></thead><tbody>'+
+      rows.map(function(s){ return '<tr><td>'+esc(s.audience)+'</td><td><b>'+esc(s.strategy)+'</b></td><td>'+s.shown+'</td><td>'+s.clicks+'</td><td>'+s.purchases+'</td><td>'+pct(s.ctr)+'</td></tr>'; }).join('')+'</tbody></table>' :
+      '<div class="empty">Пока нет данных по стратегиям</div>';
+  } catch(e){ el('analytics-strategies').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 var reviewItems = [];
 function reviewStatus(code){ return code==='quarantine'?'На проверке':(code==='llm_suggested'?'Предложена ИИ':code); }
@@ -550,7 +581,7 @@ function renderRules(){
       '<div><span class="pill type">'+esc(RULE_TYPES[r.type]||r.type)+'</span> <button class="ghost small" data-rule-del="'+esc(r.id)+'">Удалить</button></div></div>';
   }).join('');
 }
-var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
+var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
 function renderAudit(){
   var list = state.audit || [];
   if (!list.length) { el('audit-list').textContent='Пока нет изменений'; return; }
@@ -560,9 +591,11 @@ function renderAudit(){
   }).join('');
 }
 function renderWeights(){
+  var aud = el('weight-audience').value || 'default';
+  var weights = (state.weights_by_audience && state.weights_by_audience[aud]) || state.weights || {};
   var sum = 0;
   el('weight-rows').innerHTML = WEIGHT_ROWS.map(function(row){
-    var v = Math.round((state.weights[row[0]]||0)*1000)/10;
+    var v = Math.round((weights[row[0]]||0)*1000)/10;
     sum += v;
     return '<div class="w"><b>'+row[1]+'</b><input type="range" min="0" max="100" step="1" value="'+v+'" data-weight="'+row[0]+'"><output id="wout-'+row[0]+'">'+v.toFixed(0)+'%</output></div>';
   }).join('');
@@ -646,6 +679,14 @@ el('review-list').addEventListener('click', function(ev){
 });
 el('analytics-refresh').addEventListener('click', loadAnalytics);
 el('analytics-days').addEventListener('change', loadAnalytics);
+el('health-flag').addEventListener('click', async function(){
+  try { var d=await api('POST','/v1/admin/analytics/auto-review',{}); toast('Помечено связей: '+(d.flagged||0)); loadHealth(); }
+  catch(e){ toast(e.message,true); }
+});
+el('auto-strategy').addEventListener('change', async function(){
+  try { await api('PUT','/v1/admin/strategies/auto', {enabled: el('auto-strategy').checked}); toast(el('auto-strategy').checked?'Авто-А/Б включён':'Авто-А/Б выключен'); }
+  catch(e){ toast(e.message,true); loadStrategies(); }
+});
 el('type-prompt-refresh').addEventListener('click', loadTypePrompt);
 el('type-prompt-copy').addEventListener('click', async function(){
   try { await navigator.clipboard.writeText(el('type-prompt').textContent); toast('Промпт скопирован'); }
@@ -696,11 +737,17 @@ el('rule-list').addEventListener('click', async function(ev){
   try { await api('DELETE','/v1/admin/rules/'+encodeURIComponent(id)); toast('Правило удалено'); await load(); }
   catch(e){ toast(e.message,true); }
 });
+el('weight-audience').addEventListener('change', renderWeights);
 el('weight-save').addEventListener('click', async function(){
-  var body={};
-  document.querySelectorAll('[data-weight]').forEach(function(x){ body[x.dataset.weight]=Number(x.value)/100; });
-  try { state.weights = await api('PUT','/v1/admin/weights', body); toast('Веса сохранены'); renderWeights(); }
-  catch(e){ toast(e.message,true); }
+  var aud=el('weight-audience').value;
+  var weights={};
+  document.querySelectorAll('[data-weight]').forEach(function(x){ weights[x.dataset.weight]=Number(x.value)/100; });
+  try {
+    var saved=await api('PUT','/v1/admin/weights', {audience: aud==='default'?'':aud, weights: weights});
+    state.weights_by_audience[aud]=saved;
+    if (aud==='default') state.weights=saved;
+    toast('Веса сохранены: '+aud); renderWeights();
+  } catch(e){ toast(e.message,true); }
 });
 el('preview-run').addEventListener('click', async function(){
   var id=el('preview-client').value; if (!id) return;

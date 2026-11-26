@@ -15,6 +15,13 @@ var ErrTraceNotFound = errors.New("trace not found")
 // ErrClientMismatch means the event belongs to another client.
 var ErrClientMismatch = errors.New("client mismatch")
 
+// Meta identifies the strategy and weight version behind one request.
+type Meta struct {
+	Strategy       string
+	Audience       string
+	WeightsVersion string
+}
+
 // Item is one shown or skipped recommendation.
 type Item struct {
 	ProductID string
@@ -35,6 +42,25 @@ type ProductStat struct {
 	CTR       float64 `json:"ctr"`
 }
 
+// StrategyStat aggregates one strategy and audience.
+type StrategyStat struct {
+	Audience  string  `json:"audience"`
+	Strategy  string  `json:"strategy"`
+	Shown     int     `json:"shown"`
+	Clicks    int     `json:"clicks"`
+	Purchases int     `json:"purchases"`
+	CTR       float64 `json:"ctr"`
+}
+
+// AudienceStat aggregates one audience.
+type AudienceStat struct {
+	Audience  string  `json:"audience"`
+	Shown     int     `json:"shown"`
+	Clicks    int     `json:"clicks"`
+	Purchases int     `json:"purchases"`
+	CTR       float64 `json:"ctr"`
+}
+
 // ReasonStat aggregates skipped recommendations by reason.
 type ReasonStat struct {
 	Reason string `json:"reason"`
@@ -44,21 +70,23 @@ type ReasonStat struct {
 
 // Summary is the analytics dashboard payload.
 type Summary struct {
-	Days             int           `json:"days"`
-	Requests         int           `json:"requests"`
-	FallbackRequests int           `json:"fallback_requests"`
-	Shown            int           `json:"shown"`
-	Skipped          int           `json:"skipped"`
-	Clicks           int           `json:"clicks"`
-	Purchases        int           `json:"purchases"`
-	CTR              float64       `json:"ctr"`
-	Conversion       float64       `json:"conversion"`
-	TopProducts      []ProductStat `json:"top_products"`
-	SkipReasons      []ReasonStat  `json:"skip_reasons"`
+	Days             int            `json:"days"`
+	Requests         int            `json:"requests"`
+	FallbackRequests int            `json:"fallback_requests"`
+	Shown            int            `json:"shown"`
+	Skipped          int            `json:"skipped"`
+	Clicks           int            `json:"clicks"`
+	Purchases        int            `json:"purchases"`
+	CTR              float64        `json:"ctr"`
+	Conversion       float64        `json:"conversion"`
+	TopProducts      []ProductStat  `json:"top_products"`
+	SkipReasons      []ReasonStat   `json:"skip_reasons"`
+	ByStrategy       []StrategyStat `json:"by_strategy"`
+	ByAudience       []AudienceStat `json:"by_audience"`
 }
 
 // Log writes one recommendation request and its shown/skipped items.
-func Log(ctx context.Context, dbc *sql.DB, traceID, clientID, intent string, fallback bool, shown, skipped []Item) error {
+func Log(ctx context.Context, dbc *sql.DB, traceID, clientID, intent string, meta Meta, fallback bool, shown, skipped []Item) error {
 	tx, err := dbc.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("analytics begin: %w", err)
@@ -67,19 +95,21 @@ func Log(ctx context.Context, dbc *sql.DB, traceID, clientID, intent string, fal
 
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO recommendation_requests
-			(trace_id, client_id, intent, fallback, shown_count, skipped_count)
-		VALUES ($1, $2, $3, $4, $5, $6)
+			(trace_id, client_id, intent, fallback, shown_count, skipped_count,
+			 strategy, audience, weights_version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (trace_id) DO NOTHING`,
-		traceID, clientID, intent, fallback, len(shown), len(skipped)); err != nil {
+		traceID, clientID, intent, fallback, len(shown), len(skipped),
+		meta.Strategy, meta.Audience, meta.WeightsVersion); err != nil {
 		return fmt.Errorf("analytics request: %w", err)
 	}
 	for _, item := range shown {
-		if err := insertEvent(ctx, tx, traceID, clientID, item.ProductID, "shown", item); err != nil {
+		if err := insertEvent(ctx, tx, traceID, clientID, item.ProductID, "shown", meta, item); err != nil {
 			return err
 		}
 	}
 	for _, item := range skipped {
-		if err := insertEvent(ctx, tx, traceID, clientID, item.ProductID, "skipped", item); err != nil {
+		if err := insertEvent(ctx, tx, traceID, clientID, item.ProductID, "skipped", meta, item); err != nil {
 			return err
 		}
 	}
@@ -89,13 +119,15 @@ func Log(ctx context.Context, dbc *sql.DB, traceID, clientID, intent string, fal
 	return nil
 }
 
-func insertEvent(ctx context.Context, tx *sql.Tx, traceID, clientID, productID, event string, item Item) error {
+func insertEvent(ctx context.Context, tx *sql.Tx, traceID, clientID, productID, event string, meta Meta, item Item) error {
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO recommendation_events
-			(trace_id, client_id, product_id, event, reason, detail, rank, score, type, source)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+			(trace_id, client_id, product_id, event, reason, detail, rank, score, type, source,
+			 strategy, audience, weights_version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
 		traceID, clientID, productID, event, item.Reason, item.Detail,
-		item.Rank, item.Score, item.Type, item.Source)
+		item.Rank, item.Score, item.Type, item.Source,
+		meta.Strategy, meta.Audience, meta.WeightsVersion)
 	if err != nil {
 		return fmt.Errorf("analytics event: %w", err)
 	}
@@ -104,9 +136,11 @@ func insertEvent(ctx context.Context, tx *sql.Tx, traceID, clientID, productID, 
 
 // Record stores a user action (click or purchase) for a shown item.
 func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, event string) error {
-	var owner string
+	var owner, strategyName, audience, weightsVersion string
 	err := dbc.QueryRowContext(ctx,
-		`SELECT client_id FROM recommendation_requests WHERE trace_id = $1`, traceID).Scan(&owner)
+		`SELECT client_id, strategy, audience, weights_version
+		 FROM recommendation_requests WHERE trace_id = $1`, traceID).
+		Scan(&owner, &strategyName, &audience, &weightsVersion)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrTraceNotFound
 	}
@@ -118,9 +152,10 @@ func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, even
 	}
 	_, err = dbc.ExecContext(ctx, `
 		INSERT INTO recommendation_events
-			(trace_id, client_id, product_id, event, reason, source)
-		VALUES ($1, $2, $3, $4, 'user', 'client')`,
-		traceID, clientID, productID, event)
+			(trace_id, client_id, product_id, event, reason, source,
+			 strategy, audience, weights_version)
+		VALUES ($1, $2, $3, $4, 'user', 'client', $5, $6, $7)`,
+		traceID, clientID, productID, event, strategyName, audience, weightsVersion)
 	if err != nil {
 		return fmt.Errorf("analytics record: %w", err)
 	}
@@ -136,7 +171,8 @@ func Build(ctx context.Context, dbc *sql.DB, days int, now time.Time) (Summary, 
 		days = 90
 	}
 	since := now.AddDate(0, 0, -days)
-	out := Summary{Days: days, TopProducts: []ProductStat{}, SkipReasons: []ReasonStat{}}
+	out := Summary{Days: days, TopProducts: []ProductStat{}, SkipReasons: []ReasonStat{},
+		ByStrategy: []StrategyStat{}, ByAudience: []AudienceStat{}}
 
 	if err := dbc.QueryRowContext(ctx, `
 		SELECT count(*), count(*) FILTER (WHERE fallback)
@@ -205,6 +241,162 @@ func Build(ctx context.Context, dbc *sql.DB, days int, now time.Time) (Summary, 
 			return Summary{}, err
 		}
 		out.SkipReasons = append(out.SkipReasons, r)
+	}
+	if out.ByStrategy, err = buildStrategyStats(ctx, dbc, since); err != nil {
+		return Summary{}, fmt.Errorf("analytics strategy: %w", err)
+	}
+	if out.ByAudience, err = buildAudienceStats(ctx, dbc, since); err != nil {
+		return Summary{}, fmt.Errorf("analytics audience: %w", err)
+	}
+	return out, nil
+}
+
+func buildStrategyStats(ctx context.Context, dbc *sql.DB, since time.Time) ([]StrategyStat, error) {
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT strategy, audience,
+		       count(*) FILTER (WHERE event = 'shown'),
+		       count(*) FILTER (WHERE event = 'clicked'),
+		       count(*) FILTER (WHERE event = 'purchased')
+		FROM recommendation_events
+		WHERE created_at >= $1 AND strategy <> ''
+		GROUP BY strategy, audience
+		ORDER BY strategy, audience`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []StrategyStat
+	for rows.Next() {
+		var s StrategyStat
+		if err := rows.Scan(&s.Strategy, &s.Audience, &s.Shown, &s.Clicks, &s.Purchases); err != nil {
+			return nil, err
+		}
+		if s.Shown > 0 {
+			s.CTR = float64(s.Clicks) / float64(s.Shown)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+func buildAudienceStats(ctx context.Context, dbc *sql.DB, since time.Time) ([]AudienceStat, error) {
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT audience,
+		       count(*) FILTER (WHERE event = 'shown'),
+		       count(*) FILTER (WHERE event = 'clicked'),
+		       count(*) FILTER (WHERE event = 'purchased')
+		FROM recommendation_events
+		WHERE created_at >= $1 AND audience <> ''
+		GROUP BY audience
+		ORDER BY audience`, since)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []AudienceStat
+	for rows.Next() {
+		var s AudienceStat
+		if err := rows.Scan(&s.Audience, &s.Shown, &s.Clicks, &s.Purchases); err != nil {
+			return nil, err
+		}
+		if s.Shown > 0 {
+			s.CTR = float64(s.Clicks) / float64(s.Shown)
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
+// TypeStat aggregates recommendation performance by candidate type.
+type TypeStat struct {
+	Type      string  `json:"type"`
+	Shown     int     `json:"shown"`
+	Clicks    int     `json:"clicks"`
+	Purchases int     `json:"purchases"`
+	CTR       float64 `json:"ctr"`
+}
+
+// ProblemProduct is a product with many impressions and no clicks.
+type ProblemProduct struct {
+	ProductID string `json:"product_id"`
+	Type      string `json:"type"`
+	Shown     int    `json:"shown"`
+	Clicks    int    `json:"clicks"`
+	Purchases int    `json:"purchases"`
+}
+
+// Health is the auto-review signal for T19.
+type Health struct {
+	Days     int              `json:"days"`
+	Types    []TypeStat       `json:"types"`
+	LowClick []ProblemProduct `json:"low_click"`
+}
+
+// BuildHealth returns type performance and low-click candidates.
+func BuildHealth(ctx context.Context, dbc *sql.DB, days, minShown int, now time.Time) (Health, error) {
+	if days < 1 {
+		days = 1
+	}
+	if days > 90 {
+		days = 90
+	}
+	if minShown < 1 {
+		minShown = 50
+	}
+	since := now.AddDate(0, 0, -days)
+	out := Health{Days: days, Types: []TypeStat{}, LowClick: []ProblemProduct{}}
+
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT type,
+		       count(*) FILTER (WHERE event = 'shown'),
+		       count(*) FILTER (WHERE event = 'clicked'),
+		       count(*) FILTER (WHERE event = 'purchased')
+		FROM recommendation_events
+		WHERE created_at >= $1 AND type <> ''
+		GROUP BY type
+		ORDER BY type`, since)
+	if err != nil {
+		return Health{}, fmt.Errorf("health types: %w", err)
+	}
+	for rows.Next() {
+		var t TypeStat
+		if err := rows.Scan(&t.Type, &t.Shown, &t.Clicks, &t.Purchases); err != nil {
+			rows.Close()
+			return Health{}, err
+		}
+		if t.Shown > 0 {
+			t.CTR = float64(t.Clicks) / float64(t.Shown)
+		}
+		out.Types = append(out.Types, t)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return Health{}, err
+	}
+	rows.Close()
+
+	rows, err = dbc.QueryContext(ctx, `
+		SELECT product_id, max(type),
+		       count(*) FILTER (WHERE event = 'shown'),
+		       count(*) FILTER (WHERE event = 'clicked'),
+		       count(*) FILTER (WHERE event = 'purchased')
+		FROM recommendation_events
+		WHERE created_at >= $1
+		GROUP BY product_id
+		HAVING count(*) FILTER (WHERE event = 'shown') >= $2
+		   AND count(*) FILTER (WHERE event = 'clicked') = 0
+		ORDER BY count(*) FILTER (WHERE event = 'shown') DESC, product_id
+		LIMIT 20`, since, minShown)
+	if err != nil {
+		return Health{}, fmt.Errorf("health low click: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var p ProblemProduct
+		if err := rows.Scan(&p.ProductID, &p.Type, &p.Shown, &p.Clicks, &p.Purchases); err != nil {
+			return Health{}, err
+		}
+		out.LowClick = append(out.LowClick, p)
 	}
 	return out, rows.Err()
 }

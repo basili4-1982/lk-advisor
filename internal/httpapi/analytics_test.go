@@ -40,6 +40,9 @@ func TestRecommendationEventsAndAnalytics(t *testing.T) {
 	if len(report.TopProducts) == 0 || len(report.SkipReasons) == 0 {
 		t.Fatalf("report = %+v", report)
 	}
+	if len(report.ByStrategy) == 0 || report.ByStrategy[0].Strategy == "" {
+		t.Fatalf("by strategy = %+v", report.ByStrategy)
+	}
 }
 
 // analyticsReport mirrors the JSON payload without importing the package.
@@ -55,6 +58,10 @@ type analyticsReport struct {
 	SkipReasons []struct {
 		Reason string `json:"reason"`
 	} `json:"skip_reasons"`
+	ByStrategy []struct {
+		Strategy string `json:"strategy"`
+		Audience string `json:"audience"`
+	} `json:"by_strategy"`
 }
 
 func TestEventValidation(t *testing.T) {

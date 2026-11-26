@@ -16,6 +16,7 @@ import (
 	"github.com/basili4-1982/lk-advisor/internal/model"
 	"github.com/basili4-1982/lk-advisor/internal/profile"
 	"github.com/basili4-1982/lk-advisor/internal/recommend"
+	"github.com/basili4-1982/lk-advisor/internal/strategy"
 )
 
 var allowedEvents = map[string]bool{
@@ -34,6 +35,7 @@ type recommendationRequest struct {
 type recommendationResponse struct {
 	TraceID         string                 `json:"trace_id"`
 	ClientID        string                 `json:"client_id"`
+	Strategy        string                 `json:"strategy"`
 	Intent          string                 `json:"intent"`
 	Recommendations []model.Recommendation `json:"recommendations"`
 	Fallback        bool                   `json:"fallback"`
@@ -100,12 +102,23 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "rules error")
 		return
 	}
-	weights, err := catalog.LoadWeights(ctx, h.db)
+	audience := strings.TrimSpace(p.Audience)
+	if audience == "" {
+		audience = "b2b"
+	}
+	strategyName := strategy.Default(audience)
+	if auto, aerr := catalog.AutoStrategy(ctx, h.db); aerr == nil && auto {
+		if stats, serr := catalog.StrategyStats(ctx, h.db); serr == nil {
+			strategyName = strategy.Choose(audience, stats)
+		}
+	}
+	weights, err := catalog.LoadWeightsForAudience(ctx, h.db, audience)
 	if err != nil {
 		h.logger.Error("weights", "err", err)
 		writeError(w, http.StatusInternalServerError, "settings error")
 		return
 	}
+	weightsVersion := strategyName + "/" + audience
 	relationTypes, err := catalog.RelationTypeMap(ctx, h.db)
 	if err != nil {
 		h.logger.Error("relation types", "err", err)
@@ -134,7 +147,11 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	intent := recommend.Intent(in)
 
-	allowed, rejected := recommend.Rank(in)
+	var allowed []model.Candidate
+	var rejected []model.Rejection
+	if strategyName != "popular" {
+		allowed, rejected = recommend.Rank(in)
+	}
 	cands := recommend.Diversify(allowed, limit)
 	fallback := false
 	if len(cands) == 0 {
@@ -145,7 +162,9 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if len(popular) == 0 {
-			_ = analytics.Log(ctx, h.db, traceID, req.ClientID, intent, true, nil, nil)
+			_ = analytics.Log(ctx, h.db, traceID, req.ClientID, intent,
+				analytics.Meta{Strategy: strategyName, Audience: audience, WeightsVersion: weightsVersion},
+				true, nil, nil)
 			writeError(w, http.StatusConflict, "no data for calculation")
 			return
 		}
@@ -228,13 +247,15 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	if len(skippedItems) > 25 {
 		skippedItems = skippedItems[:25]
 	}
-	if err := analytics.Log(ctx, h.db, traceID, req.ClientID, intent, fallback, shownItems, skippedItems); err != nil {
+	meta := analytics.Meta{Strategy: strategyName, Audience: audience, WeightsVersion: weightsVersion}
+	if err := analytics.Log(ctx, h.db, traceID, req.ClientID, intent, meta, fallback, shownItems, skippedItems); err != nil {
 		h.logger.Warn("analytics log", "err", err)
 	}
 
 	writeJSON(w, http.StatusOK, recommendationResponse{
 		TraceID:         traceID,
 		ClientID:        req.ClientID,
+		Strategy:        strategyName,
 		Intent:          intent,
 		Recommendations: recs,
 		Fallback:        fallback,
