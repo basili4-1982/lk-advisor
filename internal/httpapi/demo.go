@@ -18,6 +18,7 @@ header{background:#111827;color:#fff;padding:18px 0}
 .brand{display:flex;align-items:center;gap:12px}
 .admin-link{color:#cbd5e1;text-decoration:none;font-size:13px;border:1px solid #374151;padding:7px 11px;border-radius:8px}
 .admin-link:hover{color:#fff;border-color:#6b7280}
+.head-links{display:flex;gap:8px;align-items:center}
 .logo{width:34px;height:34px;border-radius:8px;background:var(--accent);display:grid;place-items:center;font-weight:bold}
 h1{font-size:20px;margin:0}
 .sub{color:#9ca3af;font-size:13px}
@@ -75,7 +76,7 @@ a{color:var(--blue)}
 </style>
 </head>
 <body>
-<header><div class="wrap header-row"><div class="brand"><div class="logo">LK</div><div><h1>LK Advisor</h1><div class="sub">Личный кабинет · демо для жюри</div></div></div><a class="admin-link" href="/admin">Настройка правил</a></div></header>
+<header><div class="wrap header-row"><div class="brand"><div class="logo">LK</div><div><h1>LK Advisor</h1><div class="sub">Личный кабинет · демо для жюри</div></div></div><div class="head-links"><a class="admin-link" href="/demo/graph">Граф связей</a><a class="admin-link" href="/admin">Настройка правил</a></div></div></header>
 <main class="wrap">
   <div class="tabs" id="tabs"></div>
   <div class="client" id="client"></div>

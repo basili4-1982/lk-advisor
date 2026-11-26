@@ -123,6 +123,7 @@ docs/              демо и прогон
 | `docs/relation-bandit.md` | CTR/покупки по конкретной связи и авто-решение |
 | `docs/relation-scopes.md` | скоупы B2B/B2C/отрасль и TTL связей |
 | `docs/live-slices.md` | decayed demand, renewal и evidence-разрезы в живой выдаче |
+| `docs/demo-graph.md` | демо-граф публичного слоя: `/demo/graph` |
 | `docs/superpowers/plans/2026-11-26-agentic-analytics.md` | хранение аналитики, авто-А/Б, веса, авто-перестройка |
 | `docs/relation-validation.md` | ручная очередь проверки связей |
 | `docs/demo-run.md` | прогон демо и ожидаемые ответы |
