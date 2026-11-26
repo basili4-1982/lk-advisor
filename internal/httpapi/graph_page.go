@@ -39,6 +39,10 @@ label.toggle input{accent-color:#1d4ed8}
 .pager button:disabled{opacity:.3;cursor:default}
 .pager span{font-size:11px;color:var(--muted);min-width:52px;text-align:center}
 .pager select{background:rgba(15,23,42,.9);border:1px solid var(--line);color:var(--muted);border-radius:7px;padding:4px 6px;font:inherit;font-size:11px}
+.zoomctl{position:absolute;right:14px;bottom:56px;display:flex;flex-direction:column;gap:5px;z-index:3}
+.zoomctl button{width:32px;height:32px;background:rgba(11,18,32,.9);border:1px solid var(--line);color:var(--text);border-radius:8px;cursor:pointer;font:inherit;font-size:17px;line-height:1}
+.zoomctl button:hover{border-color:rgba(96,165,250,.6);color:#fff}
+.zoomctl button.reset{font-size:13px}
 main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
 .graph-wrap{position:relative;min-width:0;overflow:hidden;height:100%}
 #graph{position:absolute;inset:0}
@@ -101,6 +105,7 @@ main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
     <div class="legend" id="legend"></div>
     <div class="hint">Клик по узлу — карточка и связи. Вращение — мышь, колесо — масштаб.</div>
     <div class="pager"><button id="prev-page" title="Назад">‹</button><span id="page-label">1 / 1</span><button id="next-page" title="Вперёд">›</button><select id="page-size" title="Точек на странице"><option value="250">250</option><option value="500">500</option><option value="1000" selected>1000</option></select></div>
+    <div class="zoomctl"><button id="zoom-in" title="Приблизить">+</button><button id="zoom-out" title="Отдалить">−</button><button id="zoom-reset" class="reset" title="Сбросить камеру">⌂</button></div>
   </section>
   <aside class="panel" id="panel"></aside>
 </main>
@@ -120,7 +125,7 @@ function fmt(n){return Number(n||0).toLocaleString('ru-RU')}
 function sourceID(l){return l.source&&l.source.id?l.source.id:l.source}
 function targetID(l){return l.target&&l.target.id?l.target.id:l.target}
 function initGraph(){
-  graph=new ForceGraph3D($('graph'),{controlType:'trackball'})
+  graph=new ForceGraph3D($('graph'),{controlType:'orbit'})
     .backgroundColor('#070b14')
     .showNavInfo(false)
     .nodeId('id')
@@ -232,6 +237,19 @@ async function loadPeriod(value){
   applyPeriod(await r.json());
   $('status').textContent='';
 }
+function zoomBy(factor){
+  if(!graph)return;
+  const cam=graph.cameraPosition();
+  if(!cam)return;
+  let target={x:0,y:0,z:0};
+  if(graph.controls&&graph.controls()){const c=graph.controls();if(c.target&&typeof c.target.x==='number')target={x:c.target.x,y:c.target.y,z:c.target.z}}
+  graph.cameraPosition({
+    x: target.x+(cam.x-target.x)*factor,
+    y: target.y+(cam.y-target.y)*factor,
+    z: target.z+(cam.z-target.z)*factor
+  }, target, 250);
+}
+function resetCamera(){if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))}
 function updatePager(){
   $('page-label').textContent=page+' / '+totalPages;
   $('prev-page').disabled=page<=1;
@@ -305,6 +323,9 @@ function selectInitial(){
   else n=byId[q];
   if(n){showNode(n);setTimeout(()=>focusNode(n),700)}
 }
+$('zoom-in').addEventListener('click',()=>zoomBy(.8));
+$('zoom-out').addEventListener('click',()=>zoomBy(1.25));
+$('zoom-reset').addEventListener('click',resetCamera);
 $('prev-page').addEventListener('click',()=>{if(page>1){page--;load()}});
 $('next-page').addEventListener('click',()=>{if(page<totalPages){page++;load()}});
 $('page-size').addEventListener('change',e=>{pageSize=Number(e.target.value)||1000;page=1;load()});
