@@ -129,6 +129,32 @@ type Relation struct {
 	ReviewedBy string     `json:"reviewed_by,omitempty"`
 	ReviewedAt *time.Time `json:"reviewed_at,omitempty"`
 	ReviewNote string     `json:"review_note,omitempty"`
+
+	// Effective scope resolved for the requesting audience/industry.
+	ScopeAudience string     `json:"scope_audience,omitempty"`
+	ScopeIndustry string     `json:"scope_industry,omitempty"`
+	ValidUntil    *time.Time `json:"valid_until,omitempty"`
+	Scoped        bool       `json:"scoped,omitempty"`
+}
+
+// RelationScope is a per audience/industry decision and TTL for one relation.
+type RelationScope struct {
+	ID           int64      `json:"id"`
+	FromID       string     `json:"from_id"`
+	ToID         string     `json:"to_id"`
+	Type         string     `json:"type"`
+	TitleFrom    string     `json:"title_from,omitempty"`
+	TitleTo      string     `json:"title_to,omitempty"`
+	Audience     string     `json:"audience"`
+	Industry     string     `json:"industry"`
+	Status       string     `json:"status"`
+	Confidence   float64    `json:"confidence"`
+	ReviewedBy   string     `json:"reviewed_by,omitempty"`
+	ReviewedAt   *time.Time `json:"reviewed_at,omitempty"`
+	ValidUntil   *time.Time `json:"valid_until,omitempty"`
+	LastTestedAt *time.Time `json:"last_tested_at,omitempty"`
+	ReviewNote   string     `json:"review_note,omitempty"`
+	Expired      bool       `json:"expired"`
 }
 
 // Promotion is an active discount with a validity window.

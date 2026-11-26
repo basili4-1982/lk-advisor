@@ -110,6 +110,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	if audience == "" {
 		audience = "b2b"
 	}
+	industry := strings.ToLower(strings.TrimSpace(p.Industry))
 	strategyName := strategy.Default(audience)
 	if forced := strings.TrimSpace(req.Strategy); forced != "" {
 		if forced != "hybrid" && forced != "popular" {
@@ -143,7 +144,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	}
 
 	owned := ownedIDs(p)
-	relations, err := catalog.Relations(ctx, h.db, owned)
+	relations, err := catalog.RelationsScoped(ctx, h.db, owned, audience, industry, h.now())
 	if err != nil {
 		h.logger.Error("relations", "err", err)
 		writeError(w, http.StatusInternalServerError, "relations error")
@@ -192,7 +193,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		}
 		if len(popular) == 0 {
 			_ = analytics.Log(ctx, h.db, traceID, req.ClientID, intent,
-				analytics.Meta{Strategy: strategyName, Audience: audience, WeightsVersion: weightsVersion},
+				analytics.Meta{Strategy: strategyName, Audience: audience, Industry: industry, WeightsVersion: weightsVersion},
 				true, nil, nil)
 			writeError(w, http.StatusConflict, "no data for calculation")
 			return
@@ -290,7 +291,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	if len(skippedItems) > 25 {
 		skippedItems = skippedItems[:25]
 	}
-	meta := analytics.Meta{Strategy: strategyName, Audience: audience, WeightsVersion: weightsVersion}
+	meta := analytics.Meta{Strategy: strategyName, Audience: audience, Industry: industry, WeightsVersion: weightsVersion}
 	if err := analytics.Log(ctx, h.db, traceID, req.ClientID, intent, meta, fallback, shownItems, skippedItems); err != nil {
 		h.logger.Warn("analytics log", "err", err)
 	}

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -19,6 +20,7 @@ var ErrClientMismatch = errors.New("client mismatch")
 type Meta struct {
 	Strategy       string
 	Audience       string
+	Industry       string
 	WeightsVersion string
 }
 
@@ -90,6 +92,8 @@ type Summary struct {
 
 // Log writes one recommendation request and its shown/skipped items.
 func Log(ctx context.Context, dbc *sql.DB, traceID, clientID, intent string, meta Meta, fallback bool, shown, skipped []Item) error {
+	meta.Audience = strings.ToLower(strings.TrimSpace(meta.Audience))
+	meta.Industry = strings.ToLower(strings.TrimSpace(meta.Industry))
 	tx, err := dbc.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("analytics begin: %w", err)
@@ -99,11 +103,11 @@ func Log(ctx context.Context, dbc *sql.DB, traceID, clientID, intent string, met
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO recommendation_requests
 			(trace_id, client_id, intent, fallback, shown_count, skipped_count,
-			 strategy, audience, weights_version)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+			 strategy, audience, industry, weights_version)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT (trace_id) DO NOTHING`,
 		traceID, clientID, intent, fallback, len(shown), len(skipped),
-		meta.Strategy, meta.Audience, meta.WeightsVersion); err != nil {
+		meta.Strategy, meta.Audience, meta.Industry, meta.WeightsVersion); err != nil {
 		return fmt.Errorf("analytics request: %w", err)
 	}
 	for _, item := range shown {
@@ -126,11 +130,11 @@ func insertEvent(ctx context.Context, tx *sql.Tx, traceID, clientID, productID, 
 	_, err := tx.ExecContext(ctx, `
 		INSERT INTO recommendation_events
 			(trace_id, client_id, product_id, event, reason, detail, rank, score, type, source,
-			 strategy, audience, weights_version, candidate_id, source_product_id, relation_type)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+			 strategy, audience, industry, weights_version, candidate_id, source_product_id, relation_type)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)`,
 		traceID, clientID, productID, event, item.Reason, item.Detail,
 		item.Rank, item.Score, item.Type, item.Source,
-		meta.Strategy, meta.Audience, meta.WeightsVersion,
+		meta.Strategy, meta.Audience, meta.Industry, meta.WeightsVersion,
 		item.CandidateID, item.SourceProductID, item.RelationType)
 	if err != nil {
 		return fmt.Errorf("analytics event: %w", err)
@@ -140,10 +144,10 @@ func insertEvent(ctx context.Context, tx *sql.Tx, traceID, clientID, productID, 
 
 // Record stores a user action (click or purchase) for a shown item.
 func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, event string) error {
-	var owner, strategyName, audience, weightsVersion, candidateID, sourceID, relationType string
+	var owner, strategyName, audience, industry, weightsVersion, candidateID, sourceID, relationType string
 	var rank int
 	err := dbc.QueryRowContext(ctx, `
-		SELECT r.client_id, r.strategy, r.audience, r.weights_version,
+		SELECT r.client_id, r.strategy, r.audience, r.industry, r.weights_version,
 		       COALESCE(e.rank, 0), COALESCE(e.candidate_id, ''),
 		       COALESCE(e.source_product_id, ''), COALESCE(e.relation_type, '')
 		FROM recommendation_requests r
@@ -154,7 +158,7 @@ func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, even
 			ORDER BY id LIMIT 1
 		) e ON true
 		WHERE r.trace_id = $1`, traceID, productID).
-		Scan(&owner, &strategyName, &audience, &weightsVersion, &rank,
+		Scan(&owner, &strategyName, &audience, &industry, &weightsVersion, &rank,
 			&candidateID, &sourceID, &relationType)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrTraceNotFound
@@ -168,9 +172,9 @@ func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, even
 	_, err = dbc.ExecContext(ctx, `
 		INSERT INTO recommendation_events
 			(trace_id, client_id, product_id, event, reason, source, rank,
-			 strategy, audience, weights_version, candidate_id, source_product_id, relation_type)
-		VALUES ($1, $2, $3, $4, 'user', 'client', $5, $6, $7, $8, $9, $10, $11)`,
-		traceID, clientID, productID, event, rank, strategyName, audience, weightsVersion,
+			 strategy, audience, industry, weights_version, candidate_id, source_product_id, relation_type)
+		VALUES ($1, $2, $3, $4, 'user', 'client', $5, $6, $7, $8, $9, $10, $11, $12)`,
+		traceID, clientID, productID, event, rank, strategyName, audience, industry, weightsVersion,
 		candidateID, sourceID, relationType)
 	if err != nil {
 		return fmt.Errorf("analytics record: %w", err)

@@ -145,7 +145,7 @@ func Load(ctx context.Context, dbc *sql.DB, ds Dataset) error {
 // Clear removes all business rows. Used by the seed command.
 func Clear(ctx context.Context, dbc *sql.DB) error {
 	_, err := dbc.ExecContext(ctx, `TRUNCATE clients, products, client_environment, product_relations,
-		purchases, licenses, orders, documents, events, rules, promotions,
+		relation_scopes, purchases, licenses, orders, documents, events, rules, promotions,
 		ground_truth, agent_sessions, profile_refresh_queue, demo_audit, agent_calls,
 		recommendation_requests, recommendation_events RESTART IDENTITY CASCADE`)
 	if err != nil {

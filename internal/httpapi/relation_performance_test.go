@@ -13,12 +13,21 @@ func TestRelationPerformanceAndAutoReview(t *testing.T) {
 	h, dbc := setupAPI(t)
 	ctx := context.Background()
 	if _, err := dbc.ExecContext(ctx, `
+		DELETE FROM relation_scopes WHERE from_id='prod-pdf' AND to_id='prod-backup' AND type='accessory'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbc.ExecContext(ctx, `
+		DELETE FROM recommendation_events WHERE candidate_id='prod-pdf|accessory|prod-backup'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbc.ExecContext(ctx, `
 		INSERT INTO product_relations (from_id,to_id,type,direction,confidence,status,source)
 		VALUES ('prod-pdf','prod-backup','accessory','forward',0.8,'llm_suggested','test')
 		ON CONFLICT (from_id,to_id,type) DO UPDATE SET status='llm_suggested'`); err != nil {
 		t.Fatal(err)
 	}
 	defer dbc.ExecContext(ctx, `DELETE FROM product_relations WHERE from_id='prod-pdf' AND to_id='prod-backup' AND type='accessory'`)
+	defer dbc.ExecContext(ctx, `DELETE FROM relation_scopes WHERE from_id='prod-pdf' AND to_id='prod-backup' AND type='accessory'`)
 
 	shown := make([]analytics.Item, 0, 30)
 	for i := 0; i < 30; i++ {
@@ -72,10 +81,32 @@ func TestRelationPerformanceAndAutoReview(t *testing.T) {
 		t.Fatalf("auto: %d %s", rec.Code, rec.Body.String())
 	}
 	var status string
-	if err := dbc.QueryRow(`SELECT status FROM product_relations WHERE from_id='prod-pdf' AND to_id='prod-backup' AND type='accessory'`).Scan(&status); err != nil {
+	if err := dbc.QueryRow(`SELECT status FROM relation_scopes WHERE from_id='prod-pdf' AND to_id='prod-backup' AND type='accessory' AND audience='b2b' AND industry=''`).Scan(&status); err != nil {
 		t.Fatal(err)
 	}
 	if status != "confirmed" {
-		t.Fatalf("status = %s, want confirmed", status)
+		t.Fatalf("scope status = %s, want confirmed", status)
+	}
+	if err := dbc.QueryRow(`SELECT status FROM product_relations WHERE from_id='prod-pdf' AND to_id='prod-backup' AND type='accessory'`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "llm_suggested" {
+		t.Fatalf("global status = %s, want scoped decision to leave global untouched", status)
+	}
+
+	rec = doJSON(t, h, http.MethodGet, "/v1/admin/relations/scopes", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scopes: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = doJSON(t, h, http.MethodPost, "/v1/admin/relations/scopes/review",
+		`{"from_id":"prod-pdf","to_id":"prod-backup","type":"accessory","audience":"b2b","industry":"","decision":"reject","note":"test"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("scope review: %d %s", rec.Code, rec.Body.String())
+	}
+	if err := dbc.QueryRow(`SELECT status FROM relation_scopes WHERE from_id='prod-pdf' AND to_id='prod-backup' AND type='accessory' AND audience='b2b' AND industry=''`).Scan(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status != "rejected" {
+		t.Fatalf("scope status after human review = %s, want rejected", status)
 	}
 }

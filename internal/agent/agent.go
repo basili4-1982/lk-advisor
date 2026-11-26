@@ -196,7 +196,7 @@ func (a *Agent) loadState(ctx context.Context, clientID string) (state, error) {
 		return state{}, err
 	}
 	owned := ownedIDs(p)
-	relations, err := catalog.Relations(ctx, a.DB, owned)
+	relations, err := catalog.RelationsScoped(ctx, a.DB, owned, p.Audience, p.Industry, a.Now())
 	if err != nil {
 		return state{}, err
 	}

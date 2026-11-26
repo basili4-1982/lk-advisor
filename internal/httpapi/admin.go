@@ -281,6 +281,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           </div>
           <div class="formbox" style="margin-top:16px"><div class="form-title">Кандидаты на проверку связей <button id="health-flag" class="secondary small" style="margin-left:8px">Пометить связи</button></div><div id="analytics-health"></div></div>
           <div class="formbox" style="margin-top:16px"><div class="form-title">Работающие связи <button id="relation-auto" class="secondary small" style="margin-left:8px">Авто-решение бандита</button></div><div id="relation-perf"></div></div>
+          <div class="formbox" style="margin-top:16px"><div class="form-title">Скоупы связей и TTL</div><div class="hint" style="margin-bottom:8px">Связь проверяется отдельно для B2B/B2C и отрасли. Подтверждённая связь живёт 30 дней (B2B) или 60 дней (B2C), затем нужен re-test.</div><div id="relation-scopes"></div></div>
           <div class="grid g2" style="margin-top:16px">
             <div class="formbox" style="margin:0"><div class="form-title">Что показываем</div><div id="analytics-products"></div></div>
             <div class="formbox" style="margin:0"><div class="form-title">Что не показываем</div><div id="analytics-skips"></div></div>
@@ -467,6 +468,7 @@ async function loadAnalytics(){
   loadStrategies();
   loadHealth();
   loadRelationPerf();
+  loadRelationScopes();
 }
 async function loadHealth(){
   try {
@@ -482,10 +484,23 @@ async function loadRelationPerf(){
   try {
     var d=await api('GET','/v1/admin/relations/performance');
     var rows=d.items||[];
-    el('relation-perf').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>Связь</th><th>Тип</th><th>Показ</th><th>Клик</th><th>CTR</th><th>Покупка</th><th>Статус</th></tr></thead><tbody>'+
-      rows.map(function(x){ return '<tr><td>'+esc(x.title_from)+' → '+esc(x.title_to)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+x.shown+'</td><td>'+x.clicks+'</td><td>'+pct(x.ctr)+'</td><td>'+x.purchases+'</td><td>'+esc(x.status)+'</td></tr>'; }).join('')+'</tbody></table></div>' :
+    el('relation-perf').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>Связь</th><th>Тип</th><th>Скоуп</th><th>Показ</th><th>Клик</th><th>CTR</th><th>Покупка</th><th>Статус</th><th>До</th></tr></thead><tbody>'+
+      rows.map(function(x){ return '<tr><td>'+esc(x.title_from)+' → '+esc(x.title_to)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+esc(x.audience||'—')+' / '+esc(x.industry||'—')+'</td><td>'+x.shown+'</td><td>'+x.clicks+'</td><td>'+pct(x.ctr)+'</td><td>'+x.purchases+'</td><td>'+esc(x.status)+'</td><td>'+(x.valid_until?new Date(x.valid_until).toLocaleDateString('ru-RU'):'—')+'</td></tr>'; }).join('')+'</tbody></table></div>' :
       '<div class="empty">Пока нет показов с привязкой к связи</div>';
   } catch(e){ el('relation-perf').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
+}
+async function loadRelationScopes(){
+  try {
+    var d=await api('GET','/v1/admin/relations/scopes');
+    var rows=d.items||[];
+    el('relation-scopes').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>Связь</th><th>Тип</th><th>B2B/B2C</th><th>Отрасль</th><th>Статус</th><th>До</th><th>Проверено</th><th></th></tr></thead><tbody>'+
+      rows.map(function(x){
+        var attrs='data-scope-from="'+esc(x.from_id)+'" data-scope-to="'+esc(x.to_id)+'" data-scope-type="'+esc(x.type)+'" data-scope-audience="'+esc(x.audience)+'" data-scope-industry="'+esc(x.industry)+'"';
+        var st=esc(x.status)+(x.expired?' <span class="pill" style="background:#fef3c7;color:#92400e">истёк</span>':'');
+        return '<tr><td>'+esc(x.title_from)+' → '+esc(x.title_to)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+esc(x.audience||'все')+'</td><td>'+esc(x.industry||'все')+'</td><td>'+st+'</td><td>'+(x.valid_until?new Date(x.valid_until).toLocaleDateString('ru-RU'):'—')+'</td><td>'+esc(x.reviewed_by||'—')+'</td><td><button class="small" data-scope-review="confirm" '+attrs+'>✓</button> <button class="ghost small" data-scope-review="reject" '+attrs+'>✕</button> <button class="secondary small" data-scope-review="reopen" '+attrs+'>тест</button></td></tr>';
+      }).join('')+'</tbody></table></div>' :
+      '<div class="empty">Скоупов пока нет: связь живёт по глобальному статусу</div>';
+  } catch(e){ el('relation-scopes').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 async function loadStrategies(){
   try {
@@ -649,7 +664,7 @@ function renderRules(){
       '<div><span class="pill type">'+esc(RULE_TYPES[r.type]||r.type)+'</span> <button class="ghost small" data-rule-del="'+esc(r.id)+'">Удалить</button></div></div>';
   }).join('');
 }
-var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','dataset.co_purchase_suggest':'Связи из co-purchase созданы','relations.auto_review':'Связи проверены бандитом','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
+var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','dataset.co_purchase_suggest':'Связи из co-purchase созданы','relations.auto_review':'Связи проверены бандитом','relation_scope.review':'Скоуп связи обновлён','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
 function renderAudit(){
   var list = state.audit || [];
   if (!list.length) { el('audit-list').textContent='Пока нет изменений'; return; }
@@ -747,8 +762,22 @@ el('review-list').addEventListener('click', function(ev){
   if (r) reviewDecision(mode, [r]);
 });
 el('relation-auto').addEventListener('click', async function(){
-  try { var d=await api('POST','/v1/admin/relations/auto-review',{min_shown:20,min_ctr:0.03}); toast('Продвинуто: '+d.promoted+', отклонено: '+d.rejected); loadRelationPerf(); }
+  try { var d=await api('POST','/v1/admin/relations/auto-review',{min_shown:20,min_ctr:0.03}); toast('Продвинуто: '+d.promoted+', отклонено: '+d.rejected); loadRelationPerf(); loadRelationScopes(); }
   catch(e){ toast(e.message,true); }
+});
+el('relation-scopes').addEventListener('click', async function(ev){
+  var mode=ev.target.dataset.scopeReview;
+  if (!mode) return;
+  var ds=ev.target.dataset;
+  try {
+    await api('POST','/v1/admin/relations/scopes/review',{
+      from_id:ds.scopeFrom,to_id:ds.scopeTo,type:ds.scopeType,
+      audience:ds.scopeAudience||'',industry:ds.scopeIndustry||'',
+      decision:mode,note:'',ttl_days:0
+    });
+    toast(mode==='confirm'?'Связь подтверждена в скоупе':(mode==='reject'?'Связь отклонена в скоупе':'Связь возвращена в тест'));
+    loadRelationScopes(); loadRelationPerf();
+  } catch(e){ toast(e.message,true); }
 });
 el('analytics-refresh').addEventListener('click', loadAnalytics);
 el('analytics-days').addEventListener('change', loadAnalytics);

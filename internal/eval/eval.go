@@ -96,7 +96,7 @@ func Run(ctx context.Context, dbc *sql.DB, cases []model.GroundTruthCase, now ti
 		if err != nil {
 			continue
 		}
-		rels, err := catalog.Relations(ctx, dbc, ownedIDs(p))
+		rels, err := catalog.RelationsScoped(ctx, dbc, ownedIDs(p), p.Audience, p.Industry, now)
 		if err != nil {
 			return Report{}, err
 		}

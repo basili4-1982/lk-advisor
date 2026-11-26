@@ -121,6 +121,7 @@ docs/              демо и прогон
 | `docs/experiments/cohort-ab.pdf` | отчёт по когорте агентов для презы |
 | `docs/dataset-relations.md` | импорт v3, co-purchase и очередь кандидатов |
 | `docs/relation-bandit.md` | CTR/покупки по конкретной связи и авто-решение |
+| `docs/relation-scopes.md` | скоупы B2B/B2C/отрасль и TTL связей |
 | `docs/superpowers/plans/2026-11-26-agentic-analytics.md` | хранение аналитики, авто-А/Б, веса, авто-перестройка |
 | `docs/relation-validation.md` | ручная очередь проверки связей |
 | `docs/demo-run.md` | прогон демо и ожидаемые ответы |
