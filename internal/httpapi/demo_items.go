@@ -146,3 +146,46 @@ func (h *handler) removeItem(w http.ResponseWriter, r *http.Request) {
 func (h *handler) refreshProfile(ctx context.Context, clientID string) {
 	_ = profile.RefreshShard(ctx, h.db, profile.Shard(clientID, profile.ShardCount))
 }
+
+// resetDemoClient clears a demo client's history and analytics events.
+func (h *handler) resetDemoClient(w http.ResponseWriter, r *http.Request) {
+	clientID := r.PathValue("id")
+	if clientID == "" || h.db == nil {
+		writeError(w, http.StatusBadRequest, "client id is required")
+		return
+	}
+	ctx := r.Context()
+	if _, err := profile.Get(ctx, h.db, clientID); errors.Is(err, profile.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "client not found")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "profile error")
+		return
+	}
+	tx, err := h.db.BeginTx(ctx, nil)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "transaction error")
+		return
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, query := range []string{
+		`DELETE FROM recommendation_requests WHERE client_id = $1`,
+		`DELETE FROM purchases WHERE client_id = $1`,
+		`DELETE FROM licenses WHERE client_id = $1`,
+		`DELETE FROM orders WHERE client_id = $1`,
+		`DELETE FROM agent_sessions WHERE client_id = $1`,
+		`DELETE FROM demo_audit WHERE client_id = $1`,
+	} {
+		if _, err := tx.ExecContext(ctx, query, clientID); err != nil {
+			h.logger.Error("reset demo client", "err", err)
+			writeError(w, http.StatusInternalServerError, "reset error")
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, "commit error")
+		return
+	}
+	h.refreshProfile(ctx, clientID)
+	writeJSON(w, http.StatusOK, map[string]bool{"reset": true})
+}

@@ -32,6 +32,7 @@ type recommendationRequest struct {
 	Limit    *int   `json:"limit"`
 	Audience string `json:"audience"`
 	Industry string `json:"industry"`
+	Strategy string `json:"strategy"`
 }
 
 type recommendationResponse struct {
@@ -110,7 +111,13 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		audience = "b2b"
 	}
 	strategyName := strategy.Default(audience)
-	if auto, aerr := catalog.AutoStrategy(ctx, h.db); aerr == nil && auto {
+	if forced := strings.TrimSpace(req.Strategy); forced != "" {
+		if forced != "hybrid" && forced != "popular" {
+			writeError(w, http.StatusBadRequest, "strategy must be hybrid or popular")
+			return
+		}
+		strategyName = forced
+	} else if auto, aerr := catalog.AutoStrategy(ctx, h.db); aerr == nil && auto {
 		if stats, serr := catalog.StrategyStats(ctx, h.db); serr == nil {
 			strategyName = strategy.Choose(audience, stats)
 		}

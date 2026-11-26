@@ -54,6 +54,7 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("GET /v1/products", h.products)
 	mux.HandleFunc("POST /v1/demo/clients/{id}/items", h.addItem)
 	mux.HandleFunc("DELETE /v1/demo/clients/{id}/items/{product_id}", h.removeItem)
+	mux.HandleFunc("POST /v1/demo/clients/{id}/reset", h.resetDemoClient)
 	mux.HandleFunc("GET /v1/demo/clients/{id}/audit", h.clientAudit)
 	mux.HandleFunc("GET /v1/demo/clients/{id}/agent-calls", h.agentCalls)
 	mux.HandleFunc("GET /v1/admin/state", h.adminState)
