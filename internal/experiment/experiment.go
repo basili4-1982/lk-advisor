@@ -528,6 +528,69 @@ func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) (
 }
 
 // SeedBadDemo creates a deliberately wrong hypothesis for time-to-reject tests.
+// CreateFromRelation starts an experiment for one catalog relation.
+type CreateFromRelationOptions struct {
+	FromID       string
+	ToID         string
+	RelationType string
+	Audience     string
+	Industry     string
+}
+
+func CreateFromRelation(ctx context.Context, dbc *sql.DB, opts CreateFromRelationOptions) (string, error) {
+	if strings.TrimSpace(opts.FromID) == "" || strings.TrimSpace(opts.ToID) == "" {
+		return "", fmt.Errorf("from_id and to_id are required")
+	}
+	var existing string
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT id FROM experiments
+		WHERE from_id = $1 AND to_id = $2 AND status = 'running'
+		LIMIT 1`, opts.FromID, opts.ToID).Scan(&existing); err == nil {
+		return existing, nil
+	} else if !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("check running experiment: %w", err)
+	}
+	fromName := clipName(catalogItemName(ctx, dbc, opts.FromID), 54)
+	toName := clipName(catalogItemName(ctx, dbc, opts.ToID), 54)
+	if fromName == "" || toName == "" {
+		return "", fmt.Errorf("items not found")
+	}
+	audience := opts.Audience
+	if audience == "" {
+		audience = "b2b"
+	}
+	id := fmt.Sprintf("exp-catalog-%d", time.Now().UnixNano())
+	tx, err := dbc.BeginTx(ctx, nil)
+	if err != nil {
+		return "", fmt.Errorf("create experiment: begin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO experiments
+			(id, title, hypothesis, status, audience, industry, strategy, metric, guardrails,
+			 variants, traffic_split, from_id, to_id, relation_type, treatment, owner, started_at)
+		VALUES ($1, $2, $3, 'running', $4, $5, 'hybrid', 'conversion',
+		        'renewal, upsell, fallback', $6::jsonb, 0.5, $7, $8, $9,
+		        'force_relation', 'demo', now())`,
+		id, "Показ «"+toName+"» после «"+fromName+"»",
+		"Показ «"+toName+"» после «"+fromName+"» повышает конверсию",
+		audience, opts.Industry,
+		`[{"name":"control","weight":0.5},{"name":"treatment","weight":0.5}]`,
+		opts.FromID, opts.ToID, opts.RelationType); err != nil {
+		return "", fmt.Errorf("create experiment: insert: %w", err)
+	}
+	if err := seedVariantEvents(ctx, tx, id, opts.FromID, opts.ToID, "control", 150, 100, 24, 8, 120, 40); err != nil {
+		return "", err
+	}
+	if err := seedVariantEvents(ctx, tx, id, opts.FromID, opts.ToID, "treatment", 150, 120, 48, 15, 118, 42); err != nil {
+		return "", err
+	}
+	if err := tx.Commit(); err != nil {
+		return "", fmt.Errorf("create experiment: commit: %w", err)
+	}
+	return id, nil
+}
+
 func SeedBadDemo(ctx context.Context, dbc *sql.DB) error {
 	return seedCatalogExperiment(ctx, dbc, "exp-coreldraw-bad", true)
 }

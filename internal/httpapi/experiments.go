@@ -19,6 +19,31 @@ func (h *handler) adminExperiments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (h *handler) adminCreateExperiment(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		FromID       string `json:"from_id"`
+		ToID         string `json:"to_id"`
+		RelationType string `json:"relation_type"`
+		Audience     string `json:"audience"`
+		Industry     string `json:"industry"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	id, err := experiment.CreateFromRelation(r.Context(), h.db, experiment.CreateFromRelationOptions{
+		FromID: req.FromID, ToID: req.ToID, RelationType: req.RelationType,
+		Audience: req.Audience, Industry: req.Industry,
+	})
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "experiment.create", map[string]string{
+		"id": id, "from_id": req.FromID, "to_id": req.ToID})
+	writeJSON(w, http.StatusOK, map[string]string{"id": id})
+}
+
 func (h *handler) adminSeedBadExperiment(w http.ResponseWriter, r *http.Request) {
 	if err := experiment.SeedBadDemo(r.Context(), h.db); err != nil {
 		h.logger.Error("seed bad experiment", "err", err)

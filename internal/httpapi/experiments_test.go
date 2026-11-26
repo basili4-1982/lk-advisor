@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"testing"
@@ -58,5 +59,40 @@ func TestExperimentEndpoints(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("knowledge = %+v", knowledge.Items)
+	}
+}
+
+func TestCreateExperimentFromCatalogRelation(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'exp-cat-%'`)
+	dbc.ExecContext(ctx, `DELETE FROM experiments WHERE from_id LIKE 'exp-cat-%'`)
+	defer func() {
+		dbc.ExecContext(ctx, `DELETE FROM experiments WHERE from_id LIKE 'exp-cat-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'exp-cat-%'`)
+	}()
+	for _, id := range []string{"exp-cat-a", "exp-cat-b"} {
+		dbc.ExecContext(ctx, `INSERT INTO lk_items (item_id,title,category,product_group)
+			VALUES ($1,$1,'software','EXP-CAT')`, id)
+	}
+	rec := doJSON(t, h, http.MethodPost, "/v1/admin/experiments",
+		`{"from_id":"exp-cat-a","to_id":"exp-cat-b","relation_type":"adjacent_task","audience":"b2b"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create experiment: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ID string `json:"id"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &created)
+	if created.ID == "" {
+		t.Fatal("no experiment id")
+	}
+	var exposures int
+	if err := dbc.QueryRow(`SELECT count(*) FROM experiment_events
+		WHERE experiment_id=$1 AND event='exposed'`, created.ID).Scan(&exposures); err != nil {
+		t.Fatal(err)
+	}
+	if exposures != 300 {
+		t.Fatalf("exposures = %d, want 300", exposures)
 	}
 }

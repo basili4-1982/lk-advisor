@@ -1420,6 +1420,7 @@ function renderRegistryDetail(id){
       '<button class="small" data-reg-review="confirm" data-reg-review-id="'+r.id+'">Подтвердить</button>'+
       '<button class="secondary small" data-reg-review="reject" data-reg-review-id="'+r.id+'">Отклонить</button>'+
       '<button class="secondary small" data-reg-review="defer" data-reg-review-id="'+r.id+'">Отложить</button>'+
+      '<button class="secondary small" data-exp-create="'+r.id+'">Проверить гипотезой</button>'+
     '</div>';
 }
 async function registryReview(id, decision){
@@ -1685,6 +1686,20 @@ el('registry-body').addEventListener('click', function(ev){
   if (tr) renderRegistryDetail(tr.dataset.regId);
 });
 el('registry-detail').addEventListener('click', async function(ev){
+  var make=ev.target.dataset.expCreate;
+  if (make){
+    var rel=registryItem(make);
+    if(!rel) return;
+    try {
+      var out=await api('POST','/v1/admin/experiments',{
+        from_id:rel.from_item_id, to_id:rel.to_item_id, relation_type:rel.type,
+        audience:rel.audience, industry:rel.industry
+      });
+      toast('Гипотеза: '+out.id);
+      document.querySelector('[data-tab=experiments]').click();
+    } catch(e){ toast(e.message,true); }
+    return;
+  }
   var side=ev.target.dataset.aliasSide;
   if (side){
     var item=registryItem(ev.target.dataset.aliasId);
