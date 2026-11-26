@@ -282,6 +282,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button class="secondary small" data-view="expiring">Истекают</button>
             <button class="secondary small" data-view="structural">Структурные</button>
             <button id="registry-generate" class="small">Сгенерировать</button>
+            <button id="registry-import" class="secondary small">Импорт</button>
             <button id="registry-sweep" class="secondary small">Проверить TTL</button>
             <span class="hint" id="registry-count"></span>
           </div>
@@ -1553,6 +1554,29 @@ el('registry-confirm-modal').addEventListener('click', function(ev){ if (ev.targ
 el('registry-reject').addEventListener('click', function(){ registryBulk('reject'); });
 el('registry-defer').addEventListener('click', function(){ registryBulk('defer'); });
 el('registry-generate').addEventListener('click', registryGenerate);
+el('registry-import').addEventListener('click', function(){
+  el('registry-import-result').textContent='';
+  el('registry-import-file').value='';
+  el('registry-import-modal').classList.remove('hidden');
+});
+el('registry-import-no').addEventListener('click', function(){ el('registry-import-modal').classList.add('hidden'); });
+el('registry-import-modal').addEventListener('click', function(ev){ if (ev.target === this) this.classList.add('hidden'); });
+el('registry-import-yes').addEventListener('click', async function(){
+  var file=el('registry-import-file').files[0];
+  if (!file){ el('registry-import-result').textContent='Выберите CSV-файл'; return; }
+  var fd=new FormData(); fd.append('file', file);
+  try {
+    var res=await fetch('/v1/admin/registry/import/items',{method:'POST',body:fd});
+    var data={}; try { data=await res.json(); } catch(e) { data={error:'сервер вернул не JSON'}; }
+    if (!res.ok) throw new Error(data.error || ('HTTP '+res.status));
+    el('registry-import-result').innerHTML='Добавлено: <b>'+data.added+'</b>, обновлено: <b>'+data.updated+'</b>, пропущено: '+data.skipped+
+      (data.errors&&data.errors.length ? '<br><span style="color:#b91c1c">'+data.errors.map(esc).join('<br>')+'</span>' : '');
+    toast('Импорт: +'+data.added+' / обновлено '+data.updated);
+    await loadRegistry();
+  } catch(e){
+    el('registry-import-result').innerHTML='<span style="color:#b91c1c">'+esc(e.message)+'</span>';
+  }
+});
 el('registry-more').addEventListener('click', function(){ loadRegistry(true); });
 el('registry-sweep').addEventListener('click', async function(){
   try {

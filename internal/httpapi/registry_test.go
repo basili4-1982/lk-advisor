@@ -1,10 +1,13 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"mime/multipart"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 )
@@ -322,5 +325,47 @@ func TestRegistryBulkByConfidenceFilter(t *testing.T) {
 		WHERE from_item_id='reg-a'`).Scan(&active, &candidates)
 	if active != 1 || candidates != 2 {
 		t.Fatalf("active=%d candidates=%d, want 1/2", active, candidates)
+	}
+}
+
+func TestRegistryImportItemsUpload(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	clean := func() {
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'TEST-IMPORT-%'`)
+	}
+	clean()
+	defer clean()
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "positions.csv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write([]byte("item_id,title,sku,product_group,available\nTEST-IMPORT-1,Импортированная позиция,TEST-IMPORT-1,G-IMPORT,true\n"))
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/admin/registry/import/items", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Added   int `json:"added"`
+		Updated int `json:"updated"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Added != 1 || out.Updated != 0 {
+		t.Fatalf("import result = %+v", out)
+	}
+	var title string
+	if err := dbc.QueryRow(`SELECT title FROM lk_items WHERE item_id='TEST-IMPORT-1'`).Scan(&title); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Импортированная позиция" {
+		t.Fatalf("title = %q", title)
 	}
 }

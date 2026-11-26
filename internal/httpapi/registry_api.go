@@ -218,3 +218,28 @@ func (h *handler) adminRegistryAlias(w http.ResponseWriter, r *http.Request) {
 	})
 	writeJSON(w, http.StatusOK, map[string]bool{"saved": true})
 }
+
+func (h *handler) adminRegistryImportItems(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 12<<20)
+	if err := r.ParseMultipartForm(12 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "не удалось прочитать файл")
+		return
+	}
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "добавьте CSV-файл")
+		return
+	}
+	defer file.Close()
+	if !strings.HasSuffix(strings.ToLower(header.Filename), ".csv") {
+		writeError(w, http.StatusBadRequest, "нужен файл .csv (Excel: «Сохранить как CSV»)")
+		return
+	}
+	res, err := catalog.ImportItemsCSV(r.Context(), h.db, file)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "registry.import_items", res)
+	writeJSON(w, http.StatusOK, res)
+}
