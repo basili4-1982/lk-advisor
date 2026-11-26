@@ -27,6 +27,7 @@ label.toggle input{accent-color:#1d4ed8}
 .status{color:var(--muted);font-size:12px;min-width:70px;text-align:right}
 .link{color:var(--muted);text-decoration:none;font-size:13px;border:1px solid var(--line);padding:7px 11px;border-radius:9px}
 .link:hover{color:#fff;border-color:rgba(96,165,250,.5)}
+.demo-pill{font-size:10px;text-transform:uppercase;letter-spacing:.12em;color:#fbbf24;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.08);border-radius:999px;padding:4px 8px;white-space:nowrap}
 .filterbar{height:52px;display:flex;align-items:center;gap:8px;padding:0 20px;background:rgba(11,18,32,.9);border-bottom:1px solid var(--line);overflow-x:auto}
 .filterbar .seg{flex:none}
 .timebox{display:flex;align-items:center;gap:8px;background:rgba(15,23,42,.8);border:1px solid var(--line);border-radius:9px;padding:5px 10px;flex:none}
@@ -93,11 +94,12 @@ main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
 <header class="top">
   <div class="brand">
     <div class="logo">LK</div>
-    <div><h1>Граф связей</h1><p>Публичный слой датасета v3 · совместные покупки</p></div>
+    <div><h1>Граф связей <span class="demo-pill">демо-витрина</span></h1><p>Публичный слой датасета v3 · только просмотр</p></div>
   </div>
   <div class="controls">
     <input id="search" type="search" placeholder="Найти товар…">
     <label class="toggle"><input id="solo" type="checkbox"> solo</label>
+    <a class="link" href="/admin#relations">Работа со связями</a>
     <a class="link" href="/">Кабинет</a>
     <span class="status" id="status"></span>
   </div>
@@ -338,7 +340,7 @@ function showNode(n){
     return other?{node:other,count:e.count,b2b:e.b2b_count,b2c:e.b2c_count,hidden:e.b2c_hidden}:null;
   }).filter(Boolean).sort((a,b)=>b.count-a.count);
   const componentEdges=edges.filter(e=>selectedComponent.has(sourceID(e))&&selectedComponent.has(targetID(e))).length;
-  let h='<div class="focusbar"><span>Компонента: '+selectedComponent.size+' узлов · '+componentEdges+' связей</span><span><button id="show-all">Показать всех</button> <button id="create-link">Создать связь</button></span></div>';
+  let h='<div class="focusbar"><span>Компонента: '+selectedComponent.size+' узлов · '+componentEdges+' связей</span><span><button id="show-all">Показать всех</button></span></div>';
   h+='<div class="panel-kicker">'+esc(CAT_RU[n.category]||n.category)+(n.family?' · '+esc(n.family):'')+'</div><h2>'+esc(n.title)+'</h2>';
   h+='<div class="metrics"><div><b>'+fmt(n.buyers)+'</b><span>покупателей</span></div><div><b>'+fmt(n.degree)+'</b><span>связей</span></div><div><b>'+fmt(n.b2c_buyers)+'</b><span>B2C</span></div></div>';
   if(DATA.period){
@@ -356,7 +358,6 @@ function showNode(n){
   $('panel').innerHTML=h;
   $('panel').querySelectorAll('.nb').forEach(b=>b.onclick=()=>{const x=byId[b.dataset.id];if(x){showNode(x);focusNode(x)}});
   const sa=$('show-all');if(sa)sa.onclick=()=>{focusMode=false;selectedComponent=new Set();selectedDepths={};showNode(null);resetCamera()};
-  const cl=$('create-link');if(cl)cl.onclick=()=>startLink(n);
   const sf=$('show-family');if(sf)sf.onclick=()=>{familyFilter=n.family||'';fillFilter('family-filter',DATA.families,'Все семейства',familyFilter);drawStats();refresh()};
   $('panel').querySelectorAll('[data-ext-id]').forEach(b=>b.onclick=()=>{page=Number(b.dataset.extPage)||1;load(b.dataset.extId)});
 }
@@ -428,7 +429,7 @@ window.addEventListener('resize',()=>{resizeGraph()});
 wrap.addEventListener('pointerdown',()=>{userInteracted=true;autoFitDone=true},{passive:true});
 wrap.addEventListener('wheel',()=>{userInteracted=true;autoFitDone=true},{passive:true});
 initGraph();
-loadRelationTypes().finally(()=>load().catch(err=>{$('status').textContent='Ошибка: '+err.message}));
+load().catch(err=>{$('status').textContent='Ошибка: '+err.message});
 </script>
 </body>
 </html>`
