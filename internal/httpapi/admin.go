@@ -931,9 +931,9 @@ var LEAD_PHRASES = [
   /^средство создания модели системы разграничения доступа\s+/i
 ];
 var TAIL_PHRASES = [
-  /\s*[-–]?\s*лицензия$/i,
+  /\s*[-–]?\s*лицензия\b.*$/i,
   /\s*формуляр$/i,
-  /\s*установочный комплект$/i,
+  /\s*установочный комплект\b.*$/i,
   /\s*all lng.*$/i,
   /\s*download pack.*$/i,
   /\s*\d+-device.*$/i,
@@ -946,7 +946,8 @@ var TAIL_PHRASES = [
   /,\s*клиентская.*$/i,
   /,\s*серверная.*$/i,
   /,\s*неисключительное право.*$/i,
-  /,\s*простая.*$/i
+  /,\s*простая.*$/i,
+  /\s*право на использование\b.*$/i
 ];
 var WORD_REPLACEMENTS = [
   [/google workspace/gi,'GWS'], [/microsoft 365/gi,'M365'], [/microsoft/gi,'MS'],
@@ -1005,6 +1006,17 @@ function shortTitle(t){
     return i===0 || norm(w)!==norm(arr[i-1]);
   }).join(' ');
   if (!text) text=original;
+  if (text.length > 40){
+    var vt='', brand='';
+    var BRAND_SKIP={'СКЗИ':1,'ПО':1,'ЭВМ':1,'ОС':1,'ПК':1,'АРМ':1,'БД':1,'СУБД':1,'API':1,'SDK':1,'CPU':1,'RAM':1,'РФ':1,'СС':1,'CSP':1,'CAL':1,'ESD':1,'OEM':1};
+    var parts=text.split(' ');
+    for (var bi=0;bi<parts.length;bi++){
+      var bk=parts[bi].replace(/^[.,;:()\-]+|[.,;:()\-]+$/g,'');
+      if (/^\d+(\.\d+)+$/.test(bk) && !vt) vt=bk;
+      if (/^[А-ЯЁA-Z]{3,10}$/.test(bk) && !BRAND_SKIP[bk]) brand=bk;
+    }
+    if (brand && vt) text=brand+' '+vt;
+  }
   if (text.length > 52){
     text=text.slice(0,52);
     var cut=text.lastIndexOf(' ');
