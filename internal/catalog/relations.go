@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -86,20 +87,21 @@ type RegistryPage struct {
 // function with the same name in one package, and the function is what the HTTP
 // layer consumes. The function keeps the specified name.
 type RegistryStats struct {
-	Total           int            `json:"total"`
-	Active          int            `json:"active"`
-	Candidates      int            `json:"candidates"`
-	Rejected        int            `json:"rejected"`
-	Stale           int            `json:"stale"`
-	Expiring30      int            `json:"expiring_30"`
-	ItemsWithActive int            `json:"items_with_active"`
-	ItemsTotal      int            `json:"items_total"`
-	CoveragePct     float64        `json:"coverage_pct"`
-	HubTop1Pct      float64        `json:"hub_top1_pct"`
-	StaleShare      float64        `json:"stale_share"`
-	ByType          map[string]int `json:"by_type"`
-	ByProvenance    map[string]int `json:"by_provenance"`
-	Families        []string       `json:"families"`
+	Total           int                 `json:"total"`
+	Active          int                 `json:"active"`
+	Candidates      int                 `json:"candidates"`
+	Rejected        int                 `json:"rejected"`
+	Stale           int                 `json:"stale"`
+	Expiring30      int                 `json:"expiring_30"`
+	ItemsWithActive int                 `json:"items_with_active"`
+	ItemsTotal      int                 `json:"items_total"`
+	CoveragePct     float64             `json:"coverage_pct"`
+	HubTop1Pct      float64             `json:"hub_top1_pct"`
+	StaleShare      float64             `json:"stale_share"`
+	ByType          map[string]int      `json:"by_type"`
+	ByProvenance    map[string]int      `json:"by_provenance"`
+	Families        []string            `json:"families"`
+	FamilyOptions   []GraphFilterOption `json:"family_options"`
 }
 
 const registryColumns = `r.id, r.from_item_id, r.to_item_id, r.type, r.status,
@@ -380,22 +382,63 @@ func RegistryMetrics(ctx context.Context, dbc *sql.DB) (RegistryStats, error) {
 	}
 
 	rows, err := dbc.QueryContext(ctx, `
-		SELECT DISTINCT product_group FROM lk_items
-		WHERE product_group <> '' ORDER BY 1 LIMIT 100`)
+		SELECT product_group, title, category FROM lk_items
+		WHERE product_group <> '' ORDER BY product_group`)
 	if err != nil {
 		return m, fmt.Errorf("registry families: %w", err)
 	}
 	defer rows.Close()
-	m.Families = []string{}
+	type familyInfo struct {
+		labels map[string]int
+		count  int
+	}
+	groups := map[string]*familyInfo{}
+	var groupOrder []string
 	for rows.Next() {
-		var family string
-		if err := rows.Scan(&family); err != nil {
+		var group, title, category string
+		if err := rows.Scan(&group, &title, &category); err != nil {
 			return m, err
 		}
-		m.Families = append(m.Families, family)
+		info := groups[group]
+		if info == nil {
+			info = &familyInfo{labels: map[string]int{}}
+			groups[group] = info
+			groupOrder = append(groupOrder, group)
+		}
+		label := familyForTitle(title, category)
+		if label == "" {
+			label = group
+		}
+		info.labels[label]++
+		info.count++
 	}
 	if err := rows.Err(); err != nil {
 		return m, err
+	}
+	m.Families = groupOrder
+	if len(m.Families) > 100 {
+		m.Families = m.Families[:100]
+	}
+	m.FamilyOptions = make([]GraphFilterOption, 0, len(groups))
+	for group, info := range groups {
+		label, best := group, 0
+		for candidate, n := range info.labels {
+			if n > best || (n == best && candidate < label) {
+				label, best = candidate, n
+			}
+		}
+		m.FamilyOptions = append(m.FamilyOptions, GraphFilterOption{
+			Value: group, Label: label, Count: info.count,
+		})
+	}
+	sort.Slice(m.FamilyOptions, func(i, j int) bool {
+		if m.FamilyOptions[i].Count != m.FamilyOptions[j].Count {
+			return m.FamilyOptions[i].Count > m.FamilyOptions[j].Count
+		}
+		return m.FamilyOptions[i].Label < m.FamilyOptions[j].Label
+	})
+	if len(m.FamilyOptions) > 100 {
+		m.FamilyOptions = m.FamilyOptions[:100]
 	}
 
 	if m.ItemsTotal > 0 {

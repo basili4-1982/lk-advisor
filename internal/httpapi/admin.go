@@ -781,7 +781,14 @@ function fillRegistrySelects(metrics){
     ts.value = cur;
   }
   var fs=el('registry-family'), fcur=fs.value;
-  if (fs.options.length <= 1 && metrics.families) {
+  if (fs.options.length <= 1 && metrics.family_options && metrics.family_options.length) {
+    metrics.family_options.forEach(function(g){
+      var o=document.createElement('option');
+      o.value=g.value; o.textContent=g.label+' ('+g.count+')';
+      fs.appendChild(o);
+    });
+    fs.value = fcur;
+  } else if (fs.options.length <= 1 && metrics.families) {
     metrics.families.forEach(function(g){
       var o=document.createElement('option'); o.value=g; o.textContent=g; fs.appendChild(o);
     });

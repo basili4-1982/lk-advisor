@@ -304,6 +304,14 @@ func TestRegistryMetrics(t *testing.T) {
 			t.Fatalf("families[%d] = %q, want %q", i, m.Families[i], want[i])
 		}
 	}
+	if len(m.FamilyOptions) == 0 {
+		t.Fatal("family options are empty")
+	}
+	for _, o := range m.FamilyOptions {
+		if o.Value == "" || o.Label == "" || o.Count <= 0 {
+			t.Fatalf("bad family option %+v", o)
+		}
+	}
 	// The fixture groups exist and are therefore reachable when the table has
 	// fewer than 100 groups; on the shared dataset they sort past the cap.
 	inWindow := len(all) <= 100
