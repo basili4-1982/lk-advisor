@@ -160,7 +160,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 
 	var runningExperiment *experiment.Experiment
 	var assignment experiment.Assignment
-	if list, xerr := experiment.LoadRunning(ctx, h.db, audience, industry); xerr == nil && len(list) > 0 {
+	if list, xerr := experiment.LoadRunning(ctx, h.db, audience, industry, strategyName); xerr == nil && len(list) > 0 {
 		e := list[0]
 		if a, aerr := experiment.Assign(ctx, h.db, e, req.ClientID); aerr == nil {
 			runningExperiment = &e

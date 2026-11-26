@@ -172,7 +172,8 @@ python3 analysis/consensus_backtest.py \
 
 - `analysis/seasonality_report.md` — сезонность, recency, окно продления;
 - `analysis/consensus_report.md` — add-on разрезов к гибриду и абляции;
-- `analysis/cohort_configs.md` — офисная когорта с экспериментом и без.
+- `analysis/cohort_configs.md` — офисная когорта с экспериментом и без;
+- `analysis/bad_hypothesis_stop.md` — как быстро платформа убивает плохую гипотезу.
 
 Главные выводы:
 

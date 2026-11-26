@@ -535,7 +535,7 @@ async function loadExperiments(){
           '<div><div class="form-title" style="margin:0">'+esc(x.title)+'</div>'+
           '<div class="hint">'+esc(x.hypothesis)+'</div></div>'+
           '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+gBadge+'<span class="pill">'+esc(x.status)+'</span></div></div>'+
-        '<div class="hint" style="margin:8px 0">Скоуп: '+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' · '+
+        '<div class="hint" style="margin:8px 0">Скоуп: '+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' / '+esc(x.strategy||'все')+' · '+
           esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+' · '+esc(x.metric)+'</div>'+
         table+guard+guardWarn+decisions+decided+'</div>';
     }).join('');
@@ -553,7 +553,7 @@ async function loadKnowledge(){
       return '<div class="formbox" style="margin-bottom:8px">'+
         '<div style="display:flex;justify-content:space-between;gap:12px"><b>'+esc(x.title)+'</b><span class="pill">'+esc(x.decision)+'</span></div>'+
         '<div class="hint" style="margin-top:4px">'+esc(x.hypothesis)+'</div>'+
-        '<div class="hint">'+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' · '+esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+'</div>'+
+        '<div class="hint">'+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' / '+esc(x.strategy||'все')+' · '+esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+'</div>'+
         (x.decision_note?'<div class="hint">'+esc(x.decision_note)+'</div>':'')+
       '</div>';
     }).join('');

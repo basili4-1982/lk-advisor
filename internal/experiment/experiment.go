@@ -20,6 +20,7 @@ type Experiment struct {
 	Status       string          `json:"status"`
 	Audience     string          `json:"audience"`
 	Industry     string          `json:"industry"`
+	Strategy     string          `json:"strategy"`
 	Metric       string          `json:"metric"`
 	Guardrails   string          `json:"guardrails"`
 	Variants     []Variant       `json:"variants"`
@@ -92,6 +93,8 @@ type GuardrailCheck struct {
 	FallbackRise    float64  `json:"fallback_rise"`
 	MarginDrop      float64  `json:"margin_drop"`
 	MarginAvailable bool     `json:"margin_available"`
+	ConversionDelta float64  `json:"conversion_delta"`
+	Futility        bool     `json:"futility"`
 }
 
 // CheckGuardrails blocks promotion when a treatment harms renewal/upsell,
@@ -108,6 +111,7 @@ func CheckGuardrails(results []Result) GuardrailCheck {
 		UpsellDrop:      control.UpsellRate - treatment.UpsellRate,
 		FallbackRise:    treatment.FallbackRate - control.FallbackRate,
 		MarginAvailable: control.MarginAvailable && treatment.MarginAvailable,
+		ConversionDelta: treatment.Conversion - control.Conversion,
 	}
 	if control.Exposures < 100 || treatment.Exposures < 100 {
 		check.Blocked = true
@@ -118,8 +122,12 @@ func CheckGuardrails(results []Result) GuardrailCheck {
 	if check.MarginAvailable && control.MarginPerExposure > 0 {
 		check.MarginDrop = (control.MarginPerExposure - treatment.MarginPerExposure) / control.MarginPerExposure
 	}
+	if check.ConversionDelta <= -0.01 {
+		check.Futility = true
+		check.Reasons = append(check.Reasons, fmt.Sprintf("primary metric хуже контроля на %.1f п.п.", -check.ConversionDelta*100))
+	}
 	severe := check.RenewalDrop >= 0.10 || check.FallbackRise >= 0.05 ||
-		(check.MarginAvailable && check.MarginDrop >= 0.20)
+		(check.MarginAvailable && check.MarginDrop >= 0.20) || check.Futility
 	if severe {
 		check.Blocked = true
 		check.Suggested = "reject"
@@ -161,10 +169,10 @@ type DecisionOutcome struct {
 var ErrNotFound = errors.New("experiment not found")
 
 // LoadRunning returns experiments matching the client's audience/industry.
-func LoadRunning(ctx context.Context, dbc *sql.DB, audience, industry string) ([]Experiment, error) {
+func LoadRunning(ctx context.Context, dbc *sql.DB, audience, industry, strategy string) ([]Experiment, error) {
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
-		       e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
+		       e.strategy, e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
 		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
 		       e.relation_type, e.treatment, e.owner, e.created_at,
 		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
@@ -174,7 +182,8 @@ func LoadRunning(ctx context.Context, dbc *sql.DB, audience, industry string) ([
 		WHERE e.status = 'running'
 		  AND (e.audience = '' OR e.audience = $1)
 		  AND (e.industry = '' OR e.industry = $2)
-		ORDER BY e.created_at DESC`, audience, industry)
+		  AND (e.strategy = '' OR e.strategy = $3)
+		ORDER BY e.created_at DESC`, audience, industry, strategy)
 	if err != nil {
 		return nil, fmt.Errorf("running experiments: %w", err)
 	}
@@ -194,7 +203,7 @@ func LoadRunning(ctx context.Context, dbc *sql.DB, audience, industry string) ([
 func List(ctx context.Context, dbc *sql.DB) ([]Experiment, error) {
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
-		       e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
+		       e.strategy, e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
 		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
 		       e.relation_type, e.treatment, e.owner, e.created_at,
 		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
@@ -233,7 +242,7 @@ func scanExperiment(rows *sql.Rows) (Experiment, error) {
 	var e Experiment
 	var variants string
 	if err := rows.Scan(&e.ID, &e.Title, &e.Hypothesis, &e.Status, &e.Audience, &e.Industry,
-		&e.Metric, &e.Guardrails, &variants, &e.TrafficSplit,
+		&e.Strategy, &e.Metric, &e.Guardrails, &variants, &e.TrafficSplit,
 		&e.FromID, &e.ToID, &e.FromTitle, &e.ToTitle,
 		&e.RelationType, &e.Treatment, &e.Owner, &e.CreatedAt,
 		&e.StartedAt, &e.EndsAt, &e.Decision, &e.DecisionNote, &e.DecidedAt); err != nil {
@@ -318,13 +327,14 @@ func RecordEvent(ctx context.Context, dbc *sql.DB, traceID, productID, event str
 		INSERT INTO experiment_events
 			(experiment_id, client_id, variant, trace_id, product_id, event,
 			 amount, margin, margin_available)
-		SELECT e.experiment_id, e.client_id, e.variant, e.trace_id, e.product_id, $3,
+		SELECT e.experiment_id, e.client_id, e.variant, e.trace_id, $2, $3,
 		       p.price,
 		       CASE WHEN p.cost > 0 THEN p.price - p.cost ELSE 0 END,
 		       (p.cost > 0)
 		FROM experiment_events e
-		JOIN products p ON p.id = e.product_id
-		WHERE e.trace_id = $1 AND e.product_id = $2 AND e.event = 'exposed'`,
+		JOIN products p ON p.id = $2
+		WHERE e.trace_id = $1 AND e.event = 'exposed'
+		LIMIT 1`,
 		traceID, productID, event)
 	if err != nil {
 		return fmt.Errorf("experiment event: %w", err)
@@ -447,12 +457,31 @@ func Decide(ctx context.Context, dbc *sql.DB, experimentID, decision, note strin
 	return out, nil
 }
 
+// AutoMonitor stops a clearly harmful experiment. It is called by a worker or
+// the demo simulation; in production this would run on a schedule.
+func AutoMonitor(ctx context.Context, dbc *sql.DB, experimentID string) (DecisionOutcome, bool, error) {
+	results, err := Results(ctx, dbc, experimentID)
+	if err != nil {
+		return DecisionOutcome{}, false, err
+	}
+	check := CheckGuardrails(results)
+	out := DecisionOutcome{Guardrail: check}
+	if !check.Blocked || check.Suggested != "reject" {
+		return out, false, nil
+	}
+	out, err = Decide(ctx, dbc, experimentID, "reject", "auto guardrail: "+strings.Join(check.Reasons, "; "))
+	if err != nil {
+		return out, false, err
+	}
+	return out, true, nil
+}
+
 // SearchKnowledge returns completed experiments filtered by text and decision.
 func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) ([]Experiment, error) {
 	q := "%" + strings.TrimSpace(query) + "%"
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
-		       e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
+		       e.strategy, e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
 		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
 		       e.relation_type, e.treatment, e.owner, e.created_at,
 		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
@@ -462,7 +491,7 @@ func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) (
 		WHERE e.status = 'completed'
 		  AND ($1 = '' OR e.decision = $1)
 		  AND ($2 = '%%' OR e.title ILIKE $2 OR e.hypothesis ILIKE $2
-		       OR e.audience ILIKE $2 OR e.industry ILIKE $2
+		       OR e.audience ILIKE $2 OR e.industry ILIKE $2 OR e.strategy ILIKE $2
 		       OR e.from_id ILIKE $2 OR e.to_id ILIKE $2)
 		ORDER BY e.decided_at DESC NULLS LAST, e.created_at DESC`, decision, q)
 	if err != nil {
@@ -492,6 +521,30 @@ func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) (
 	return out, nil
 }
 
+// SeedBadDemo creates a deliberately wrong hypothesis for time-to-reject tests.
+func SeedBadDemo(ctx context.Context, dbc *sql.DB) error {
+	const id = "exp-coreldraw-bad"
+	if _, err := dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("reset bad experiment: %w", err)
+	}
+	_, err := dbc.ExecContext(ctx, `
+		INSERT INTO experiments
+			(id, title, hypothesis, status, audience, industry, strategy, metric, guardrails,
+			 variants, traffic_split, from_id, to_id, relation_type, treatment, owner, started_at)
+		VALUES ($1, $2, $3, 'running', 'b2b', '', 'hybrid', 'conversion',
+		        'renewal, upsell, fallback',
+		        $4::jsonb, 0.5, 'prod-office-suite', 'prod-sl-43', 'alternative',
+		        'force_relation', 'demo', now())`,
+		id,
+		"CorelDRAW как альтернатива Office для офисного сотрудника",
+		"Показ CorelDRAW офисному сотруднику повышает конверсию",
+		`[{"name":"control","weight":0.5},{"name":"treatment","weight":0.5}]`)
+	if err != nil {
+		return fmt.Errorf("seed bad experiment: %w", err)
+	}
+	return nil
+}
+
 // SeedDemo creates/resets the vertical-slice experiment.
 func SeedDemo(ctx context.Context, dbc *sql.DB) error {
 	const id = "exp-pdf-b2b"
@@ -500,9 +553,9 @@ func SeedDemo(ctx context.Context, dbc *sql.DB) error {
 	}
 	_, err := dbc.ExecContext(ctx, `
 		INSERT INTO experiments
-			(id, title, hypothesis, status, audience, industry, metric, guardrails,
+			(id, title, hypothesis, status, audience, industry, strategy, metric, guardrails,
 			 variants, traffic_split, from_id, to_id, relation_type, treatment, owner, started_at)
-		VALUES ($1, $2, $3, 'running', 'b2b', '', 'conversion',
+		VALUES ($1, $2, $3, 'running', 'b2b', '', 'hybrid', 'conversion',
 		        'не терять renewal и upsell; следить за fallback',
 		        $4::jsonb, 0.5, 'prod-office-suite', 'prod-pdf', 'adjacent_task',
 		        'force_relation', 'demo', now())`,

@@ -19,6 +19,25 @@ func (h *handler) adminExperiments(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
+func (h *handler) adminSeedBadExperiment(w http.ResponseWriter, r *http.Request) {
+	if err := experiment.SeedBadDemo(r.Context(), h.db); err != nil {
+		h.logger.Error("seed bad experiment", "err", err)
+		writeError(w, http.StatusInternalServerError, "seed bad experiment error")
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "experiment.seed_bad_demo", nil)
+	writeJSON(w, http.StatusOK, map[string]bool{"seeded": true})
+}
+
+func (h *handler) adminMonitorExperiment(w http.ResponseWriter, r *http.Request) {
+	outcome, stopped, err := experiment.AutoMonitor(r.Context(), h.db, r.PathValue("id"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"stopped": stopped, "outcome": outcome})
+}
+
 func (h *handler) adminSeedExperiment(w http.ResponseWriter, r *http.Request) {
 	if err := experiment.SeedDemo(r.Context(), h.db); err != nil {
 		h.logger.Error("seed experiment", "err", err)

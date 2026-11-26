@@ -22,10 +22,11 @@ func TestExperimentLifecycle(t *testing.T) {
 		ON CONFLICT (id) DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
+	dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad')`)
 	if err := experiment.SeedDemo(ctx, dbc); err != nil {
 		t.Fatal(err)
 	}
-	defer dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id = 'exp-pdf-b2b'`)
+	defer dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad')`)
 
 	list, err := experiment.List(ctx, dbc)
 	if err != nil {
@@ -33,6 +34,23 @@ func TestExperimentLifecycle(t *testing.T) {
 	}
 	if len(list) != 1 || list[0].ID != "exp-pdf-b2b" {
 		t.Fatalf("list = %+v", list)
+	}
+	if list[0].Strategy != "hybrid" {
+		t.Fatalf("strategy = %q", list[0].Strategy)
+	}
+	runningPopular, err := experiment.LoadRunning(ctx, dbc, "b2b", "", "popular")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runningPopular) != 0 {
+		t.Fatalf("popular must not match hybrid experiment: %+v", runningPopular)
+	}
+	runningHybrid, err := experiment.LoadRunning(ctx, dbc, "b2b", "", "hybrid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(runningHybrid) != 1 {
+		t.Fatalf("hybrid experiment missing: %+v", runningHybrid)
 	}
 
 	var treatment experiment.Assignment
@@ -123,6 +141,13 @@ func TestGuardrailCheck(t *testing.T) {
 	})
 	if !bad.Blocked || bad.Suggested != "reject" {
 		t.Fatalf("severe renewal drop should reject: %+v", bad)
+	}
+	futility := experiment.CheckGuardrails([]experiment.Result{
+		{Variant: "control", Exposures: 200, Conversion: 0.30, RenewalRate: 0.80},
+		{Variant: "treatment", Exposures: 200, Conversion: 0.20, RenewalRate: 0.80},
+	})
+	if !futility.Blocked || futility.Suggested != "reject" || !futility.Futility {
+		t.Fatalf("futility guardrail = %+v", futility)
 	}
 	margin := experiment.CheckGuardrails([]experiment.Result{
 		{Variant: "control", Exposures: 200, RenewalRate: 0.80, MarginAvailable: true, MarginPerExposure: 100},
