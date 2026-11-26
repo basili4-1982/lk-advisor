@@ -408,12 +408,9 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <div class="toolbar">
               <button id="dataset-classify">Разметить топ-10 (LLM/шаблоны)</button>
               <button id="dataset-suggest" class="secondary">Создать кандидатов из co-purchase</button>
-              <span class="hint">Кандидаты получают статус candidate; отказ требует причины. Подтверждение — в «Каталоге».</span>
+              <button id="dataset-open-catalog" class="secondary small">Проверить кандидатов в Каталоге</button>
+              <span class="hint">Проверка и решения — только в «Каталоге».</span>
             </div>
-          </div>
-          <div class="formbox">
-            <div class="form-title">Кандидаты связей из данных</div>
-            <div id="dataset-candidates"></div>
           </div>
           <div class="formbox">
             <div class="form-title">Сильные совместные покупки</div>
@@ -883,17 +880,17 @@ async function loadDataset(){
     if (c.suppressed_items || c.suppressed_b2c_items) notes += '<div class="hint" style="width:100%;margin:4px 0 0;color:#92400e">Товары с <3 покупателями и B2C-товары с <5 физлицами не показываются поштучно в публичных ответах.</div>';
     el('dataset-cards').innerHTML = cards.map(function(x){ return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>'; }).join('') + notes;
     var p=await api('GET','/v1/admin/dataset/co-purchases?limit=50');
-    var cnd=await api('GET','/v1/admin/dataset/candidates?limit=50');
-    var rows=cnd.items||[];
-    el('dataset-candidates').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Тип</th><th>Conf.</th><th>Статус</th><th>Причина</th><th></th></tr></thead><tbody>'+
-      rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'</td><td>'+esc(x.title_b)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+Math.round(x.confidence*100)+'%</td><td>'+esc(regStatusLabel(x.status))+'</td><td>'+esc(x.reason)+'</td><td><button class="small" data-cand-review="confirm" data-cand-id="'+x.id+'">✓</button> <button class="ghost small" data-cand-review="reject" data-cand-id="'+x.id+'">✕</button></td></tr>'; }).join('')+'</tbody></table></div>' :
-      '<div class="empty">Кандидатов пока нет — нажмите «Классифицировать».</div>';
     var rows=p.items||[];
     el('dataset-pairs').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Раз</th><th>B2B</th><th>B2C</th></tr></thead><tbody>'+
       rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'<div class="hint">'+esc(x.item_a)+'</div></td><td>'+esc(x.title_b)+'<div class="hint">'+esc(x.item_b)+'</div></td><td>'+x.count+'</td><td>'+x.b2b_count+'</td><td>'+(x.b2c_hidden?'<span class="hint">скрыто k<5</span>':x.b2c_count)+'</td></tr>'; }).join('')+'</tbody></table></div>' :
       '<div class="empty">Нет пар. Импортируйте датасет v5.</div>';
   } catch(e){ el('dataset-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
+el('dataset-open-catalog').addEventListener('click', function(){
+  document.querySelector('[data-tab=registry]').click();
+  el('registry-status').value='candidate';
+  loadRegistry();
+});
 el('dataset-suggest').addEventListener('click', async function(){
   try { var d=await api('POST','/v1/admin/dataset/co-purchases/suggest',{limit:100,min_count:2}); toast('Создано предложений: '+(d.created||0)); loadDataset(); }
   catch(e){ toast(e.message,true); }
@@ -901,17 +898,6 @@ el('dataset-suggest').addEventListener('click', async function(){
 el('dataset-classify').addEventListener('click', async function(){
   toast('Классифицирую топ-10 через шаблоны…');
   try { var d=await api('POST','/v1/admin/dataset/co-purchases/classify',{limit:10}); toast('Обработано: '+d.processed+', создано: '+d.created+', пропущено: '+d.skipped); loadDataset(); }
-  catch(e){ toast(e.message,true); }
-});
-el('dataset-candidates').addEventListener('click', async function(ev){
-  var mode=ev.target.dataset.candReview, id=ev.target.dataset.candId;
-  if (!mode || !id) return;
-  var note='';
-  if (mode==='reject') {
-    note=(prompt('Причина отказа')||'').trim();
-    if (!note) { toast('Нужна причина отказа', true); return; }
-  }
-  try { await api('POST','/v1/admin/dataset/candidates/review',{id:Number(id),decision:mode,note:note}); toast(mode==='confirm'?'Связь подтверждена':'Связь отклонена'); loadDataset(); }
   catch(e){ toast(e.message,true); }
 });
 function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
