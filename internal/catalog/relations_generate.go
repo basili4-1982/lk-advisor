@@ -103,7 +103,9 @@ func generateVariants(ctx context.Context, dbc *sql.DB, only []string) (int, err
 		FROM lk_items i
 		JOIN groups g ON g.product_group = i.product_group
 		WHERE i.item_id <> g.rep_id` + scopeOuter + `
-		ON CONFLICT (from_item_id, to_item_id, type) DO NOTHING`
+		ON CONFLICT (from_item_id, to_item_id, type) DO UPDATE
+		SET status = 'active', version = relations.version + 1, updated_at = now()
+		WHERE relations.status = 'superseded'`
 	res, err := dbc.ExecContext(ctx, query, args...)
 	if err != nil {
 		return 0, fmt.Errorf("generate variants: %w", err)
