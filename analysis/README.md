@@ -139,9 +139,9 @@ python3 analysis/make_cohort_summary.py
 
 | Метрика | popular | hybrid + feedback |
 |---|---:|---:|
-| Совпадение с профилем | 24% | **82%** |
-| Доля нужных категорий | 23% | **100%** |
-| Покупки на сессию | 39% | **83%** |
+| Совпадение с профилем | 31% | **82%** |
+| Доля нужных категорий | 33% | **100%** |
+| Покупки на сессию | 41% | **83%** |
 
 Графики: `analysis/office_cohort_ab.png`, `analysis/office_cohort_summary.png`.  
 Отчёт для презы: `docs/experiments/cohort-ab.pdf` (и `.md`).
