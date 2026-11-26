@@ -48,7 +48,6 @@ func LoadGroundTruth(ctx context.Context, dbc *sql.DB) ([]model.GroundTruthCase,
 
 type expectedGroup struct {
 	products map[string]bool
-	fallback bool
 }
 
 // Run scores the engine on the given cases.
@@ -84,12 +83,11 @@ func Run(ctx context.Context, dbc *sql.DB, cases []model.GroundTruthCase, now ti
 			groups[c.ClientID] = g
 		}
 		g.products[c.ExpectedProduct] = true
-		if c.ExpectedType == "fallback" {
-			g.fallback = true
-		}
 	}
 
 	var hits1, hits3, violations, fallbacks, withEvidence, recs int
+	popB2B, _ := catalog.PopularityScores(ctx, dbc, "b2b", now, 8)
+	popB2C, _ := catalog.PopularityScores(ctx, dbc, "b2c", now, 8)
 
 	for clientID, g := range groups {
 		p, err := profile.Get(ctx, dbc, clientID)
@@ -100,19 +98,18 @@ func Run(ctx context.Context, dbc *sql.DB, cases []model.GroundTruthCase, now ti
 		if err != nil {
 			return Report{}, err
 		}
+		popularity := popB2B
+		if p.Audience == "b2c" {
+			popularity = popB2C
+		}
 		in := recommend.Input{
 			Profile: p, Products: products, Relations: rels,
 			Promotions: promotions, Rules: rules, RelationTypes: relationTypes,
-			Weights: weights, Now: now,
+			Weights: weights, Popularity: popularity, Now: now,
 		}
 		cands, rejected := recommend.Run(in)
 		if len(cands) == 0 {
-			if g.fallback {
-				hits1++
-				hits3++
-			} else {
-				fallbacks++
-			}
+			fallbacks++
 			continue
 		}
 

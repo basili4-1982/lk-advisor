@@ -143,6 +143,12 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	popularity, perr := catalog.PopularityScores(ctx, h.db, audience, h.now(), 8)
+	if perr != nil {
+		h.logger.Warn("popularity", "err", perr)
+		popularity = nil
+	}
+
 	owned := ownedIDs(p)
 	relations, err := catalog.RelationsScoped(ctx, h.db, owned, audience, industry, h.now())
 	if err != nil {
@@ -154,7 +160,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	in := recommend.Input{
 		Profile: p, Products: products, Relations: relations,
 		Promotions: promotions, Rules: rules, RelationTypes: relationTypes,
-		Weights: weights, Now: h.now(),
+		Weights: weights, Popularity: popularity, Now: h.now(),
 	}
 	intent := recommend.Intent(in)
 
@@ -176,6 +182,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	cands := recommend.Diversify(allowed, limit)
+	cands = recommend.FillPopular(in, cands, limit)
 	// Explore only the last cross-sell slot: never replace renewal, upsell,
 	// analog or alternative, which carry the main business explanation.
 	if limit >= 3 && len(cands) >= 3 && cands[limit-1].Type == "cross_sell" {

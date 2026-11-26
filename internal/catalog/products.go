@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/basili4-1982/lk-advisor/internal/model"
 )
@@ -109,6 +110,39 @@ func Popular(ctx context.Context, dbc *sql.DB, limit int) ([]model.Product, erro
 			return nil, err
 		}
 		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// PopularityScores returns decayed demand per product for an audience.
+// The weight halves every halfLifeWeeks: recent purchases matter more.
+func PopularityScores(ctx context.Context, dbc *sql.DB, audience string, now time.Time, halfLifeWeeks float64) (map[string]float64, error) {
+	if halfLifeWeeks <= 0 {
+		halfLifeWeeks = 8
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT p.product_id,
+		       sum(power(0.5, (extract(epoch from ($1::timestamptz - p.date::timestamptz)) / 604800.0) / $2))::float8 AS score
+		FROM purchases p
+		JOIN products pr ON pr.id = p.product_id
+		WHERE pr.status = 'active'
+		  AND p.date <= $1::date
+		  AND ($3 = '' OR pr.audience = $3 OR pr.audience = 'any')
+		GROUP BY p.product_id
+		ORDER BY score DESC
+		LIMIT 500`, now, halfLifeWeeks, audience)
+	if err != nil {
+		return nil, fmt.Errorf("popularity scores: %w", err)
+	}
+	defer rows.Close()
+	out := map[string]float64{}
+	for rows.Next() {
+		var id string
+		var score float64
+		if err := rows.Scan(&id, &score); err != nil {
+			return nil, err
+		}
+		out[id] = score
 	}
 	return out, rows.Err()
 }

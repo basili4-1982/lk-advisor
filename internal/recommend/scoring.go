@@ -91,7 +91,7 @@ func Diversify(cands []model.Candidate, limit int) []model.Candidate {
 // Run executes the pipeline and returns the top-3 portfolio plus rejections.
 func Run(in Input) ([]model.Candidate, []model.Rejection) {
 	allowed, rejected := Rank(in)
-	return Diversify(allowed, 3), rejected
+	return FillPopular(in, Diversify(allowed, 3), 3), rejected
 }
 
 // Rank executes candidates, rules and scoring and returns every allowed item
@@ -111,6 +111,12 @@ func Rank(in Input) ([]model.Candidate, []model.Rejection) {
 	studentPriority := studentWeight > businessWeight && studentWeight > 0
 	cands := Candidates(in)
 	allowed, rejected := ApplyRules(in, cands)
+	maxPopularity := 0.0
+	for _, score := range in.Popularity {
+		if score > maxPopularity {
+			maxPopularity = score
+		}
+	}
 	for i := range allowed {
 		allowed[i] = ScoreWith(allowed[i], in.Now, in.Weights)
 		if allowed[i].Type == intent {
@@ -124,6 +130,11 @@ func Rank(in Input) ([]model.Candidate, []model.Rejection) {
 			allowed[i].Score = math.Round((allowed[i].Score+boost)*100) / 100
 			if allowed[i].Score > 1 {
 				allowed[i].Score = 1
+			}
+		}
+		if maxPopularity > 0 {
+			if demand, ok := in.Popularity[allowed[i].Product.ID]; ok {
+				allowed[i].Score = math.Round((allowed[i].Score+0.05*demand/maxPopularity)*100) / 100
 			}
 		}
 		if studentPriority && allowed[i].Product.Category == "training" {

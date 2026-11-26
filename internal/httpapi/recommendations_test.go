@@ -138,15 +138,24 @@ func TestRecommendationsManagerApproval(t *testing.T) {
 	}
 }
 
-func TestRecommendationsFallback(t *testing.T) {
+func TestRecommendationsDemandColdStart(t *testing.T) {
 	h, _ := setupAPI(t)
 	rec := post(t, h, `{"client_id":"smb-006"}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
 	}
 	out := decode(t, rec)
-	if !out.Fallback || len(out.Recommendations) == 0 {
+	if out.Fallback || len(out.Recommendations) == 0 {
 		t.Fatalf("out = %+v", out)
+	}
+	found := false
+	for _, e := range out.Recommendations[0].Evidence {
+		if e.Source == "demand" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("cold-start recommendation has no demand evidence: %+v", out.Recommendations[0])
 	}
 }
 

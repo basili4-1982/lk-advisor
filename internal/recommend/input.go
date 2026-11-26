@@ -18,7 +18,10 @@ type Input struct {
 	Rules         []model.Rule
 	RelationTypes map[string]model.RelationType
 	Weights       model.Weights
-	Now           time.Time
+	// Popularity is decayed recent demand by product id. It is an optional
+	// supporting slice: nil means the caller did not load it.
+	Popularity map[string]float64
+	Now        time.Time
 }
 
 // RelationType returns the editable template or a built-in fallback.

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/basili4-1982/lk-advisor/internal/model"
 	"github.com/basili4-1982/lk-advisor/internal/persona"
@@ -96,7 +97,7 @@ func Candidates(in Input) []model.Candidate {
 			if d < 0 || d > 90 {
 				continue
 			}
-			add(l.ProductID, "renewal", 1.0, urgencyFromDays(d), 0.9, 0.9, l.ProductID, "renewal", licenseEvidence(l))
+			add(l.ProductID, "renewal", 1.0, urgencyFromDays(d), 0.9, 0.9, l.ProductID, "renewal", licenseEvidence(l, in.Now))
 		} else {
 			if hasActiveRenewal || d >= 0 || d < -30 {
 				continue
@@ -104,7 +105,7 @@ func Candidates(in Input) []model.Candidate {
 			if p, ok := in.Product(l.ProductID); !ok || p.Status == "discontinued" {
 				continue
 			}
-			add(l.ProductID, "renewal", 1.0, 1.0, 0.9, 0.9, l.ProductID, "renewal", expiredEvidence(l))
+			add(l.ProductID, "renewal", 1.0, 1.0, 0.9, 0.9, l.ProductID, "renewal", expiredEvidence(l, in.Now))
 		}
 		for _, r := range in.Relations {
 			behavior := in.RelationBehavior(r.Type)
@@ -211,6 +212,48 @@ func Candidates(in Input) []model.Candidate {
 		add(toID, "alternative", 0.5*weight, 0, 0.7*weight, 0.8, fromID, "substitute", ev)
 	}
 
+	// Demand: decayed recent popularity is a supporting slice, not a
+	// replacement for relations. It only fills gaps when relations are sparse.
+	if len(out) == 0 && len(in.Popularity) > 0 {
+		ids := make([]string, 0, len(in.Popularity))
+		maxScore := 0.0
+		for id, score := range in.Popularity {
+			ids = append(ids, id)
+			if score > maxScore {
+				maxScore = score
+			}
+		}
+		sort.Slice(ids, func(i, j int) bool {
+			if in.Popularity[ids[i]] != in.Popularity[ids[j]] {
+				return in.Popularity[ids[i]] > in.Popularity[ids[j]]
+			}
+			return ids[i] < ids[j]
+		})
+		for _, id := range ids {
+			if len(out) >= 3 {
+				break
+			}
+			if owned[id] {
+				continue
+			}
+			p, ok := in.Product(id)
+			if !ok || p.Status == "discontinued" {
+				continue
+			}
+			weight := audienceWeight(in, "", id, businessDominant, consumerDominant)
+			if weight == 0 {
+				continue
+			}
+			normalized := 0.0
+			if maxScore > 0 {
+				normalized = in.Popularity[id] / maxScore
+			}
+			add(id, "cross_sell", (0.2+0.2*normalized)*weight, 0, 0.3*weight, 0.45,
+				"segment", "popular",
+				model.Evidence{Source: "demand", Value: "растёт спрос за последние 8 недель"})
+		}
+	}
+
 	return out
 }
 
@@ -311,16 +354,77 @@ func relationEvidence(r model.Relation, in Input) model.Evidence {
 	return model.Evidence{Source: "relation", Value: phrase}
 }
 
-func licenseEvidence(l model.License) model.Evidence {
+func licenseEvidence(l model.License, now time.Time) model.Evidence {
+	d := daysUntil(l.End, now)
 	return model.Evidence{
 		Source: "license",
-		Value:  fmt.Sprintf("лицензия действует до %s", l.End.Format("2006-01-02")),
+		Value:  fmt.Sprintf("лицензия действует до %s, продление через %d дней", l.End.Format("2006-01-02"), d),
 	}
 }
 
-func expiredEvidence(l model.License) model.Evidence {
+func expiredEvidence(l model.License, now time.Time) model.Evidence {
+	d := daysSince(l.End, now)
 	return model.Evidence{
 		Source: "license",
-		Value:  fmt.Sprintf("лицензия истекла %s", l.End.Format("2006-01-02")),
+		Value:  fmt.Sprintf("лицензия истекла %s, просрочено %d дней", l.End.Format("2006-01-02"), d),
 	}
+}
+
+// FillPopular appends decayed-demand candidates until the list reaches limit.
+// It is the final safety net: relations and rules win, popularity only fills.
+func FillPopular(in Input, picked []model.Candidate, limit int) []model.Candidate {
+	if len(picked) >= limit || len(in.Popularity) == 0 {
+		return picked
+	}
+	seen := make(map[string]bool, len(picked))
+	for _, c := range picked {
+		seen[c.Product.ID] = true
+	}
+	owned := ownedIDs(in.Profile)
+	ids := make([]string, 0, len(in.Popularity))
+	maxScore := 0.0
+	for id, score := range in.Popularity {
+		ids = append(ids, id)
+		if score > maxScore {
+			maxScore = score
+		}
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		if in.Popularity[ids[i]] != in.Popularity[ids[j]] {
+			return in.Popularity[ids[i]] > in.Popularity[ids[j]]
+		}
+		return ids[i] < ids[j]
+	})
+	for _, id := range ids {
+		if len(picked) >= limit {
+			break
+		}
+		if seen[id] || owned[id] {
+			continue
+		}
+		p, ok := in.Product(id)
+		if !ok || p.Status == "discontinued" {
+			continue
+		}
+		normalized := 0.0
+		if maxScore > 0 {
+			normalized = in.Popularity[id] / maxScore
+		}
+		c := model.Candidate{
+			Product:         p,
+			Type:            "cross_sell",
+			Relevance:       0.2 + 0.2*normalized,
+			Affinity:        0.3,
+			Margin:          normalizeMargin(p.Price),
+			Confidence:      0.45,
+			Evidence:        []model.Evidence{{Source: "demand", Value: "растёт спрос за последние 8 недель"}},
+			SourceProductID: "segment",
+			RelationType:    "popular",
+			CandidateID:     "segment|popular|" + id,
+		}
+		c = ScoreWith(c, in.Now, in.Weights)
+		picked = append(picked, c)
+		seen[id] = true
+	}
+	return picked
 }

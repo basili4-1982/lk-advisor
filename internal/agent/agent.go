@@ -195,6 +195,11 @@ func (a *Agent) loadState(ctx context.Context, clientID string) (state, error) {
 	if err != nil {
 		return state{}, err
 	}
+	popularity, perr := catalog.PopularityScores(ctx, a.DB, p.Audience, a.Now(), 8)
+	if perr != nil {
+		popularity = nil
+	}
+
 	owned := ownedIDs(p)
 	relations, err := catalog.RelationsScoped(ctx, a.DB, owned, p.Audience, p.Industry, a.Now())
 	if err != nil {
@@ -203,7 +208,7 @@ func (a *Agent) loadState(ctx context.Context, clientID string) (state, error) {
 	in := recommend.Input{
 		Profile: p, Products: products, Relations: relations,
 		Promotions: promotions, Rules: rules, RelationTypes: relationTypes,
-		Weights: weights, Now: a.Now(),
+		Weights: weights, Popularity: popularity, Now: a.Now(),
 	}
 	cands, rejected := recommend.Run(in)
 	usedFallback := false
