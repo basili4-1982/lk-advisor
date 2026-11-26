@@ -959,6 +959,10 @@ var WORD_REPLACEMENTS = [
   [/с расширенным функционалом|расширенным функционалом/gi,'Adv'],
   [/расширенный|расширенным|расширенного|advanced/gi,'Adv'],
   [/pack/gi,''],
+  [/for desktops and mobiles/gi,''],
+  [/(\d+)-mobile device/gi,'$1Mob'],
+  [/(\d+)-desktop/gi,'$1Desk'],
+  [/(\d+)-user/gi,'$1User'],
   [/\bprofessional\b/gi,'Pro'], [/\benterprise\b/gi,'Ent'],
   [/\bbusiness\b/gi,'Bus.'], [/\badditional\b/gi,'Add'],
   [/\bconcurrent\b/gi,'Conc'], [/\bcertified\b/gi,'Cert'],
@@ -976,6 +980,14 @@ function qualifierOf(t){
     }
   }
   return {qual:qual, rest:t};
+}
+function editionTag(s){
+  s=String(s||'').toLowerCase();
+  if (/renewal|продление/.test(s)) return 'Renewal';
+  if (/\bbase\b/.test(s)) return 'Base';
+  if (/upgrade|апгрейд/.test(s)) return 'Upgrade';
+  if (/subscription|подписк/.test(s)) return 'Subscr';
+  return '';
 }
 function licenseKind(s){
   s=String(s||'').toLowerCase();
@@ -1000,7 +1012,7 @@ function shortTitle(t){
     function norm(x){ return x.toLowerCase().replace(/[.,;:]+$/,''); }
     return i===0 || norm(w)!==norm(arr[i-1]);
   }).join(' ');
-  text=text.replace(/\s+([.,;:])/g,'$1').replace(/\.\s*\./g,'.').trim();
+  text=text.replace(/\s+([.,;:])/g,'$1').replace(/\.\s*\./g,'.').replace(/([A-ZА-ЯЁ]{2,})\./g,'$1').trim();
   text=text.split(' ').filter(function(w,i,arr){
     function norm(x){ return x.toLowerCase().replace(/[.,;:]+$/,''); }
     return i===0 || norm(w)!==norm(arr[i-1]);
@@ -1030,6 +1042,9 @@ function pairCell(from, to){
   var full=esc(from)+' → '+esc(to);
   var qa=qualifierOf(from), qb=qualifierOf(to);
   var a=shortTitle(qa.rest), b=shortTitle(qb.rest);
+  var ea=editionTag(from), eb=editionTag(to);
+  if (ea) a+=' · '+ea;
+  if (eb) b+=' · '+eb;
   if (a===b){ a=qa.rest; b=qb.rest; }
   var ka=licenseKind(from), kb=licenseKind(to);
   if (ka && kb && ka!==kb){ a+=' · '+ka; b+=' · '+kb; }
