@@ -281,6 +281,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="attribute">Атрибуты</option>
             </select>
             <select id="registry-family"><option value="">Все семейства</option></select>
+            <button id="registry-apply" class="small">Применить</button>
             </div>
             <button class="secondary small" data-view="all">Смысловые</button>
             <button class="secondary small" data-view="disputed">Спорные</button>
@@ -1511,6 +1512,7 @@ document.querySelectorAll('.tab').forEach(function(b){
 });
 el('registry-filters-toggle').addEventListener('click', function(){ el('registry-filters').classList.toggle('hidden'); });
 el('registry-conf-min').addEventListener('input', updateConfLabel);
+el('registry-apply').addEventListener('click', function(){ REG_VIEW=''; loadRegistry(); });
 updateConfLabel();
 el('registry-search').addEventListener('keyup', function(ev){ if (ev.key==='Enter') loadRegistry(); });
 ['registry-type','registry-status','registry-source','registry-family','registry-conf-min'].forEach(function(id){
@@ -1833,8 +1835,16 @@ async function applyAssistant(){
 }
 load().then(function(){
   var target = location.hash ? document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]') : null;
-  if (target) target.click();
-  else if (document.querySelector('.tab.on').dataset.tab === 'registry') loadRegistry();
+  if (target) {
+    target.click();
+  } else {
+    var on = document.querySelector('.tab.on');
+    if (on && on.dataset.tab === 'registry') {
+      document.body.classList.add('registry-mode');
+      document.querySelector('.layout').classList.add('registry-mode');
+      loadRegistry();
+    }
+  }
 }).catch(function(e){ toast('Не удалось загрузить состояние: '+e.message, true); });
 window.addEventListener('hashchange', function(){
   var target = document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]');
