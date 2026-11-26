@@ -50,7 +50,7 @@ func TestExperimentLifecycle(t *testing.T) {
 		t.Fatalf("assignment changed: %s -> %s", treatment.Variant, again.Variant)
 	}
 
-	if err := experiment.RecordExposure(ctx, dbc, treatment, "tr-exp", "prod-pdf"); err != nil {
+	if err := experiment.RecordExposure(ctx, dbc, treatment, "tr-exp", "prod-pdf", 1, 0, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := experiment.RecordEvent(ctx, dbc, "tr-exp", "prod-pdf", "clicked"); err != nil {
@@ -72,6 +72,9 @@ func TestExperimentLifecycle(t *testing.T) {
 	}
 	if got.Exposures != 1 || got.Clicks != 1 || got.Purchases != 1 || got.Conversion != 1 {
 		t.Fatalf("results = %+v", results)
+	}
+	if got.RenewalShown != 1 || got.RenewalRate != 1 {
+		t.Fatalf("guardrails = %+v", got)
 	}
 
 	ok, err := experiment.Decide(ctx, dbc, "exp-pdf-b2b", "promote", "test")

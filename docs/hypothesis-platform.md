@@ -37,7 +37,8 @@ PDF Toolkit как следующий шаг после Office
    - CTR;
    - overall conversion;
    - target conversion.
-6. Человек принимает решение: `promote`, `reject`, `extend`.
+6. Считаются guardrails: renewal, upsell, fallback.
+7. Человек принимает решение: `promote`, `reject`, `extend`.
 
 ## Почему target conversion важнее uplift
 
@@ -46,7 +47,17 @@ PDF Toolkit как следующий шаг после Office
 | Вариант | Exposure | Target shown | Покупки | Conversion | Target conv |
 |---|---:|---:|---:|---:|---:|
 | control | 250 | 29 | 8 | 3.2% | **27.6%** |
-| treatment | 250 | 236 | 65 | 26.0% | **27.5%** |
+| treatment | 250 | 231 | 65 | 26.0% | **28.1%** |
+
+Guardrails в том же прогоне:
+
+| Вариант | Renewal | Upsell | Fallback |
+|---|---:|---:|---:|
+| control | 76.0% | 20.0% | 0.0% |
+| treatment | 72.0% | 24.0% | 0.0% |
+
+Renewal слегка падает. Поэтому решение — не `promote`, а `extend`: нужна
+вторая волна и проверка, не теряем ли продления.
 
 Общий uplift выглядит огромным, но target conversion одинаковый.
 
@@ -74,7 +85,16 @@ POST /v1/admin/experiments/{id}/decision
 
 - `experiments` — гипотеза, скоуп, варианты, target, статус, решение;
 - `experiment_assignments` — стабильный вариант клиента;
-- `experiment_events` — exposed / clicked / purchased.
+- `experiment_events` — exposed / clicked / purchased + guardrail-поля.
+
+`extend` не просто меняет статус: эксперимент остаётся running и получает
+`ends_at = now() + 14 дней` для следующей волны.
+
+## База знаний
+
+Завершённые эксперименты не удаляются: в таблице `experiments` остаются
+гипотеза, скоуп, метрики, решение и заметка. Это и есть первая версия базы
+знаний: что проверяли, где, с каким результатом и что решили.
 
 ## Ограничения
 

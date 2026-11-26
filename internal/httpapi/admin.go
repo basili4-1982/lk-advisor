@@ -506,6 +506,7 @@ async function loadExperiments(){
           var r=pair[1];
           return '<tr><td><b>'+esc(pair[0])+'</b></td><td>'+r.exposures+'</td><td>'+r.clients+'</td><td>'+r.clicks+'</td><td>'+r.purchases+'</td><td>'+pct(r.ctr)+'</td><td>'+pct(r.conversion)+'</td><td>'+r.target_exposures+'</td><td>'+pct(r.target_conversion)+'</td></tr>';
         }).join('')+'</tbody></table></div>';
+      var guard='<div class="hint" style="margin-top:8px">Guardrails: renewal '+pct(c.renewal_rate)+' → '+pct(t.renewal_rate)+', upsell '+pct(c.upsell_rate)+' → '+pct(t.upsell_rate)+', fallback '+pct(c.fallback_rate)+' → '+pct(t.fallback_rate)+'</div>';
       var decisions='<div class="toolbar" style="margin-top:8px">'+
         '<button data-exp-decision="promote" data-exp-id="'+esc(x.id)+'">Подтвердить</button> '+
         '<button class="ghost" data-exp-decision="reject" data-exp-id="'+esc(x.id)+'">Отклонить</button> '+
@@ -519,7 +520,7 @@ async function loadExperiments(){
           '<span class="pill">'+esc(x.status)+'</span></div>'+
         '<div class="hint" style="margin:8px 0">Скоуп: '+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' · '+
           esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+' · '+esc(x.metric)+'</div>'+
-        table+decisions+decided+'</div>';
+        table+guard+decisions+decided+'</div>';
     }).join('');
   } catch(e){ el('experiments-list').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }

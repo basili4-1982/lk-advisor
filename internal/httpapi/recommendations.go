@@ -327,13 +327,20 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	if runningExperiment != nil {
 		exposedTarget := ""
+		renewalShown, upsellShown := 0, 0
 		for _, c := range cands {
 			if c.Product.ID == runningExperiment.ToID {
 				exposedTarget = runningExperiment.ToID
-				break
+			}
+			switch c.Type {
+			case "renewal":
+				renewalShown++
+			case "upsell":
+				upsellShown++
 			}
 		}
-		if err := experiment.RecordExposure(ctx, h.db, assignment, traceID, exposedTarget); err != nil {
+		if err := experiment.RecordExposure(ctx, h.db, assignment, traceID, exposedTarget,
+			renewalShown, upsellShown, fallback); err != nil {
 			h.logger.Warn("experiment exposure", "err", err)
 		}
 	}

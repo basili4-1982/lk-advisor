@@ -64,9 +64,15 @@ type Result struct {
 	Purchases        int     `json:"purchases"`
 	TargetExposures  int     `json:"target_exposures"`
 	TargetPurchases  int     `json:"target_purchases"`
+	RenewalShown     int     `json:"renewal_shown"`
+	UpsellShown      int     `json:"upsell_shown"`
+	FallbackShown    int     `json:"fallback_shown"`
 	CTR              float64 `json:"ctr"`
 	Conversion       float64 `json:"conversion"`
 	TargetConversion float64 `json:"target_conversion"`
+	RenewalRate      float64 `json:"renewal_rate"`
+	UpsellRate       float64 `json:"upsell_rate"`
+	FallbackRate     float64 `json:"fallback_rate"`
 }
 
 // LoadRunning returns experiments matching the client's audience/industry.
@@ -198,15 +204,18 @@ func Assign(ctx context.Context, dbc *sql.DB, e Experiment, clientID string) (As
 
 // RecordExposure writes one experiment exposure. The target product is set
 // only when it was actually shown.
-func RecordExposure(ctx context.Context, dbc *sql.DB, a Assignment, traceID, productID string) error {
+func RecordExposure(ctx context.Context, dbc *sql.DB, a Assignment, traceID, productID string,
+	renewalShown, upsellShown int, fallback bool) error {
 	if a.ExperimentID == "" {
 		return nil
 	}
 	_, err := dbc.ExecContext(ctx, `
 		INSERT INTO experiment_events
-			(experiment_id, client_id, variant, trace_id, product_id, event)
-		VALUES ($1, $2, $3, $4, $5, 'exposed')`,
-		a.ExperimentID, a.ClientID, a.Variant, traceID, productID)
+			(experiment_id, client_id, variant, trace_id, product_id, event,
+			 renewal_shown, upsell_shown, fallback)
+		VALUES ($1, $2, $3, $4, $5, 'exposed', $6, $7, $8)`,
+		a.ExperimentID, a.ClientID, a.Variant, traceID, productID,
+		renewalShown, upsellShown, fallback)
 	if err != nil {
 		return fmt.Errorf("experiment exposure: %w", err)
 	}
@@ -240,7 +249,10 @@ func Results(ctx context.Context, dbc *sql.DB, experimentID string) ([]Result, e
 		       count(*) FILTER (WHERE event = 'clicked') AS clicks,
 		       count(*) FILTER (WHERE event = 'purchased') AS purchases,
 		       count(*) FILTER (WHERE event = 'exposed' AND product_id = (SELECT to_id FROM experiments WHERE id = $1)) AS target_exposures,
-		       count(*) FILTER (WHERE event = 'purchased' AND product_id = (SELECT to_id FROM experiments WHERE id = $1)) AS target_purchases
+		       count(*) FILTER (WHERE event = 'purchased' AND product_id = (SELECT to_id FROM experiments WHERE id = $1)) AS target_purchases,
+		       count(*) FILTER (WHERE event = 'exposed' AND renewal_shown > 0) AS renewal_shown,
+		       count(*) FILTER (WHERE event = 'exposed' AND upsell_shown > 0) AS upsell_shown,
+		       count(*) FILTER (WHERE event = 'exposed' AND fallback) AS fallback_shown
 		FROM experiment_events
 		WHERE experiment_id = $1
 		GROUP BY variant`, experimentID)
@@ -252,7 +264,8 @@ func Results(ctx context.Context, dbc *sql.DB, experimentID string) ([]Result, e
 	for rows.Next() {
 		var r Result
 		if err := rows.Scan(&r.Variant, &r.Exposures, &r.Clients, &r.Clicks, &r.Purchases,
-			&r.TargetExposures, &r.TargetPurchases); err != nil {
+			&r.TargetExposures, &r.TargetPurchases,
+			&r.RenewalShown, &r.UpsellShown, &r.FallbackShown); err != nil {
 			return nil, err
 		}
 		if r.Exposures > 0 {
@@ -261,6 +274,11 @@ func Results(ctx context.Context, dbc *sql.DB, experimentID string) ([]Result, e
 		}
 		if r.TargetExposures > 0 {
 			r.TargetConversion = float64(r.TargetPurchases) / float64(r.TargetExposures)
+		}
+		if r.Exposures > 0 {
+			r.RenewalRate = float64(r.RenewalShown) / float64(r.Exposures)
+			r.UpsellRate = float64(r.UpsellShown) / float64(r.Exposures)
+			r.FallbackRate = float64(r.FallbackShown) / float64(r.Exposures)
 		}
 		byVariant[r.Variant] = r
 	}
@@ -286,13 +304,16 @@ func Decide(ctx context.Context, dbc *sql.DB, experimentID, decision, note strin
 		return false, fmt.Errorf("decision must be promote, reject or extend")
 	}
 	status := "completed"
+	endsAt := time.Now()
 	if decision == "extend" {
 		status = "running"
+		endsAt = time.Now().AddDate(0, 0, 14)
 	}
 	res, err := dbc.ExecContext(ctx, `
 		UPDATE experiments
-		SET status = $2, decision = $3, decision_note = $4, decided_at = now()
-		WHERE id = $1`, experimentID, status, decision, note)
+		SET status = $2, decision = $3, decision_note = $4,
+		    ends_at = $5, decided_at = now()
+		WHERE id = $1`, experimentID, status, decision, note, endsAt)
 	if err != nil {
 		return false, fmt.Errorf("experiment decision: %w", err)
 	}
