@@ -133,8 +133,8 @@ func (h *handler) adminRegistryBulkReview(w http.ResponseWriter, r *http.Request
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	if req.Decision != "confirm" && req.Decision != "reject" {
-		writeError(w, http.StatusBadRequest, "decision must be confirm or reject")
+	if req.Decision != "confirm" && req.Decision != "reject" && req.Decision != "defer" {
+		writeError(w, http.StatusBadRequest, "decision must be confirm, reject or defer")
 		return
 	}
 	f := req.Filter

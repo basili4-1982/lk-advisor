@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 )
 
@@ -287,5 +288,19 @@ func TestReviewQueueRejectBulk(t *testing.T) {
 	}
 	if n != 2 {
 		t.Fatalf("rejected = %d, want 2", n)
+	}
+}
+
+func TestAdminPageHasRegistryWorkbench(t *testing.T) {
+	h, _ := setupAPI(t)
+	rec := doJSON(t, h, http.MethodGet, "/admin", "")
+	body := rec.Body.String()
+	for _, needle := range []string{
+		`data-tab="registry"`, `id="tab-registry"`, `id="registry-metrics"`,
+		`id="registry-detail"`, `id="registry-generate"`, `function loadRegistry`,
+	} {
+		if !strings.Contains(body, needle) {
+			t.Errorf("admin page missing %s", needle)
+		}
 	}
 }

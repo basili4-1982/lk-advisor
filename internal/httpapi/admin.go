@@ -126,6 +126,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
     <section class="panel">
       <div class="tabs">
         <button class="tab on" data-tab="relations">Связи товаров</button>
+        <button class="tab" data-tab="registry">Каталог v5</button>
         <button class="tab" data-tab="validation">Валидация <span class="pill q hidden" id="review-badge">0</span></button>
         <button class="tab" data-tab="types">Типы связей</button>
         <button class="tab" data-tab="rules">Правила</button>
@@ -169,6 +170,51 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <thead><tr><th>Откуда</th><th>Куда</th><th>Тип</th><th>Увер.</th><th>Статус</th><th></th></tr></thead>
             <tbody id="rel-body"></tbody>
           </table></div>
+        </div>
+
+        <div id="tab-registry" class="hidden">
+          <div class="stats" id="registry-metrics" style="margin-bottom:12px"></div>
+          <div class="toolbar">
+            <input id="registry-search" placeholder="Поиск по товару или id" style="max-width:220px">
+            <select id="registry-type"><option value="">Все типы</option></select>
+            <select id="registry-status">
+              <option value="">Все статусы</option>
+              <option value="candidate">Кандидаты</option>
+              <option value="active">Активные</option>
+              <option value="rejected">Отклонённые</option>
+              <option value="stale">Устаревшие</option>
+            </select>
+            <select id="registry-source">
+              <option value="">Все источники</option>
+              <option value="manual">Ручные</option>
+              <option value="co_purchase">Co-purchase</option>
+              <option value="llm">LLM</option>
+              <option value="attribute">Атрибуты</option>
+            </select>
+            <select id="registry-family"><option value="">Все семейства</option></select>
+            <button class="secondary small" data-view="all">Все</button>
+            <button class="secondary small" data-view="disputed">Спорные</button>
+            <button class="secondary small" data-view="expiring">Истекают</button>
+            <button class="secondary small" data-view="structural">Структурные</button>
+            <button id="registry-generate" class="small">Сгенерировать</button>
+            <span class="hint" id="registry-count"></span>
+          </div>
+          <div class="tablewrap"><table>
+            <thead><tr>
+              <th><input type="checkbox" id="registry-all" style="width:auto"></th>
+              <th>Источник</th><th>Цель</th><th>Тип</th><th>Статус</th>
+              <th>Провенанс</th><th>Уверенность</th><th>Доказательство</th>
+              <th>Семейство</th><th>Действует до</th><th>Версия</th>
+            </tr></thead>
+            <tbody id="registry-body"></tbody>
+          </table></div>
+          <div class="toolbar" style="margin-top:10px">
+            <input id="registry-note" placeholder="Причина решения (обязательна для отказа)" style="max-width:360px">
+            <button id="registry-confirm" class="small">Подтвердить выбранные</button>
+            <button id="registry-reject" class="secondary small">Отклонить</button>
+            <button id="registry-defer" class="secondary small">Отложить</button>
+          </div>
+          <div id="registry-detail" class="formbox" style="margin-top:12px"></div>
         </div>
 
         <div id="tab-validation" class="hidden">
@@ -356,6 +402,11 @@ var WEIGHT_ROWS = [
 ];
 var state = {products: [], relations: [], rules: [], weights: {}, clients: []};
 var lastOps = [];
+var REG_STATUS = {candidate: 'Кандидат', active: 'Активна', rejected: 'Отклонена', stale: 'Устарела', expired: 'Истекла', superseded: 'Заменена'};
+var REG_PROV = {manual: 'Ручная', co_purchase: 'Co-purchase', llm: 'LLM', attribute: 'Атрибуты', rule: 'Правило', import: 'Импорт'};
+var REG_SELECTED = {};
+var REG_PAGE = {items: [], total: 0};
+var REG_VIEW = '';
 
 function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function el(id){ return document.getElementById(id); }
@@ -663,7 +714,7 @@ async function loadDataset(){
     var cnd=await api('GET','/v1/admin/dataset/candidates?limit=50');
     var rows=cnd.items||[];
     el('dataset-candidates').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Тип</th><th>Conf.</th><th>Статус</th><th>Причина</th><th></th></tr></thead><tbody>'+
-      rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'</td><td>'+esc(x.title_b)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+Math.round(x.confidence*100)+'%</td><td>'+esc(x.status)+'</td><td>'+esc(x.reason)+'</td><td><button class="small" data-cand-review="confirm" data-cand-id="'+x.id+'">✓</button> <button class="ghost small" data-cand-review="reject" data-cand-id="'+x.id+'">✕</button></td></tr>'; }).join('')+'</tbody></table></div>' :
+      rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'</td><td>'+esc(x.title_b)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+Math.round(x.confidence*100)+'%</td><td>'+esc(regStatusLabel(x.status))+'</td><td>'+esc(x.reason)+'</td><td><button class="small" data-cand-review="confirm" data-cand-id="'+x.id+'">✓</button> <button class="ghost small" data-cand-review="reject" data-cand-id="'+x.id+'">✕</button></td></tr>'; }).join('')+'</tbody></table></div>' :
       '<div class="empty">Кандидатов пока нет — нажмите «Классифицировать».</div>';
     var rows=p.items||[];
     el('dataset-pairs').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Раз</th><th>B2B</th><th>B2C</th></tr></thead><tbody>'+
@@ -686,6 +737,139 @@ el('dataset-candidates').addEventListener('click', async function(ev){
   try { await api('POST','/v1/admin/dataset/candidates/review',{id:Number(id),decision:mode,note:''}); toast(mode==='confirm'?'Связь подтверждена':'Связь отклонена'); loadDataset(); }
   catch(e){ toast(e.message,true); }
 });
+function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
+function regProvLabel(p){ return REG_PROV[p] || p || '—'; }
+function regWhen(v){ if(!v) return '—'; var d=new Date(v); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU'); }
+function regEvidence(ev){
+  if(!ev || !ev.length) return '—';
+  return ev.map(function(e){
+    var label = (e.kind ? e.kind+': ' : '') + (e.summary || '');
+    return '<span class="pill type">'+esc(label)+'</span>';
+  }).join(' ');
+}
+function registryQuery(){
+  var p=[];
+  function add(k,v){ if(v!=='' && v!=null) p.push(encodeURIComponent(k)+'='+encodeURIComponent(v)); }
+  add('q', el('registry-search').value.trim());
+  add('type', el('registry-type').value);
+  add('status', el('registry-status').value);
+  add('source', el('registry-source').value);
+  add('family', el('registry-family').value);
+  if (REG_VIEW==='disputed') { add('min_conf','0.5'); add('max_conf','0.75'); }
+  if (REG_VIEW==='expiring') { add('expiring','30'); }
+  add('limit','200');
+  return p.length ? '?'+p.join('&') : '';
+}
+async function loadRegistry(){
+  try {
+    var data = await api('GET','/v1/admin/registry/relations'+registryQuery());
+    var metrics = await api('GET','/v1/admin/registry/metrics');
+    REG_PAGE.items = data.items || [];
+    REG_PAGE.total = data.total || REG_PAGE.items.length;
+    renderRegistryMetrics(metrics);
+    fillRegistrySelects(metrics);
+    renderRegistry();
+  } catch(e){ toast(e.message,true); }
+}
+function fillRegistrySelects(metrics){
+  var ts=el('registry-type'), cur=ts.value;
+  if (ts.options.length <= 1) {
+    (state.relation_types||[]).filter(function(t){ return t.status==='active'; }).forEach(function(t){
+      var o=document.createElement('option'); o.value=t.code; o.textContent=t.title; ts.appendChild(o);
+    });
+    ts.value = cur;
+  }
+  var fs=el('registry-family'), fcur=fs.value;
+  if (fs.options.length <= 1 && metrics.families) {
+    metrics.families.forEach(function(g){
+      var o=document.createElement('option'); o.value=g; o.textContent=g; fs.appendChild(o);
+    });
+    fs.value = fcur;
+  }
+}
+function renderRegistryMetrics(m){
+  var cards=[['Связей', m.total], ['Активных', m.active], ['Кандидатов', m.candidates],
+             ['Покрытие', (m.coverage_pct||0).toFixed(1)+'%'],
+             ['Stale', (m.stale_share||0).toFixed(1)+'%'],
+             ['Хабы top-1%', (m.hub_top1_pct||0).toFixed(1)+'%']];
+  el('registry-metrics').innerHTML = cards.map(function(x){
+    return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>';
+  }).join('');
+}
+function renderRegistry(){
+  var rows=REG_PAGE.items;
+  el('registry-count').textContent = rows.length + ' из ' + REG_PAGE.total;
+  if (!rows.length) {
+    el('registry-body').innerHTML = '<tr><td colspan="11" class="empty">Связей нет. Нажмите «Сгенерировать».</td></tr>';
+    return;
+  }
+  el('registry-body').innerHTML = rows.map(function(r){
+    return '<tr data-reg-id="'+r.id+'">'+
+      '<td><input type="checkbox" data-reg-check="'+r.id+'" style="width:auto"'+(REG_SELECTED[r.id]?' checked':'')+'></td>'+
+      '<td>'+esc(r.from_title||r.from_item_id)+'</td>'+
+      '<td>'+esc(r.to_title||r.to_item_id)+'</td>'+
+      '<td><span class="pill type">'+esc(typeTitle(r.type))+'</span></td>'+
+      '<td><span class="pill '+(r.status==='active'?'on':(r.status==='rejected'?'off':'q'))+'">'+esc(regStatusLabel(r.status))+'</span></td>'+
+      '<td>'+esc(regProvLabel(r.provenance_kind))+'</td>'+
+      '<td>'+Math.round((r.confidence||0)*100)+'%</td>'+
+      '<td>'+regEvidence(r.evidence)+'</td>'+
+      '<td>'+esc(r.from_family||'—')+'</td>'+
+      '<td>'+regWhen(r.valid_until)+'</td>'+
+      '<td>v'+esc(r.version||1)+'</td>'+
+    '</tr>';
+  }).join('');
+}
+function registryItem(id){
+  for (var i=0;i<REG_PAGE.items.length;i++) if (String(REG_PAGE.items[i].id)===String(id)) return REG_PAGE.items[i];
+  return null;
+}
+function renderRegistryDetail(id){
+  var r=registryItem(id); if (!r) return;
+  el('registry-detail').innerHTML =
+    '<div class="form-title">'+esc(r.from_title||r.from_item_id)+' → '+esc(r.to_title||r.to_item_id)+'</div>'+
+    '<div class="hint">'+esc(typeTitle(r.type))+' · '+esc(regStatusLabel(r.status))+' · '+esc(regProvLabel(r.provenance_kind))+' · '+Math.round((r.confidence||0)*100)+'%</div>'+
+    '<div style="margin:8px 0">'+regEvidence(r.evidence)+'</div>'+
+    '<div class="hint">Семейство: '+esc(r.from_family||'—')+' → '+esc(r.to_family||'—')+' · версия '+esc(r.version||1)+
+      (r.rejection_reason?' · причина отказа: '+esc(r.rejection_reason):'')+'</div>'+
+    '<div class="toolbar" style="margin-top:8px">'+
+      '<button class="small" data-reg-review="confirm" data-reg-review-id="'+r.id+'">Подтвердить</button>'+
+      '<button class="secondary small" data-reg-review="reject" data-reg-review-id="'+r.id+'">Отклонить</button>'+
+      '<button class="secondary small" data-reg-review="defer" data-reg-review-id="'+r.id+'">Отложить</button>'+
+    '</div>';
+}
+async function registryReview(id, decision){
+  var note=el('registry-note').value.trim();
+  if (decision==='reject' && !note) { toast('Нужна причина отказа', true); return; }
+  var item=registryItem(id) || {};
+  try {
+    await api('POST','/v1/admin/registry/relations/'+id+'/review',
+      {decision:decision, note:note, expected_version:item.version||1});
+    toast(decision==='confirm'?'Связь подтверждена':(decision==='reject'?'Связь отклонена':'Отложено'));
+    el('registry-detail').innerHTML='';
+    await loadRegistry();
+  } catch(e){ toast(e.message,true); }
+}
+async function registryBulk(decision){
+  var ids=Object.keys(REG_SELECTED).filter(function(k){ return REG_SELECTED[k]; }).map(Number);
+  var note=el('registry-note').value.trim();
+  if (!ids.length) { toast('Ничего не выбрано', true); return; }
+  if (decision==='reject' && !note) { toast('Нужна причина отказа', true); return; }
+  try {
+    var out=await api('POST','/v1/admin/registry/relations/bulk-review',
+      {ids:ids, decision:decision, note:note});
+    toast('Обработано: '+(out.reviewed||0));
+    REG_SELECTED={};
+    await loadRegistry();
+  } catch(e){ toast(e.message,true); }
+}
+async function registryGenerate(){
+  try {
+    var out=await api('POST','/v1/admin/registry/generate',
+      {min_co_purchase:3, limit:500, include_variants:true});
+    toast('Co-purchase: '+out.co_purchase+', вариантов: '+out.variant+', отказов: '+out.skipped_rejected);
+    await loadRegistry();
+  } catch(e){ toast(e.message,true); }
+}
 function renderRelations(){
   var q = el('rel-search').value.trim().toLowerCase();
   var ft = el('rel-filter-type').value, fs = el('rel-filter-status').value;
@@ -803,10 +987,50 @@ document.querySelectorAll('.tab').forEach(function(b){
     b.classList.add('on'); el('tab-'+b.dataset.tab).classList.remove('hidden');
     if (b.dataset.tab === 'analytics') loadAnalytics();
     if (b.dataset.tab === 'dataset') loadDataset();
+    if (b.dataset.tab === 'registry') loadRegistry();
     if (b.dataset.tab === 'experiments') { loadExperiments(); loadKnowledge(); }
     if (b.dataset.tab === 'validation') loadReview();
   });
 });
+el('registry-search').addEventListener('keyup', function(ev){ if (ev.key==='Enter') loadRegistry(); });
+['registry-type','registry-status','registry-source','registry-family'].forEach(function(id){
+  el(id).addEventListener('change', loadRegistry);
+});
+document.querySelectorAll('#tab-registry [data-view]').forEach(function(b){
+  b.addEventListener('click', function(){
+    REG_VIEW=b.dataset.view;
+    el('registry-search').value='';
+    el('registry-type').value='';
+    el('registry-status').value='';
+    el('registry-source').value='';
+    el('registry-family').value='';
+    if (REG_VIEW==='disputed') el('registry-status').value='candidate';
+    if (REG_VIEW==='structural') el('registry-type').value='variant_of';
+    loadRegistry();
+  });
+});
+el('registry-all').addEventListener('change', function(){
+  var on=this.checked;
+  REG_PAGE.items.forEach(function(r){ REG_SELECTED[r.id]=on; });
+  renderRegistry();
+});
+el('registry-body').addEventListener('change', function(ev){
+  var id=ev.target.dataset.regCheck;
+  if (id) REG_SELECTED[id]=ev.target.checked;
+});
+el('registry-body').addEventListener('click', function(ev){
+  if (ev.target.dataset.regCheck) return;
+  var tr=ev.target.closest('tr[data-reg-id]');
+  if (tr) renderRegistryDetail(tr.dataset.regId);
+});
+el('registry-detail').addEventListener('click', function(ev){
+  var d=ev.target.dataset.regReview, id=ev.target.dataset.regReviewId;
+  if (d && id) registryReview(id,d);
+});
+el('registry-confirm').addEventListener('click', function(){ registryBulk('confirm'); });
+el('registry-reject').addEventListener('click', function(){ registryBulk('reject'); });
+el('registry-defer').addEventListener('click', function(){ registryBulk('defer'); });
+el('registry-generate').addEventListener('click', registryGenerate);
 el('rel-search').addEventListener('input', renderRelations);
 el('rel-filter-type').addEventListener('change', renderRelations);
 el('rel-filter-status').addEventListener('change', renderRelations);
