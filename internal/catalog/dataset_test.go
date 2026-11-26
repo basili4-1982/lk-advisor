@@ -92,9 +92,9 @@ func TestDatasetCoverageDeltaAndCandidateReview(t *testing.T) {
 	if id == 0 {
 		t.Fatal("candidate not found")
 	}
-	ok, err = catalog.ReviewDatasetCandidate(ctx, dbc, id, "confirmed", "ok")
+	ok, err = catalog.ReviewDatasetCandidate(ctx, dbc, id, "active", "ok")
 	if err != nil || !ok {
 		t.Fatalf("review ok=%v err=%v", ok, err)
 	}
-	defer dbc.ExecContext(ctx, `DELETE FROM lk_relation_candidates WHERE id=$1`, id)
+	defer dbc.ExecContext(ctx, `DELETE FROM relations WHERE id=$1`, id)
 }

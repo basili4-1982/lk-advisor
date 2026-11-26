@@ -337,9 +337,9 @@ func appendManualEdges(ctx context.Context, dbc *sql.DB, g *DemoGraph) error {
 	}
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT from_item_id, to_item_id, type, status, confidence::float8
-		FROM lk_relation_candidates
+		FROM relations
 		WHERE source = 'manual'
-		  AND status IN ('quarantine', 'confirmed')
+		  AND status IN ('candidate', 'active')
 		  AND from_item_id = ANY($1)
 		  AND to_item_id = ANY($1)`, pq.Array(ids))
 	if err != nil {
@@ -393,8 +393,8 @@ func CreateManualDatasetRelation(ctx context.Context, dbc *sql.DB, from, to, typ
 	if from == "" || to == "" || from == to || typ == "" {
 		return false, fmt.Errorf("from_item_id, to_item_id and type are required")
 	}
-	if status != "quarantine" && status != "confirmed" {
-		return false, fmt.Errorf("status must be quarantine or confirmed")
+	if status != "candidate" && status != "active" {
+		return false, fmt.Errorf("status must be candidate or active")
 	}
 	if confidence <= 0 || confidence > 1 {
 		confidence = 0.8
@@ -413,7 +413,7 @@ func CreateManualDatasetRelation(ctx context.Context, dbc *sql.DB, from, to, typ
 		return false, fmt.Errorf("item not found")
 	}
 	res, err := dbc.ExecContext(ctx, `
-		INSERT INTO lk_relation_candidates
+		INSERT INTO relations
 			(from_item_id, to_item_id, type, confidence, status, reason, evidence, source)
 		VALUES ($1, $2, $3, $4, $5, $6, '[]'::jsonb, 'manual')
 		ON CONFLICT (from_item_id, to_item_id, type) DO UPDATE SET

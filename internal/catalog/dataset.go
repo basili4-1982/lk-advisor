@@ -120,7 +120,7 @@ func LoadDatasetCoverage(ctx context.Context, dbc *sql.DB) (DatasetCoverage, err
 		) x`).Scan(&c.ItemsInPairs); err != nil {
 		return c, err
 	}
-	if err := dbc.QueryRowContext(ctx, `SELECT count(*) FROM lk_relation_candidates`).Scan(&c.Candidates); err != nil {
+	if err := dbc.QueryRowContext(ctx, `SELECT count(*) FROM relations`).Scan(&c.Candidates); err != nil {
 		return c, err
 	}
 	c.SoloItems = c.Items - c.ItemsInPairs
@@ -174,11 +174,11 @@ func CreateCoPurchaseCandidates(ctx context.Context, dbc *sql.DB, limit, minCoun
 		minCount = 2
 	}
 	res, err := dbc.ExecContext(ctx, `
-		INSERT INTO lk_relation_candidates
+		INSERT INTO relations
 			(from_item_id, to_item_id, type, confidence, status, reason, evidence, source)
 		SELECT p.item_a, p.item_b, 'adjacent_task',
 		       LEAST(0.90, 0.55 + p.count * 0.03),
-		       'quarantine',
+		       'candidate',
 		       'куплено вместе ' || p.count || ' раз',
 		       jsonb_build_array(jsonb_build_object('source', 'co_purchase', 'value', 'count=' || p.count)),
 		       'co_purchase'
@@ -255,7 +255,7 @@ func DatasetCandidates(ctx context.Context, dbc *sql.DB, limit int, audience str
 		SELECT c.id, c.from_item_id, c.to_item_id, a.title, b.title,
 		       c.type, c.confidence::float8, c.status, c.reason,
 		       c.evidence::text, c.source, c.review_note
-		FROM lk_relation_candidates c
+		FROM relations c
 		JOIN lk_items a ON a.item_id = c.from_item_id
 		JOIN lk_items b ON b.item_id = c.to_item_id
 		JOIN lk_item_privacy pa ON pa.item_id = c.from_item_id
@@ -291,9 +291,9 @@ func DatasetCandidates(ctx context.Context, dbc *sql.DB, limit int, audience str
 // InsertDatasetCandidate stores one proposal.
 func InsertDatasetCandidate(ctx context.Context, dbc *sql.DB, from, to, typ string, confidence float64, reason, evidence, source string) (bool, error) {
 	res, err := dbc.ExecContext(ctx, `
-		INSERT INTO lk_relation_candidates
+		INSERT INTO relations
 			(from_item_id, to_item_id, type, confidence, status, reason, evidence, source)
-		VALUES ($1,$2,$3,$4,'quarantine',$5,$6,$7)
+		VALUES ($1,$2,$3,$4,'candidate',$5,$6,$7)
 		ON CONFLICT (from_item_id, to_item_id, type) DO NOTHING`,
 		from, to, typ, confidence, reason, evidence, source)
 	if err != nil {
@@ -306,7 +306,7 @@ func InsertDatasetCandidate(ctx context.Context, dbc *sql.DB, from, to, typ stri
 // ReviewDatasetCandidate confirms or rejects one proposal.
 func ReviewDatasetCandidate(ctx context.Context, dbc *sql.DB, id int64, status, note string) (bool, error) {
 	res, err := dbc.ExecContext(ctx, `
-		UPDATE lk_relation_candidates
+		UPDATE relations
 		SET status=$2, reviewed_by='admin', reviewed_at=now(), review_note=$3
 		WHERE id=$1`, id, status, note)
 	if err != nil {

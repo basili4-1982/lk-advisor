@@ -130,7 +130,7 @@ main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
   <h3>Создать связь</h3>
   <div class="hint" id="link-pair"></div>
   <label>Тип связи</label><select id="link-type"></select>
-  <label>Статус</label><select id="link-status"><option value="quarantine">В карантин</option><option value="confirmed">Сразу подтвердить</option></select>
+  <label>Статус</label><select id="link-status"><option value="candidate">В карантин</option><option value="active">Сразу подтвердить</option></select>
   <label>Почему эти товары связаны</label><textarea id="link-note" placeholder="Например: дополняет по задаче, куплено вместе, альтернатива…"></textarea>
   <div class="modal-actions"><button class="cancel" id="link-cancel">Отмена</button><button class="save" id="link-save">Создать</button></div>
 </div></div>

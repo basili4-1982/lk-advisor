@@ -25,7 +25,7 @@ func (h *handler) adminCreateDatasetRelation(w http.ResponseWriter, r *http.Requ
 	req.ToItemID = strings.TrimSpace(req.ToItemID)
 	req.Type = strings.TrimSpace(req.Type)
 	if req.Status == "" {
-		req.Status = "quarantine"
+		req.Status = "candidate"
 	}
 	ok, err := catalog.CreateManualDatasetRelation(r.Context(), h.db,
 		req.FromItemID, req.ToItemID, req.Type, req.Status, req.Confidence, req.Reason)

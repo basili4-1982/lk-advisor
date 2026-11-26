@@ -159,7 +159,7 @@ func (h *handler) adminReviewDatasetCandidate(w http.ResponseWriter, r *http.Req
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	status := "confirmed"
+	status := "active"
 	if req.Decision == "reject" {
 		status = "rejected"
 	} else if req.Decision != "confirm" {

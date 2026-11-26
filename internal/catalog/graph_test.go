@@ -95,10 +95,10 @@ func TestDemoGraphUsesPublicLayer(t *testing.T) {
 		t.Fatalf("connected=%d solo=%d", graph.Connected, graph.PublicSolo)
 	}
 	if _, err := catalog.CreateManualDatasetRelation(ctx, dbc,
-		"graph-pub-a", "graph-pub-b", "adjacent_task", "quarantine", 0.8, "manual test"); err != nil {
+		"graph-pub-a", "graph-pub-b", "adjacent_task", "candidate", 0.8, "manual test"); err != nil {
 		t.Fatal(err)
 	}
-	defer dbc.ExecContext(ctx, `DELETE FROM lk_relation_candidates WHERE source='manual' AND reason='manual test'`)
+	defer dbc.ExecContext(ctx, `DELETE FROM relations WHERE source='manual' AND reason='manual test'`)
 	manualGraph, err := catalog.LoadDemoGraph(ctx, dbc, "b2b", 1000)
 	if err != nil {
 		t.Fatal(err)

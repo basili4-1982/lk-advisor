@@ -90,7 +90,7 @@ def main() -> None:
     try:
         with conn.cursor() as cur:
             cur.execute("""
-                TRUNCATE lk_relation_candidates, co_purchase_pairs, lk_orders,
+                TRUNCATE relations, relation_events, co_purchase_pairs, lk_orders,
                          lk_clients, lk_items RESTART IDENTITY CASCADE
             """)
             execute_values(cur, """
