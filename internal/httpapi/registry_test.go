@@ -279,3 +279,48 @@ func TestRegistryAliases(t *testing.T) {
 		t.Fatalf("alias still searchable after clear: %+v", page)
 	}
 }
+
+func TestRegistryBulkByConfidenceFilter(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	clean := func() {
+		dbc.ExecContext(ctx, `DELETE FROM relations WHERE from_item_id LIKE 'reg-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'reg-%'`)
+	}
+	clean()
+	defer clean()
+	for _, id := range []string{"reg-a", "reg-b"} {
+		dbc.ExecContext(ctx, `INSERT INTO lk_items (item_id,title,category,product_group)
+			VALUES ($1,$1,'security','REG-G1')`, id)
+	}
+	for _, e := range []struct {
+		typ  string
+		conf float64
+	}{
+		{"accessory", 0.90}, {"bundle", 0.70}, {"compatibility", 0.60},
+	} {
+		dbc.ExecContext(ctx, `INSERT INTO relations
+			(from_item_id,to_item_id,type,confidence,status,provenance_kind,source)
+			VALUES ('reg-a','reg-b',$1,$2,'candidate','co_purchase','co_purchase')`, e.typ, e.conf)
+	}
+
+	rec := doJSON(t, h, http.MethodPost, "/v1/admin/registry/relations/bulk-review",
+		`{"filter":{"statuses":["candidate"],"query":"reg-","min_confidence":0.85},"decision":"confirm","note":""}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("bulk by filter: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Reviewed int `json:"reviewed"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Reviewed != 1 {
+		t.Fatalf("reviewed = %d, want 1", out.Reviewed)
+	}
+	var active, candidates int
+	dbc.QueryRow(`SELECT count(*) FILTER (WHERE status='active'),
+		count(*) FILTER (WHERE status='candidate') FROM relations
+		WHERE from_item_id='reg-a'`).Scan(&active, &candidates)
+	if active != 1 || candidates != 2 {
+		t.Fatalf("active=%d candidates=%d, want 1/2", active, candidates)
+	}
+}

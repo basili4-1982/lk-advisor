@@ -266,8 +266,15 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="attribute">Атрибуты</option>
             </select>
             <select id="registry-family"><option value="">Все семейства</option></select>
+            <select id="registry-confidence">
+              <option value="">Любая уверенность</option>
+              <option value="high">Высокая ≥ 85%</option>
+              <option value="mid">Средняя 65–85%</option>
+              <option value="low">Низкая &lt; 65%</option>
+            </select>
             </div>
             <button class="secondary small" data-view="all">Смысловые</button>
+            <button class="secondary small" data-view="high">Высокая</button>
             <button class="secondary small" data-view="disputed">Спорные</button>
             <button class="secondary small" data-view="expiring">Истекают</button>
             <button class="secondary small" data-view="structural">Структурные</button>
@@ -294,6 +301,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="toolbar" style="margin-top:10px">
             <input id="registry-note" placeholder="Причина решения (обязательна для отказа)">
             <button id="registry-confirm" class="small">Подтвердить выбранные</button>
+            <button id="registry-confirm-filter" class="secondary small">Подтвердить по фильтру</button>
             <button id="registry-reject" class="secondary small">Отклонить</button>
             <button id="registry-defer" class="secondary small">Отложить</button>
           </div>
@@ -1106,6 +1114,12 @@ function registryQuery(){
   add('source', el('registry-source').value);
   add('family', el('registry-family').value);
   if (REG_VIEW==='disputed') { add('min_conf','0.5'); add('max_conf','0.75'); }
+  else {
+    var conf=el('registry-confidence').value || (REG_VIEW==='high' ? 'high' : '');
+    if (conf==='high') add('min_conf','0.85');
+    else if (conf==='mid') { add('min_conf','0.65'); add('max_conf','0.85'); }
+    else if (conf==='low') add('max_conf','0.65');
+  }
   if (REG_VIEW==='expiring') { add('expiring','30'); }
   add('limit','200');
   return p.length ? '?'+p.join('&') : '';
@@ -1220,6 +1234,37 @@ async function registryReview(id, decision){
       {decision:decision, note:note, expected_version:item.version||1});
     toast(decision==='confirm'?'Связь подтверждена':(decision==='reject'?'Связь отклонена':'Отложено'));
     el('registry-detail').innerHTML='';
+    await loadRegistry();
+  } catch(e){ toast(e.message,true); }
+}
+function registryFilter(){
+  var f={statuses:['candidate']};
+  var q=el('registry-search').value.trim(); if(q) f.query=q;
+  var t=el('registry-type').value; if(t) f.types=[t];
+  var s=el('registry-source').value; if(s) f.provenance=[s];
+  var fam=el('registry-family').value; if(fam) f.family=fam;
+  if (el('registry-type').value !== 'variant_of') f.exclude_variants=true;
+  if (REG_VIEW==='disputed') { f.min_confidence=0.5; f.max_confidence=0.75; }
+  else {
+    var conf=el('registry-confidence').value || (REG_VIEW==='high' ? 'high' : '');
+    if (conf==='high') f.min_confidence=0.85;
+    else if (conf==='mid') { f.min_confidence=0.65; f.max_confidence=0.85; }
+    else if (conf==='low') f.max_confidence=0.65;
+  }
+  if (REG_VIEW==='expiring') f.expiring_days=30;
+  return f;
+}
+async function registryBulkFilter(){
+  var f=registryFilter();
+  if (!(f.min_confidence>0) && !(f.types && f.types.length)) {
+    toast('Выберите уверенность или тип', true); return;
+  }
+  if (!confirm('Подтвердить все кандидаты по текущему фильтру?')) return;
+  var note=el('registry-note').value.trim();
+  try {
+    var out=await api('POST','/v1/admin/registry/relations/bulk-review',
+      {filter:f, decision:'confirm', note:note});
+    toast('Подтверждено: '+(out.reviewed||0));
     await loadRegistry();
   } catch(e){ toast(e.message,true); }
 }
@@ -1370,7 +1415,7 @@ document.querySelectorAll('.tab').forEach(function(b){
 });
 el('registry-filters-toggle').addEventListener('click', function(){ el('registry-filters').classList.toggle('hidden'); });
 el('registry-search').addEventListener('keyup', function(ev){ if (ev.key==='Enter') loadRegistry(); });
-['registry-type','registry-status','registry-source','registry-family'].forEach(function(id){
+['registry-type','registry-status','registry-source','registry-family','registry-confidence'].forEach(function(id){
   el(id).addEventListener('change', loadRegistry);
 });
 document.querySelectorAll('#tab-registry [data-view]').forEach(function(b){
@@ -1383,6 +1428,7 @@ document.querySelectorAll('#tab-registry [data-view]').forEach(function(b){
     el('registry-family').value='';
     if (REG_VIEW==='disputed') el('registry-status').value='candidate';
     if (REG_VIEW==='structural') el('registry-type').value='variant_of';
+    el('registry-confidence').value = (REG_VIEW==='high') ? 'high' : '';
     loadRegistry();
   });
 });
@@ -1441,6 +1487,7 @@ el('registry-detail').addEventListener('click', async function(ev){
   if (d && id) registryReview(id,d);
 });
 el('registry-confirm').addEventListener('click', function(){ registryBulk('confirm'); });
+el('registry-confirm-filter').addEventListener('click', registryBulkFilter);
 el('registry-reject').addEventListener('click', function(){ registryBulk('reject'); });
 el('registry-defer').addEventListener('click', function(){ registryBulk('defer'); });
 el('registry-generate').addEventListener('click', registryGenerate);
