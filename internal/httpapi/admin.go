@@ -301,7 +301,11 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             </tr></thead>
             <tbody id="registry-body"></tbody>
           </table></div>
-          <div class="toolbar" style="margin-top:10px">
+          <div class="toolbar" style="margin-top:6px">
+            <button id="registry-more" class="secondary small">Показать ещё</button>
+            <span class="hint" id="registry-more-hint"></span>
+          </div>
+          <div class="toolbar" style="margin-top:6px">
             <input id="registry-note" placeholder="Причина решения (обязательна для отказа)">
             <button id="registry-confirm" class="small">Подтвердить выбранные</button>
             <button id="registry-reject" class="secondary small">Отклонить</button>
@@ -523,7 +527,7 @@ var REG_TYPE_COLOR = {
 function typeColor(code){ return REG_TYPE_COLOR[code] || '#94a3b8'; }
 var REG_PROV = {manual: 'Вручную', co_purchase: 'Co-purchase', llm: 'LLM', attribute: 'Атрибуты', rule: 'Правило', import: 'Импорт'};
 var REG_SELECTED = {};
-var REG_PAGE = {items: [], total: 0, familyLabels: {}, familyCounts: {}};
+var REG_PAGE = {items: [], total: 0, offset: 0, limit: 200, familyLabels: {}, familyCounts: {}};
 var REG_VIEW = '';
 
 function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -1128,7 +1132,7 @@ function evidenceNote(r){
   if(r.type==='accessory') return 'Связь означает, что один товар нужен для работы другого.';
   return '';
 }
-function registryQuery(){
+function registryQuery(offset){
   var p=[];
   function add(k,v){ if(v!=='' && v!=null) p.push(encodeURIComponent(k)+'='+encodeURIComponent(v)); }
   add('q', el('registry-search').value.trim());
@@ -1143,16 +1147,23 @@ function registryQuery(){
     if (minConf > 0) add('min_conf', minConf.toFixed(2));
   }
   if (REG_VIEW==='expiring') { add('expiring','30'); }
-  add('limit','200');
+  add('limit', String(REG_PAGE.limit));
+  if (offset > 0) add('offset', String(offset));
   return p.length ? '?'+p.join('&') : '';
 }
-async function loadRegistry(){
-  REG_SELECTED={};
-  if (el('registry-all')) el('registry-all').checked=false;
+async function loadRegistry(append){
+  if (!append){
+    REG_PAGE.offset = 0;
+    REG_PAGE.items = [];
+    REG_SELECTED={};
+    if (el('registry-all')) el('registry-all').checked=false;
+  }
   try {
-    var data = await api('GET','/v1/admin/registry/relations'+registryQuery());
+    var data = await api('GET','/v1/admin/registry/relations'+registryQuery(REG_PAGE.offset));
     var metrics = await api('GET','/v1/admin/registry/metrics');
-    REG_PAGE.items = data.items || [];
+    var batch = data.items || [];
+    REG_PAGE.items = append ? REG_PAGE.items.concat(batch) : batch;
+    REG_PAGE.offset += batch.length;
     REG_PAGE.total = data.total || REG_PAGE.items.length;
     REG_PAGE.familyLabels = metrics.family_labels || {};
     REG_PAGE.familyCounts = {};
@@ -1210,6 +1221,11 @@ function renderRegistryLegend(){
 function renderRegistry(){
   renderRegistryLegend();
   var rows=REG_PAGE.items;
+  if (el('registry-more')){
+    var more = rows.length < REG_PAGE.total;
+    el('registry-more').classList.toggle('hidden', !more);
+    el('registry-more-hint').textContent = more ? (REG_PAGE.total - rows.length)+' ещё' : '';
+  }
   el('registry-count').textContent = rows.length + ' из ' + REG_PAGE.total;
   if (!rows.length) {
     el('registry-body').innerHTML = '<tr><td colspan="6" class="empty">Связей нет. Нажмите «Сгенерировать».</td></tr>';
@@ -1537,6 +1553,7 @@ el('registry-confirm-modal').addEventListener('click', function(ev){ if (ev.targ
 el('registry-reject').addEventListener('click', function(){ registryBulk('reject'); });
 el('registry-defer').addEventListener('click', function(){ registryBulk('defer'); });
 el('registry-generate').addEventListener('click', registryGenerate);
+el('registry-more').addEventListener('click', function(){ loadRegistry(true); });
 el('registry-sweep').addEventListener('click', async function(){
   try {
     var out=await api('POST','/v1/admin/registry/sweep',{});
