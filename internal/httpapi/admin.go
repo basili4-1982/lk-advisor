@@ -14,7 +14,7 @@ const adminHTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LK Advisor — настройка правил</title>
+<title>LK Advisor — реестр связей</title>
 <style>
 :root{--bg:#f6f7fb;--card:#fff;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--red:#c8102e;--blue:#1d4ed8;--green:#047857;--amber:#b45309;--purple:#6d28d9}
 *{box-sizing:border-box}
@@ -32,12 +32,13 @@ nav a:hover{color:#fff}
 main{padding:10px 0 20px}
 h1{font-size:24px;margin:0 0 6px;letter-spacing:-.02em}
 .lead{color:var(--muted);margin:0 0 14px;max-width:900px}
+.hero-stats{display:none!important}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:0 3px 12px rgba(15,23,42,.035);transition:.15s}
 .stat:hover{transform:translateY(-1px);box-shadow:0 10px 26px rgba(15,23,42,.07)}
 .stat b{display:block;font-size:20px}
 .stat span{color:var(--muted);font-size:12px}
-.layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+.layout{display:grid;grid-template-columns:minmax(0,1fr);gap:20px;align-items:start}
 .layout.registry-mode{grid-template-columns:minmax(0,1fr)}
 body.registry-mode main{padding:0}
 body.registry-mode h1{display:none}
@@ -46,7 +47,7 @@ body.registry-mode .lead{display:none}
 body.registry-mode .hero-stats{display:none}
 body.registry-mode .panel{border-left:0;border-right:0;border-radius:0}
 body.registry-mode .tabs{border-radius:0}
-.layout.registry-mode .side{display:none}
+.layout.registry-mode .side{display:none!important;display:none}
 .panel,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(15,23,42,.045)}
 .panel{padding:0;overflow:hidden}
 .tabs{display:flex;gap:3px;padding:4px;border-bottom:1px solid var(--line);background:#fbfbfd;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:thin}
@@ -147,7 +148,7 @@ tr:hover td{background:#fcfcff}
 .weights .w output{text-align:right;font-variant-numeric:tabular-nums}
 .sum{margin:12px 0;font-size:12px;color:var(--muted)}
 .sum.bad{color:var(--red)}
-.side{display:grid;gap:16px}
+.side{display:none!important;display:grid;gap:16px}
 .hint{font-size:12px;color:var(--muted)}
 .chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
 .chip{border:1px solid #dbe2ff;background:#f5f7ff;color:var(--blue);padding:6px 9px;border-radius:999px;font-size:12px;cursor:pointer}
@@ -189,8 +190,8 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
   <nav><a href="/">Кабинет</a><a href="/api">API</a></nav>
 </div></header>
 <main class="wrap">
-  <h1>Правила рекомендаций</h1>
-  <p class="lead">Связи товаров, ограничения и веса меняются здесь и сразу попадают в движок. ИИ-помощник переводит фразу в изменение, показывает его и применяет только после подтверждения.</p>
+  <h1>Реестр связей</h1>
+  <p class="lead">Связи каталога: источник, доказательство, статус и решение человека.</p>
   <div class="stats hero-stats">
     <div class="stat"><b id="st-products">—</b><span>товаров в каталоге</span></div>
     <div class="stat"><b id="st-relations">—</b><span>связей между товарами</span></div>
@@ -200,16 +201,10 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
   <div class="layout">
     <section class="panel">
       <div class="tabs">
-        <button class="tab on" data-tab="registry">Каталог v5</button>
-        <button class="tab" data-tab="relations">Синтетика (демо)</button>
-        <button class="tab" data-tab="validation">Валидация <span class="pill q hidden" id="review-badge">0</span></button>
+        <button class="tab on" data-tab="registry">Каталог</button>
         <button class="tab" data-tab="types">Типы связей</button>
-        <button class="tab" data-tab="rules">Правила</button>
-        <button class="tab" data-tab="weights">Веса</button>
         <button class="tab" data-tab="dataset">Данные</button>
         <button class="tab" data-tab="experiments">Гипотезы</button>
-        <button class="tab" data-tab="analytics">Аналитика</button>
-        <button class="tab" data-tab="assistant">ИИ-помощник</button>
       </div>
       <div class="tabbody">
         <div id="tab-relations" class="hidden">
@@ -960,7 +955,9 @@ var TAIL_PHRASES = [
   /,\s*серверная.*$/i,
   /,\s*неисключительное право.*$/i,
   /,\s*простая.*$/i,
-  /\s*право на использование.*$/i
+  /\s*право на использование.*$/i,
+  /\s*[-–]?\s*неисключительное право.*$/i,
+  /\s*[-–]?\s*простая.*$/i
 ];
 var WORD_REPLACEMENTS = [
   [/google workspace/gi,'GWS'], [/microsoft 365/gi,'M365'], [/microsoft/gi,'MS'],

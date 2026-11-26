@@ -102,8 +102,16 @@ func TestAdminPage(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d", rec.Code)
 	}
-	if body := rec.Body.String(); !contains(body, "Правила рекомендаций") || !contains(body, "ИИ-помощник") || !contains(body, "Типы связей") || !contains(body, "Агент разметки") {
-		t.Fatalf("unexpected page: %s", body[:minInt(200, len(body))])
+	body := rec.Body.String()
+	for _, needle := range []string{"Реестр связей", "Каталог", "Типы связей", "Данные", "Гипотезы"} {
+		if !contains(body, needle) {
+			t.Fatalf("unexpected page: missing %q", needle)
+		}
+	}
+	for _, legacy := range []string{`data-tab="relations"`, `data-tab="validation"`, `data-tab="rules"`, `data-tab="weights"`, `data-tab="analytics"`, `data-tab="assistant"`} {
+		if contains(body, legacy) {
+			t.Fatalf("legacy tab button still present: %s", legacy)
+		}
 	}
 }
 
