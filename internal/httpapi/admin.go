@@ -92,6 +92,7 @@ table.registry th,table.registry td{padding:4px 6px}
 .pair-from{color:#111827}
 .pair-to{color:#111827;font-weight:600}
 .pair-to .arrow{color:#9ca3af;margin-right:5px;font-weight:400}
+.pair-qual{display:inline-block;font-size:10px;font-weight:600;color:#6b7280;background:#f1f5f9;border-radius:4px;padding:0 4px;vertical-align:1px}
 .pair-delta del{color:#b91c1c;text-decoration:line-through}
 .pair-delta ins{color:#047857;text-decoration:none;font-weight:700}
 .rel-pair{display:flex;align-items:center;gap:6px;min-width:0}
@@ -913,46 +914,66 @@ function commonPair(from, to){
   while(s>0 && !boundary(from[from.length-s])) s--;
   return {p:p, s:s};
 }
-var SHORT_STOP = {};
-('предоставление доступа доступ сервисам сервиса сервис право права использования использование '+
- 'программы программа эвм лицензия лицензии лицензионный неисключительное неисключительная неисключительный '+
- 'дистрибутив программного обеспечение обеспечения установочный комплект формуляр сертификат сопровождение '+
- 'пакет пакета базовый для на по и в с от до шт учетную учетная запись записей пользователя пользователь '+
- 'рабочее рабочего место места месяц месяца месяцев год года лет версии версия исполнение исполнения '+
- 'редакция редакции издание количество количеством неограниченное неограниченного последующие последующих '+
- 'годы подписки подписка продление продления ключ активации активация электронный электронная носитель носителя '+
- 'ндс руб рублей all lng retail online download pack license licence edition device year base russian '+
- 'pk lic dwnl dwnld esd nr ce only for with and the к ко об о функционалом функционал')
-  .split(' ').forEach(function(w){ SHORT_STOP[w]=1; });
-var SHORT_ABBR = [
-  ['Google Workspace','GWS'], ['Microsoft 365','M365'], ['Microsoft','MS'],
-  ['Kaspersky Endpoint Security','KES'], ['Kaspersky Small Office Security','KSOS'],
-  ['Business Standard','Bus. Std'], ['Business','Bus.'], ['Standard','Std'],
-  ['Professional','Pro'], ['Enterprise','Ent'], ['Additional','Add'],
-  ['Concurrent','Conc'], ['Certified','Cert'], ['Security','Sec'],
-  ['Стандартный','Std'], ['Расширенный','Adv'], ['бизнеса','Bus.'],
-  ['второй','2-й'], ['первый','1-й'],
-  ['расширенным','Adv'], ['расширенного','Adv'], ['расширенная','Adv'],
-  ['дополнительное','Add']
+var LEAD_PHRASES = [
+  /^\([^)]*\)\s*/,
+  /^предоставление доступа к сервисам\s+/i,
+  /^предоставление права использования\s+/i,
+  /^право на использование\s+/i,
+  /^право использования программы для эвм\s+/i,
+  /^лицензия на право использования\s+/i,
+  /^неисключительное право (на )?использования\s+/i,
+  /^дистрибутив программного обеспечения\s+/i,
+  /^программа фиксации и контроля исходного состояния программного комплекса\s+/i,
+  /^установочный комплект[.,]?\s*/i,
+  /^сертификат на сопровождение по\s+/i,
+  /^базовый пакет для сертифицированного\s+/i,
+  /^средство создания модели системы разграничения доступа\s+/i
 ];
-function abbreviateTitle(t){
-  SHORT_ABBR.forEach(function(pair){
-    t=t.replace(new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'), pair[1]);
-  });
-  return t;
-}
-var ACRONYM_SKIP = {'СКЗИ':1,'ПО':1,'ЭВМ':1,'ОС':1,'ПК':1,'АРМ':1,'БД':1,'СУБД':1,'API':1,'SDK':1,'CPU':1,'RAM':1,'РФ':1,'СС':1};
-function acronymOf(keys){
-  var code='';
-  for (var i=0;i<keys.length;i++){
-    if (/^[А-ЯЁA-Z]{2,6}$/.test(keys[i]) && !ACRONYM_SKIP[keys[i]]) code=keys[i];
+var TAIL_PHRASES = [
+  /\s*[-–]?\s*лицензия$/i,
+  /\s*формуляр$/i,
+  /\s*установочный комплект$/i,
+  /\s*all lng.*$/i,
+  /\s*download pack.*$/i,
+  /\s*\d+-device.*$/i,
+  /\s*\d+ year.*$/i,
+  /\s*на \d+ учетн.*$/i,
+  /,?\s*на \d+ месяц(а|ев)?.*$/i,
+  /\s*на неограниченное количество.*$/i,
+  /,\s*продление.*$/i,
+  /,\s*лицензия.*$/i,
+  /,\s*клиентская.*$/i,
+  /,\s*серверная.*$/i,
+  /,\s*неисключительное право.*$/i,
+  /,\s*простая.*$/i
+];
+var WORD_REPLACEMENTS = [
+  [/google workspace/gi,'GWS'], [/microsoft 365/gi,'M365'], [/microsoft/gi,'MS'],
+  [/kaspersky endpoint security/gi,'KES'], [/kaspersky small office security/gi,'KSOS'],
+  [/российская|russian/gi,''], [/edition/gi,''],
+  [/версии|версия/gi,''], [/исполнение/gi,''],
+  [/для бизнеса|бизнеса/gi,'Bus.'],
+  [/стандартный|standard/gi,'Std'],
+  [/с расширенным функционалом|расширенным функционалом/gi,'Adv'],
+  [/расширенный|расширенным|расширенного|advanced/gi,'Adv'],
+  [/pack/gi,''],
+  [/\bprofessional\b/gi,'Pro'], [/\benterprise\b/gi,'Ent'],
+  [/\bbusiness\b/gi,'Bus.'], [/\badditional\b/gi,'Add'],
+  [/\bconcurrent\b/gi,'Conc'], [/\bcertified\b/gi,'Cert'],
+  [/\bsecurity\b/gi,'Sec']
+];
+function qualifierOf(t){
+  t=String(t||'').trim();
+  var qual='', m=t.match(/^\(([^)]*)\)\s*/);
+  if (m){
+    var inner=m[1];
+    if (/\d+\s*\/\s*\d+|помесячн|первый год|второй год/i.test(inner)){
+      var d=inner.match(/\d+\s*\/\s*\d+/);
+      qual=d?d[0].replace(/\s+/g,''):'';
+      t=t.slice(m[0].length);
+    }
   }
-  if (!code) return '';
-  var ver='';
-  for (var j=0;j<keys.length;j++){
-    if (/^\d+(\.\d+){1,3}$/.test(keys[j])) { ver=keys[j]; break; }
-  }
-  return code+(ver?' '+ver:'');
+  return {qual:qual, rest:t};
 }
 function licenseKind(s){
   s=String(s||'').toLowerCase();
@@ -964,41 +985,49 @@ function licenseKind(s){
   return '';
 }
 function shortTitle(t){
-  t=String(t||'').replace(/[«»"]/g,' ').replace(/\s+/g,' ').trim();
-  var toks=t.split(' '), out=[], keys=[];
-  for (var i=0;i<toks.length;i++){
-    var raw=toks[i];
-    var key=raw.toLowerCase().replace(/^[.,;:()\-]+|[.,;:()\-]+$/g,'');
-    if (!key) continue;
-    if (SHORT_STOP[key]) continue;
-    if (/^\d+-(device|user|year|month|day|мес|год|польз)/i.test(key)) continue;
-    if (/^\d+$/.test(key) && Number(key) <= 3) continue;
-    keys.push(key);
-    out.push(raw.replace(/^[.,;:()\-]+|[.,;:()\-]+$/g,''));
-    if (out.length >= 6) break;
-  }
-  var text=out.join(' ');
-  if (!text) text=t;
-  text=abbreviateTitle(text);
+  var original=String(t||'').replace(/[«»"]/g,' ').replace(/\s+/g,' ').trim();
+  var text=original;
+  LEAD_PHRASES.forEach(function(re){ text=text.replace(re,''); });
+  WORD_REPLACEMENTS.forEach(function(pair){ text=text.replace(pair[0], pair[1]); });
+  TAIL_PHRASES.forEach(function(re){ text=text.replace(re,''); });
+  text=text.replace(/\(\s*([\d.]+)\s*\)/g,' $1')
+           .replace(/\s*[-–]\s*$/,'')
+           .replace(/\s{2,}/g,' ')
+           .trim();
   text=text.split(' ').filter(function(w,i,arr){
-    return i===0 || w.toLowerCase()!==arr[i-1].toLowerCase();
+    function norm(x){ return x.toLowerCase().replace(/[.,;:]+$/,''); }
+    return i===0 || norm(w)!==norm(arr[i-1]);
   }).join(' ');
-  if (text.length > 28) {
-    var acr=acronymOf(keys);
-    if (acr) {
-      var kind=licenseKind(t);
-      text=acr+(kind?' · '+kind:'');
-    }
+  text=text.replace(/\s+([.,;:])/g,'$1').replace(/\.\s*\./g,'.').trim();
+  text=text.split(' ').filter(function(w,i,arr){
+    function norm(x){ return x.toLowerCase().replace(/[.,;:]+$/,''); }
+    return i===0 || norm(w)!==norm(arr[i-1]);
+  }).join(' ');
+  if (!text) text=original;
+  if (text.length > 52){
+    text=text.slice(0,52);
+    var cut=text.lastIndexOf(' ');
+    if (cut > 20) text=text.slice(0,cut);
+    text=text.trim()+'…';
   }
-  if (text.length > 52) text=text.slice(0,49).trim()+'…';
   return text;
 }
 function pairCell(from, to){
   from=String(from||''); to=String(to||'');
   var full=esc(from)+' → '+esc(to);
-  var a=shortTitle(from), b=shortTitle(to);
-  if (a===b){ a=from; b=to; }
-  return '<span class="pair" data-tip="'+full+'"><span class="pair-from">'+esc(a)+'</span><span class="pair-to"><span class="arrow">→</span>'+esc(b)+'</span></span>';
+  var qa=qualifierOf(from), qb=qualifierOf(to);
+  var a=shortTitle(qa.rest), b=shortTitle(qb.rest);
+  if (a===b){ a=qa.rest; b=qb.rest; }
+  var ka=licenseKind(from), kb=licenseKind(to);
+  if (ka && kb && ka!==kb){ a+=' · '+ka; b+=' · '+kb; }
+  var fromLine, toLine=esc(b);
+  if (qa.qual && qa.qual===qb.qual) {
+    fromLine='<span class="pair-qual">'+esc(qa.qual)+'</span> '+esc(a);
+  } else {
+    fromLine=(qa.qual?'<span class="pair-qual">'+esc(qa.qual)+'</span> ':'')+esc(a);
+    toLine=(qb.qual?'<span class="pair-qual">'+esc(qb.qual)+'</span> ':'')+esc(b);
+  }
+  return '<span class="pair" data-tip="'+full+'"><span class="pair-from">'+fromLine+'</span><span class="pair-to"><span class="arrow">→</span>'+toLine+'</span></span>';
 }
 function evidenceCell(ev){
   if(!ev || !ev.length) return '—';
