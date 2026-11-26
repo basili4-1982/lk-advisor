@@ -774,8 +774,10 @@ async function loadStrategies(){
 var reviewItems = [];
 function reviewStatus(code){ return code==='quarantine'?'На проверке':(code==='llm_suggested'?'Предложена ИИ':code); }
 function updateReviewBadge(counts){
+  var b=el('review-badge');
+  if (!b) return;
   var n=(counts.quarantine||0)+(counts.llm_suggested||0);
-  var b=el('review-badge'); b.textContent=n; b.classList.toggle('hidden', n===0);
+  b.textContent=n; b.classList.toggle('hidden', n===0);
 }
 function renderReview(){
   var q=el('review-search').value.trim().toLowerCase();
@@ -1444,7 +1446,6 @@ document.querySelectorAll('.tab').forEach(function(b){
     if (b.dataset.tab === 'dataset') loadDataset();
     if (b.dataset.tab === 'registry') loadRegistry();
     if (b.dataset.tab === 'experiments') { loadExperiments(); loadKnowledge(); }
-    if (b.dataset.tab === 'validation') loadReview();
   });
 });
 el('registry-filters-toggle').addEventListener('click', function(){ el('registry-filters').classList.toggle('hidden'); });
@@ -1737,7 +1738,6 @@ load().then(function(){
   var target = location.hash ? document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]') : null;
   if (target) target.click();
   else if (document.querySelector('.tab.on').dataset.tab === 'registry') loadRegistry();
-  return loadReview();
 }).catch(function(e){ toast('Не удалось загрузить состояние: '+e.message, true); });
 window.addEventListener('hashchange', function(){
   var target = document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]');
