@@ -105,20 +105,26 @@ table.registry th,table.registry td{padding:4px 6px}
 .danger-zone{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin:22px 0 4px;padding-top:14px;border-top:1px solid var(--line)}
 .danger-copy{text-align:right}
 .danger-copy b{color:#7f1d1d;font-size:13px}
-.chart{display:grid;gap:10px;margin-top:12px}
-.chart-row{display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:end}
-.chart-row>span{font-size:12px;color:var(--muted);padding-bottom:6px}
-.chart-bars{display:flex;gap:18px;align-items:flex-end;height:100px;border-bottom:1px solid var(--line);padding-bottom:4px}
-.chart-col{display:flex;flex-direction:column;align-items:center;gap:3px;width:64px}
-.chart-col i{display:block;width:30px;border-radius:4px 4px 0 0;background:#c7d2fe}
+.chart{display:grid;gap:14px;margin-top:16px}
+.chart-row{display:grid;grid-template-columns:110px 1fr;gap:14px;align-items:end}
+.chart-row>span{font-size:15px;font-weight:600;color:#374151;padding-bottom:8px}
+.chart-bars{display:flex;gap:26px;align-items:flex-end;height:170px;border-bottom:2px solid var(--line);padding-bottom:6px}
+.chart-col{display:flex;flex-direction:column;align-items:center;gap:5px;width:86px;height:100%}
+.chart-col i{display:block;width:48px;border-radius:6px 6px 0 0;background:#c7d2fe;margin-top:auto}
 .chart-col.ours i{background:#1d4ed8}
-.chart-col b{font-size:11px}
-.chart-col span{font-size:10px;color:var(--muted);white-space:nowrap}
-.donuts{display:flex;gap:28px;flex-wrap:wrap;margin-top:12px}
-.donut-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px}
-.donut-wrap small{color:var(--muted)}
-.donut{width:78px;height:78px;border-radius:50%;background:conic-gradient(#6366f1 calc(var(--v)*1%), #22c55e 0);display:grid;place-items:center}
-.donut .hole{width:52px;height:52px;background:#fff;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800}
+.chart-col b{font-size:16px}
+.chart-col span{font-size:13px;color:#4b5563;white-space:nowrap}
+.donuts{display:flex;gap:44px;flex-wrap:wrap;margin-top:18px}
+.donut-wrap{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:15px;font-weight:600}
+.donut-wrap small{color:var(--muted);font-weight:400;font-size:13px}
+.donut{width:128px;height:128px;border-radius:50%;background:conic-gradient(#6366f1 calc(var(--v)*1%), #22c55e 0);display:grid;place-items:center}
+.donut .hole{width:84px;height:84px;background:#fff;border-radius:50%;display:grid;place-items:center;font-size:18px;font-weight:800}
+#tab-dataset .form-title{font-size:18px}
+#tab-dataset .hint{font-size:14px}
+#tab-dataset .stat b{font-size:30px}
+#tab-dataset .stat span{font-size:14px}
+#tab-dataset table{font-size:15px}
+#tab-dataset th,#tab-dataset td{padding:11px 12px}
 button.danger{background:#7f1d1d;color:#fff;padding:12px 22px;font-size:14px;border-radius:10px;font-weight:800}
 button.danger:hover{background:#991b1b}
 .pair-qual{display:inline-block;font-size:10px;font-weight:600;color:#6b7280;background:#f1f5f9;border-radius:4px;padding:0 4px;vertical-align:1px}
@@ -441,24 +447,24 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <div class="form-title">P@3: baseline против нашей модели</div>
             <div class="chart">
               <div class="chart-row"><span>A · все</span><div class="chart-bars">
-                <div class="chart-col"><b>5.44</b><i style="height:33px"></i><span>popularity</span></div>
-                <div class="chart-col"><b>5.64</b><i style="height:34px"></i><span>co-purchase</span></div>
-                <div class="chart-col ours"><b>11.37</b><i style="height:68px"></i><span>наша</span></div>
+                <div class="chart-col"><b>5.44</b><i style="height:36%"></i><span>popularity</span></div>
+                <div class="chart-col"><b>5.64</b><i style="height:38%"></i><span>co-purchase</span></div>
+                <div class="chart-col ours"><b>11.37</b><i style="height:76%"></i><span>наша</span></div>
               </div></div>
               <div class="chart-row"><span>B · все</span><div class="chart-bars">
-                <div class="chart-col"><b>7.36</b><i style="height:44px"></i><span>popularity</span></div>
-                <div class="chart-col"><b>6.01</b><i style="height:36px"></i><span>co-purchase</span></div>
-                <div class="chart-col ours"><b>14.53</b><i style="height:87px"></i><span>наша</span></div>
+                <div class="chart-col"><b>7.36</b><i style="height:49%"></i><span>popularity</span></div>
+                <div class="chart-col"><b>6.01</b><i style="height:40%"></i><span>co-purchase</span></div>
+                <div class="chart-col ours"><b>14.53</b><i style="height:97%"></i><span>наша</span></div>
               </div></div>
               <div class="chart-row"><span>A · B2B</span><div class="chart-bars">
-                <div class="chart-col"><b>3.75</b><i style="height:22px"></i><span>popularity</span></div>
-                <div class="chart-col"><b>4.53</b><i style="height:27px"></i><span>co-purchase</span></div>
-                <div class="chart-col ours"><b>10.38</b><i style="height:62px"></i><span>наша</span></div>
+                <div class="chart-col"><b>3.75</b><i style="height:25%"></i><span>popularity</span></div>
+                <div class="chart-col"><b>4.53</b><i style="height:30%"></i><span>co-purchase</span></div>
+                <div class="chart-col ours"><b>10.38</b><i style="height:69%"></i><span>наша</span></div>
               </div></div>
               <div class="chart-row"><span>B · B2B</span><div class="chart-bars">
-                <div class="chart-col"><b>5.22</b><i style="height:31px"></i><span>popularity</span></div>
-                <div class="chart-col"><b>4.54</b><i style="height:27px"></i><span>co-purchase</span></div>
-                <div class="chart-col ours"><b>13.61</b><i style="height:82px"></i><span>наша</span></div>
+                <div class="chart-col"><b>5.22</b><i style="height:35%"></i><span>popularity</span></div>
+                <div class="chart-col"><b>4.54</b><i style="height:30%"></i><span>co-purchase</span></div>
+                <div class="chart-col ours"><b>13.61</b><i style="height:91%"></i><span>наша</span></div>
               </div></div>
             </div>
           </div>
