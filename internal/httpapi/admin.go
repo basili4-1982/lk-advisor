@@ -1045,9 +1045,9 @@ function pairCell(from, to){
   var ea=editionTag(from), eb=editionTag(to);
   if (ea) a+=' · '+ea;
   if (eb) b+=' · '+eb;
-  if (a===b){ a=qa.rest; b=qb.rest; }
   var ka=licenseKind(from), kb=licenseKind(to);
   if (ka && kb && ka!==kb){ a+=' · '+ka; b+=' · '+kb; }
+  if (a===b){ a=qa.rest; b=qb.rest; }
   var fromLine, toLine=esc(b);
   if (qa.qual && qa.qual===qb.qual) {
     fromLine='<span class="pair-qual">'+esc(qa.qual)+'</span> '+esc(a);
