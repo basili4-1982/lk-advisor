@@ -120,6 +120,7 @@ docs/              демо и прогон
 | `analysis/hidden_persona_ab.py` | A/B на агентах со скрытым профилем |
 | `docs/experiments/cohort-ab.pdf` | отчёт по когорте агентов для презы |
 | `docs/dataset-relations.md` | импорт v5, co-purchase и очередь кандидатов |
+| `docs/relation-workbench.md` | реестр связей v5, API и вкладка «Каталог v5» |
 | `docs/relation-bandit.md` | CTR/покупки по конкретной связи и авто-решение |
 | `docs/relation-scopes.md` | скоупы B2B/B2C/отрасль и TTL связей |
 | `docs/live-slices.md` | decayed demand, renewal и evidence-разрезы в живой выдаче |
