@@ -5,37 +5,40 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"hash/fnv"
+	"strings"
 	"time"
 )
 
 // Experiment is one testable hypothesis.
 type Experiment struct {
-	ID           string     `json:"id"`
-	Title        string     `json:"title"`
-	Hypothesis   string     `json:"hypothesis"`
-	Status       string     `json:"status"`
-	Audience     string     `json:"audience"`
-	Industry     string     `json:"industry"`
-	Metric       string     `json:"metric"`
-	Guardrails   string     `json:"guardrails"`
-	Variants     []Variant  `json:"variants"`
-	TrafficSplit float64    `json:"traffic_split"`
-	FromID       string     `json:"from_id"`
-	ToID         string     `json:"to_id"`
-	FromTitle    string     `json:"from_title,omitempty"`
-	ToTitle      string     `json:"to_title,omitempty"`
-	RelationType string     `json:"relation_type"`
-	Treatment    string     `json:"treatment"`
-	Owner        string     `json:"owner"`
-	CreatedAt    time.Time  `json:"created_at"`
-	StartedAt    *time.Time `json:"started_at,omitempty"`
-	EndsAt       *time.Time `json:"ends_at,omitempty"`
-	Decision     string     `json:"decision"`
-	DecisionNote string     `json:"decision_note"`
-	DecidedAt    *time.Time `json:"decided_at,omitempty"`
-	Results      []Result   `json:"results,omitempty"`
+	ID           string          `json:"id"`
+	Title        string          `json:"title"`
+	Hypothesis   string          `json:"hypothesis"`
+	Status       string          `json:"status"`
+	Audience     string          `json:"audience"`
+	Industry     string          `json:"industry"`
+	Metric       string          `json:"metric"`
+	Guardrails   string          `json:"guardrails"`
+	Variants     []Variant       `json:"variants"`
+	TrafficSplit float64         `json:"traffic_split"`
+	FromID       string          `json:"from_id"`
+	ToID         string          `json:"to_id"`
+	FromTitle    string          `json:"from_title,omitempty"`
+	ToTitle      string          `json:"to_title,omitempty"`
+	RelationType string          `json:"relation_type"`
+	Treatment    string          `json:"treatment"`
+	Owner        string          `json:"owner"`
+	CreatedAt    time.Time       `json:"created_at"`
+	StartedAt    *time.Time      `json:"started_at,omitempty"`
+	EndsAt       *time.Time      `json:"ends_at,omitempty"`
+	Decision     string          `json:"decision"`
+	DecisionNote string          `json:"decision_note"`
+	DecidedAt    *time.Time      `json:"decided_at,omitempty"`
+	Results      []Result        `json:"results,omitempty"`
+	Guardrail    *GuardrailCheck `json:"guardrail,omitempty"`
 }
 
 // Variant is one experiment arm.
@@ -57,23 +60,105 @@ type Assignment struct {
 
 // Result is the aggregate for one variant.
 type Result struct {
-	Variant          string  `json:"variant"`
-	Exposures        int     `json:"exposures"`
-	Clients          int     `json:"clients"`
-	Clicks           int     `json:"clicks"`
-	Purchases        int     `json:"purchases"`
-	TargetExposures  int     `json:"target_exposures"`
-	TargetPurchases  int     `json:"target_purchases"`
-	RenewalShown     int     `json:"renewal_shown"`
-	UpsellShown      int     `json:"upsell_shown"`
-	FallbackShown    int     `json:"fallback_shown"`
-	CTR              float64 `json:"ctr"`
-	Conversion       float64 `json:"conversion"`
-	TargetConversion float64 `json:"target_conversion"`
-	RenewalRate      float64 `json:"renewal_rate"`
-	UpsellRate       float64 `json:"upsell_rate"`
-	FallbackRate     float64 `json:"fallback_rate"`
+	Variant           string  `json:"variant"`
+	Exposures         int     `json:"exposures"`
+	Clients           int     `json:"clients"`
+	Clicks            int     `json:"clicks"`
+	Purchases         int     `json:"purchases"`
+	TargetExposures   int     `json:"target_exposures"`
+	TargetPurchases   int     `json:"target_purchases"`
+	RenewalShown      int     `json:"renewal_shown"`
+	UpsellShown       int     `json:"upsell_shown"`
+	FallbackShown     int     `json:"fallback_shown"`
+	Revenue           int64   `json:"revenue"`
+	Margin            int64   `json:"margin"`
+	MarginAvailable   bool    `json:"margin_available"`
+	CTR               float64 `json:"ctr"`
+	Conversion        float64 `json:"conversion"`
+	TargetConversion  float64 `json:"target_conversion"`
+	RenewalRate       float64 `json:"renewal_rate"`
+	UpsellRate        float64 `json:"upsell_rate"`
+	FallbackRate      float64 `json:"fallback_rate"`
+	MarginPerExposure float64 `json:"margin_per_exposure"`
 }
+
+// GuardrailCheck is the hard-stop evaluation before a decision.
+type GuardrailCheck struct {
+	Blocked         bool     `json:"blocked"`
+	Suggested       string   `json:"suggested,omitempty"` // promote / extend / reject
+	Reasons         []string `json:"reasons,omitempty"`
+	RenewalDrop     float64  `json:"renewal_drop"`
+	UpsellDrop      float64  `json:"upsell_drop"`
+	FallbackRise    float64  `json:"fallback_rise"`
+	MarginDrop      float64  `json:"margin_drop"`
+	MarginAvailable bool     `json:"margin_available"`
+}
+
+// CheckGuardrails blocks promotion when a treatment harms renewal/upsell,
+// raises fallback, or destroys margin. Margin is ignored until cost data exists.
+func CheckGuardrails(results []Result) GuardrailCheck {
+	byVariant := map[string]Result{}
+	for _, r := range results {
+		byVariant[r.Variant] = r
+	}
+	control, treatment := byVariant["control"], byVariant["treatment"]
+	check := GuardrailCheck{
+		Suggested:       "promote",
+		RenewalDrop:     control.RenewalRate - treatment.RenewalRate,
+		UpsellDrop:      control.UpsellRate - treatment.UpsellRate,
+		FallbackRise:    treatment.FallbackRate - control.FallbackRate,
+		MarginAvailable: control.MarginAvailable && treatment.MarginAvailable,
+	}
+	if control.Exposures < 100 || treatment.Exposures < 100 {
+		check.Blocked = true
+		check.Suggested = "extend"
+		check.Reasons = append(check.Reasons, "мало данных: меньше 100 exposure на вариант")
+		return check
+	}
+	if check.MarginAvailable && control.MarginPerExposure > 0 {
+		check.MarginDrop = (control.MarginPerExposure - treatment.MarginPerExposure) / control.MarginPerExposure
+	}
+	severe := check.RenewalDrop >= 0.10 || check.FallbackRise >= 0.05 ||
+		(check.MarginAvailable && check.MarginDrop >= 0.20)
+	if severe {
+		check.Blocked = true
+		check.Suggested = "reject"
+	}
+	if check.RenewalDrop >= 0.05 {
+		check.Reasons = append(check.Reasons, fmt.Sprintf("renewal падает на %.1f п.п.", check.RenewalDrop*100))
+	}
+	if check.UpsellDrop >= 0.05 {
+		check.Reasons = append(check.Reasons, fmt.Sprintf("upsell падает на %.1f п.п.", check.UpsellDrop*100))
+	}
+	if check.FallbackRise >= 0.02 {
+		check.Reasons = append(check.Reasons, fmt.Sprintf("fallback растёт на %.1f п.п.", check.FallbackRise*100))
+	}
+	if check.MarginAvailable && check.MarginDrop >= 0.10 {
+		check.Reasons = append(check.Reasons, fmt.Sprintf("маржа на exposure падает на %.0f%%", check.MarginDrop*100))
+	}
+	if check.Blocked && check.Suggested == "reject" {
+		return check
+	}
+	if check.Blocked && check.Suggested != "extend" {
+		check.Suggested = "extend"
+	}
+	if len(check.Reasons) > 0 {
+		check.Blocked = true
+		check.Suggested = "extend"
+	}
+	return check
+}
+
+// DecisionOutcome is the final decision after guardrails.
+type DecisionOutcome struct {
+	Decision  string         `json:"decision"`
+	Auto      bool           `json:"auto"`
+	Reasons   []string       `json:"reasons,omitempty"`
+	Guardrail GuardrailCheck `json:"guardrail"`
+}
+
+// ErrNotFound means the experiment does not exist.
+var ErrNotFound = errors.New("experiment not found")
 
 // LoadRunning returns experiments matching the client's audience/industry.
 func LoadRunning(ctx context.Context, dbc *sql.DB, audience, industry string) ([]Experiment, error) {
@@ -138,6 +223,8 @@ func List(ctx context.Context, dbc *sql.DB) ([]Experiment, error) {
 			return nil, err
 		}
 		out[i].Results = res
+		check := CheckGuardrails(res)
+		out[i].Guardrail = &check
 	}
 	return out, nil
 }
@@ -229,10 +316,15 @@ func RecordEvent(ctx context.Context, dbc *sql.DB, traceID, productID, event str
 	}
 	_, err := dbc.ExecContext(ctx, `
 		INSERT INTO experiment_events
-			(experiment_id, client_id, variant, trace_id, product_id, event)
-		SELECT experiment_id, client_id, variant, trace_id, product_id, $3
-		FROM experiment_events
-		WHERE trace_id = $1 AND product_id = $2 AND event = 'exposed'`,
+			(experiment_id, client_id, variant, trace_id, product_id, event,
+			 amount, margin, margin_available)
+		SELECT e.experiment_id, e.client_id, e.variant, e.trace_id, e.product_id, $3,
+		       p.price,
+		       CASE WHEN p.cost > 0 THEN p.price - p.cost ELSE 0 END,
+		       (p.cost > 0)
+		FROM experiment_events e
+		JOIN products p ON p.id = e.product_id
+		WHERE e.trace_id = $1 AND e.product_id = $2 AND e.event = 'exposed'`,
 		traceID, productID, event)
 	if err != nil {
 		return fmt.Errorf("experiment event: %w", err)
@@ -252,7 +344,10 @@ func Results(ctx context.Context, dbc *sql.DB, experimentID string) ([]Result, e
 		       count(*) FILTER (WHERE event = 'purchased' AND product_id = (SELECT to_id FROM experiments WHERE id = $1)) AS target_purchases,
 		       count(*) FILTER (WHERE event = 'exposed' AND renewal_shown > 0) AS renewal_shown,
 		       count(*) FILTER (WHERE event = 'exposed' AND upsell_shown > 0) AS upsell_shown,
-		       count(*) FILTER (WHERE event = 'exposed' AND fallback) AS fallback_shown
+		       count(*) FILTER (WHERE event = 'exposed' AND fallback) AS fallback_shown,
+		       COALESCE(sum(amount) FILTER (WHERE event = 'purchased'), 0) AS revenue,
+		       COALESCE(sum(margin) FILTER (WHERE event = 'purchased'), 0) AS margin,
+		       COALESCE(bool_or(margin_available) FILTER (WHERE event = 'purchased'), false) AS margin_available
 		FROM experiment_events
 		WHERE experiment_id = $1
 		GROUP BY variant`, experimentID)
@@ -265,7 +360,8 @@ func Results(ctx context.Context, dbc *sql.DB, experimentID string) ([]Result, e
 		var r Result
 		if err := rows.Scan(&r.Variant, &r.Exposures, &r.Clients, &r.Clicks, &r.Purchases,
 			&r.TargetExposures, &r.TargetPurchases,
-			&r.RenewalShown, &r.UpsellShown, &r.FallbackShown); err != nil {
+			&r.RenewalShown, &r.UpsellShown, &r.FallbackShown,
+			&r.Revenue, &r.Margin, &r.MarginAvailable); err != nil {
 			return nil, err
 		}
 		if r.Exposures > 0 {
@@ -279,6 +375,7 @@ func Results(ctx context.Context, dbc *sql.DB, experimentID string) ([]Result, e
 			r.RenewalRate = float64(r.RenewalShown) / float64(r.Exposures)
 			r.UpsellRate = float64(r.UpsellShown) / float64(r.Exposures)
 			r.FallbackRate = float64(r.FallbackShown) / float64(r.Exposures)
+			r.MarginPerExposure = float64(r.Margin) / float64(r.Exposures)
 		}
 		byVariant[r.Variant] = r
 	}
@@ -296,29 +393,103 @@ func Results(ctx context.Context, dbc *sql.DB, experimentID string) ([]Result, e
 	return out, nil
 }
 
-// Decide closes an experiment with a human decision.
-func Decide(ctx context.Context, dbc *sql.DB, experimentID, decision, note string) (bool, error) {
+// Decide closes an experiment with a human decision, after guardrails.
+func Decide(ctx context.Context, dbc *sql.DB, experimentID, decision, note string) (DecisionOutcome, error) {
+	var out DecisionOutcome
 	switch decision {
 	case "promote", "reject", "extend":
 	default:
-		return false, fmt.Errorf("decision must be promote, reject or extend")
+		return out, fmt.Errorf("decision must be promote, reject or extend")
+	}
+	results, err := Results(ctx, dbc, experimentID)
+	if err != nil {
+		return out, err
+	}
+	check := CheckGuardrails(results)
+	final := decision
+	auto := false
+	if decision == "promote" && check.Blocked {
+		final = check.Suggested
+		auto = true
+	}
+	if decision == "extend" && check.Suggested == "reject" {
+		final = "reject"
+		auto = true
 	}
 	status := "completed"
 	endsAt := time.Now()
-	if decision == "extend" {
+	if final == "extend" {
 		status = "running"
 		endsAt = time.Now().AddDate(0, 0, 14)
+	}
+	finalNote := note
+	if auto && len(check.Reasons) > 0 {
+		finalNote = "guardrail: " + strings.Join(check.Reasons, "; ") + "; " + note
 	}
 	res, err := dbc.ExecContext(ctx, `
 		UPDATE experiments
 		SET status = $2, decision = $3, decision_note = $4,
 		    ends_at = $5, decided_at = now()
-		WHERE id = $1`, experimentID, status, decision, note, endsAt)
+		WHERE id = $1`, experimentID, status, final, finalNote, endsAt)
 	if err != nil {
-		return false, fmt.Errorf("experiment decision: %w", err)
+		return out, fmt.Errorf("experiment decision: %w", err)
 	}
 	n, _ := res.RowsAffected()
-	return n > 0, nil
+	if n == 0 {
+		return out, ErrNotFound
+	}
+	out = DecisionOutcome{
+		Decision:  final,
+		Auto:      auto,
+		Reasons:   check.Reasons,
+		Guardrail: check,
+	}
+	return out, nil
+}
+
+// SearchKnowledge returns completed experiments filtered by text and decision.
+func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) ([]Experiment, error) {
+	q := "%" + strings.TrimSpace(query) + "%"
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
+		       e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
+		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
+		       e.relation_type, e.treatment, e.owner, e.created_at,
+		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
+		FROM experiments e
+		LEFT JOIN products pf ON pf.id = e.from_id
+		LEFT JOIN products pt ON pt.id = e.to_id
+		WHERE e.status = 'completed'
+		  AND ($1 = '' OR e.decision = $1)
+		  AND ($2 = '%%' OR e.title ILIKE $2 OR e.hypothesis ILIKE $2
+		       OR e.audience ILIKE $2 OR e.industry ILIKE $2
+		       OR e.from_id ILIKE $2 OR e.to_id ILIKE $2)
+		ORDER BY e.decided_at DESC NULLS LAST, e.created_at DESC`, decision, q)
+	if err != nil {
+		return nil, fmt.Errorf("experiment knowledge: %w", err)
+	}
+	defer rows.Close()
+	var out []Experiment
+	for rows.Next() {
+		e, err := scanExperiment(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		res, err := Results(ctx, dbc, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i].Results = res
+		check := CheckGuardrails(res)
+		out[i].Guardrail = &check
+	}
+	return out, nil
 }
 
 // SeedDemo creates/resets the vertical-slice experiment.

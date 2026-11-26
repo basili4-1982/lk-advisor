@@ -59,6 +59,42 @@ Guardrails в том же прогоне:
 Renewal слегка падает. Поэтому решение — не `promote`, а `extend`: нужна
 вторая волна и проверка, не теряем ли продления.
 
+## Guardrail hard-stop
+
+Перед решением платформа проверяет:
+
+| Guardrail | Порог | Действие |
+|---|---|---|
+| Renewal | падение ≥ 5 п.п. | блок `promote`, `extend` |
+| Renewal | падение ≥ 10 п.п. | `reject` |
+| Fallback | рост ≥ 5 п.п. | `reject` |
+| Margin на exposure | падение ≥ 20% | `reject` |
+| Мало данных | <100 exposure на вариант | `extend` |
+
+Если человек нажимает `promote`, а guardrail сработал, решение автоматически
+заменяется на `extend` или `reject`, а причина пишется в заметку.
+
+## Margin guardrail
+
+В `products` появилось поле `cost`. Пока оно равно 0, маржа считается
+недоступной и guardrail не блокирует решение. Когда заказчик даст
+себестоимость, платформа начнёт считать:
+
+- revenue по покупкам;
+- margin на purchase;
+- margin на exposure;
+- падение маржи treatment против control.
+
+## База знаний
+
+```text
+GET /v1/admin/experiments/knowledge?q=PDF&decision=reject
+```
+
+Завершённые эксперименты остаются в `experiments` с решением, заметкой,
+скоупом и результатами. В админке есть поиск по названию, гипотезе, скоупу и
+target. Это позволяет отвечать: «мы это уже проверяли, вот что вышло».
+
 Общий uplift выглядит огромным, но target conversion одинаковый.
 
 Вывод: **эффект не в том, что товар стал лучше, а в том, что его перестали
@@ -85,7 +121,7 @@ POST /v1/admin/experiments/{id}/decision
 
 - `experiments` — гипотеза, скоуп, варианты, target, статус, решение;
 - `experiment_assignments` — стабильный вариант клиента;
-- `experiment_events` — exposed / clicked / purchased + guardrail-поля.
+- `experiment_events` — exposed / clicked / purchased + guardrail-поля и margin.
 
 `extend` не просто меняет статус: эксперимент остаётся running и получает
 `ends_at = now() + 14 дней` для следующей волны.

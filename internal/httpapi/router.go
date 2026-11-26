@@ -64,6 +64,7 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("POST /v1/admin/relations", h.adminUpsertRelation)
 	mux.HandleFunc("DELETE /v1/admin/relations", h.adminDeleteRelation)
 	mux.HandleFunc("GET /v1/admin/experiments", h.adminExperiments)
+	mux.HandleFunc("GET /v1/admin/experiments/knowledge", h.adminExperimentKnowledge)
 	mux.HandleFunc("POST /v1/admin/experiments/demo", h.adminSeedExperiment)
 	mux.HandleFunc("POST /v1/admin/experiments/{id}/decision", h.adminExperimentDecision)
 	mux.HandleFunc("GET /v1/admin/relations/performance", h.adminRelationPerformance)

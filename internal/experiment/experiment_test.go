@@ -15,6 +15,13 @@ func TestExperimentLifecycle(t *testing.T) {
 	if err := store.Migrate(ctx, dbc); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO products (id, sku, title, category, type, price, status)
+		VALUES ('prod-pdf', 'exp-pdf', 'PDF Toolkit', 'office', 'license', 10000, 'active'),
+		       ('prod-office-suite', 'exp-office', 'Office', 'office', 'license', 16000, 'active')
+		ON CONFLICT (id) DO NOTHING`); err != nil {
+		t.Fatal(err)
+	}
 	if err := experiment.SeedDemo(ctx, dbc); err != nil {
 		t.Fatal(err)
 	}
@@ -53,6 +60,9 @@ func TestExperimentLifecycle(t *testing.T) {
 	if err := experiment.RecordExposure(ctx, dbc, treatment, "tr-exp", "prod-pdf", 1, 0, false); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := dbc.ExecContext(ctx, `UPDATE products SET cost = 5000 WHERE id = 'prod-pdf'`); err != nil {
+		t.Fatal(err)
+	}
 	if err := experiment.RecordEvent(ctx, dbc, "tr-exp", "prod-pdf", "clicked"); err != nil {
 		t.Fatal(err)
 	}
@@ -76,16 +86,49 @@ func TestExperimentLifecycle(t *testing.T) {
 	if got.RenewalShown != 1 || got.RenewalRate != 1 {
 		t.Fatalf("guardrails = %+v", got)
 	}
-
-	ok, err := experiment.Decide(ctx, dbc, "exp-pdf-b2b", "promote", "test")
-	if err != nil || !ok {
-		t.Fatalf("decide ok=%v err=%v", ok, err)
+	if !got.MarginAvailable || got.Margin != 5000 || got.Revenue != 10000 {
+		t.Fatalf("margin = %+v", got)
 	}
-	list, err = experiment.List(ctx, dbc)
+
+	outcome, err := experiment.Decide(ctx, dbc, "exp-pdf-b2b", "promote", "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if list[0].Status != "completed" || list[0].Decision != "promote" {
-		t.Fatalf("experiment = %+v", list[0])
+	if !outcome.Auto || outcome.Decision != "extend" {
+		t.Fatalf("expected guardrail extend, got %+v", outcome)
+	}
+	if _, err := experiment.Decide(ctx, dbc, "exp-pdf-b2b", "reject", "test"); err != nil {
+		t.Fatal(err)
+	}
+	knowledge, err := experiment.SearchKnowledge(ctx, dbc, "PDF", "reject")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(knowledge) != 1 || knowledge[0].ID != "exp-pdf-b2b" {
+		t.Fatalf("knowledge = %+v", knowledge)
+	}
+}
+
+func TestGuardrailCheck(t *testing.T) {
+	ok := experiment.CheckGuardrails([]experiment.Result{
+		{Variant: "control", Exposures: 200, RenewalRate: 0.80, UpsellRate: 0.20},
+		{Variant: "treatment", Exposures: 200, RenewalRate: 0.78, UpsellRate: 0.20},
+	})
+	if ok.Blocked {
+		t.Fatalf("healthy guardrails blocked: %+v", ok)
+	}
+	bad := experiment.CheckGuardrails([]experiment.Result{
+		{Variant: "control", Exposures: 200, RenewalRate: 0.80, UpsellRate: 0.20},
+		{Variant: "treatment", Exposures: 200, RenewalRate: 0.65, UpsellRate: 0.20},
+	})
+	if !bad.Blocked || bad.Suggested != "reject" {
+		t.Fatalf("severe renewal drop should reject: %+v", bad)
+	}
+	margin := experiment.CheckGuardrails([]experiment.Result{
+		{Variant: "control", Exposures: 200, RenewalRate: 0.80, MarginAvailable: true, MarginPerExposure: 100},
+		{Variant: "treatment", Exposures: 200, RenewalRate: 0.80, MarginAvailable: true, MarginPerExposure: 70},
+	})
+	if !margin.Blocked || margin.Suggested != "reject" || margin.MarginDrop < 0.29 {
+		t.Fatalf("margin guardrail = %+v", margin)
 	}
 }

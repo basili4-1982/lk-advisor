@@ -267,9 +267,12 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="toolbar">
             <button id="experiment-seed" class="secondary">Создать демо-гипотезу</button>
             <button id="experiment-refresh" class="secondary small">Обновить</button>
+            <input id="experiment-search" type="search" placeholder="Поиск по базе знаний…" style="max-width:240px">
+            <button id="experiment-search-btn" class="secondary small">Найти</button>
             <span class="hint">Одна гипотеза: назначение → exposure → метрики → решение. Данные пишутся в experiment_events.</span>
           </div>
           <div id="experiments-list"></div>
+          <div id="experiment-knowledge"></div>
         </div>
 
         <div id="tab-analytics" class="hidden">
@@ -479,6 +482,7 @@ async function loadAnalytics(){
   loadHealth();
   loadRelationPerf();
   loadExperiments();
+  loadKnowledge();
   loadRelationScopes();
 }
 async function loadHealth(){
@@ -507,8 +511,12 @@ async function loadExperiments(){
           return '<tr><td><b>'+esc(pair[0])+'</b></td><td>'+r.exposures+'</td><td>'+r.clients+'</td><td>'+r.clicks+'</td><td>'+r.purchases+'</td><td>'+pct(r.ctr)+'</td><td>'+pct(r.conversion)+'</td><td>'+r.target_exposures+'</td><td>'+pct(r.target_conversion)+'</td></tr>';
         }).join('')+'</tbody></table></div>';
       var guard='<div class="hint" style="margin-top:8px">Guardrails: renewal '+pct(c.renewal_rate)+' → '+pct(t.renewal_rate)+', upsell '+pct(c.upsell_rate)+' → '+pct(t.upsell_rate)+', fallback '+pct(c.fallback_rate)+' → '+pct(t.fallback_rate)+'</div>';
+      var g=x.guardrail||{};
+      var reasons=(g.reasons||[]).join('; ');
+      var guardWarn=g.blocked?'<div class="hint" style="color:#92400e;margin-top:6px">Guardrail: '+esc(reasons||'сработал')+' → рекомендуем '+esc(g.suggested||'extend')+'. Promote остановлен.</div>':'';
+      var promoteDisabled=g.blocked?' disabled':'';
       var decisions='<div class="toolbar" style="margin-top:8px">'+
-        '<button data-exp-decision="promote" data-exp-id="'+esc(x.id)+'">Подтвердить</button> '+
+        '<button data-exp-decision="promote" data-exp-id="'+esc(x.id)+'"'+promoteDisabled+'>Подтвердить</button> '+
         '<button class="ghost" data-exp-decision="reject" data-exp-id="'+esc(x.id)+'">Отклонить</button> '+
         '<button class="secondary" data-exp-decision="extend" data-exp-id="'+esc(x.id)+'">Продлить</button>'+
         '<span class="hint">Uplift treatment: '+(uplift>=0?'+':'')+uplift.toFixed(1)+'% · эффект в показе target: '+c.target_exposures+' → '+t.target_exposures+'</span></div>';
@@ -520,9 +528,26 @@ async function loadExperiments(){
           '<span class="pill">'+esc(x.status)+'</span></div>'+
         '<div class="hint" style="margin:8px 0">Скоуп: '+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' · '+
           esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+' · '+esc(x.metric)+'</div>'+
-        table+guard+decisions+decided+'</div>';
+        table+guard+guardWarn+decisions+decided+'</div>';
     }).join('');
   } catch(e){ el('experiments-list').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
+}
+async function loadKnowledge(){
+  try {
+    var q=encodeURIComponent((el('experiment-search')||{}).value||'');
+    var d=await api('GET','/v1/admin/experiments/knowledge?q='+q);
+    var rows=d.items||[];
+    var title='<div class="form-title" style="margin-top:18px">База знаний</div>';
+    if(!rows.length){ el('experiment-knowledge').innerHTML=title+'<div class="empty">Пока нет завершённых гипотез</div>'; return; }
+    el('experiment-knowledge').innerHTML=title+rows.map(function(x){
+      return '<div class="formbox" style="margin-bottom:8px">'+
+        '<div style="display:flex;justify-content:space-between;gap:12px"><b>'+esc(x.title)+'</b><span class="pill">'+esc(x.decision)+'</span></div>'+
+        '<div class="hint" style="margin-top:4px">'+esc(x.hypothesis)+'</div>'+
+        '<div class="hint">'+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' · '+esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+'</div>'+
+        (x.decision_note?'<div class="hint">'+esc(x.decision_note)+'</div>':'')+
+      '</div>';
+    }).join('');
+  } catch(e){ el('experiment-knowledge').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 async function loadRelationPerf(){
   try {
@@ -767,7 +792,7 @@ document.querySelectorAll('.tab').forEach(function(b){
     b.classList.add('on'); el('tab-'+b.dataset.tab).classList.remove('hidden');
     if (b.dataset.tab === 'analytics') loadAnalytics();
     if (b.dataset.tab === 'dataset') loadDataset();
-    if (b.dataset.tab === 'experiments') loadExperiments();
+    if (b.dataset.tab === 'experiments') { loadExperiments(); loadKnowledge(); }
     if (b.dataset.tab === 'validation') loadReview();
   });
 });
@@ -817,15 +842,22 @@ el('review-list').addEventListener('click', function(ev){
   if (r) reviewDecision(mode, [r]);
 });
 el('experiment-seed').addEventListener('click', async function(){
-  try { await api('POST','/v1/admin/experiments/demo',{}); toast('Демо-гипотеза создана'); loadExperiments(); }
+  try { await api('POST','/v1/admin/experiments/demo',{}); toast('Демо-гипотеза создана'); loadExperiments(); loadKnowledge(); }
   catch(e){ toast(e.message,true); }
 });
-el('experiment-refresh').addEventListener('click', loadExperiments);
+el('experiment-refresh').addEventListener('click', function(){ loadExperiments(); loadKnowledge(); });
+el('experiment-search-btn').addEventListener('click', loadKnowledge);
+el('experiment-search').addEventListener('keydown', function(e){ if(e.key==='Enter') loadKnowledge(); });
 el('experiments-list').addEventListener('click', async function(ev){
   var mode=ev.target.dataset.expDecision, id=ev.target.dataset.expId;
   if(!mode||!id)return;
   var note = mode==='promote'?'подтверждено на пилоте':(mode==='reject'?'гипотеза не подтверждена':'нужна большая выборка');
-  try { await api('POST','/v1/admin/experiments/'+encodeURIComponent(id)+'/decision',{decision:mode,note:note}); toast('Решение сохранено'); loadExperiments(); }
+  try {
+    var d=await api('POST','/v1/admin/experiments/'+encodeURIComponent(id)+'/decision',{decision:mode,note:note});
+    toast('Решение: '+d.decision+(d.auto?' (guardrail)':''));
+    loadExperiments();
+    loadKnowledge();
+  }
   catch(e){ toast(e.message,true); }
 });
 el('relation-auto').addEventListener('click', async function(){

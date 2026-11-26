@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
@@ -38,16 +39,27 @@ func (h *handler) adminExperimentDecision(w http.ResponseWriter, r *http.Request
 		return
 	}
 	id := r.PathValue("id")
-	ok, err := experiment.Decide(r.Context(), h.db, id, req.Decision, req.Note)
-	if err != nil {
+	outcome, err := experiment.Decide(r.Context(), h.db, id, req.Decision, req.Note)
+	switch {
+	case errors.Is(err, experiment.ErrNotFound):
+		writeError(w, http.StatusNotFound, "experiment not found")
+		return
+	case err != nil:
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	if !ok {
-		writeError(w, http.StatusNotFound, "experiment not found")
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "experiment.decision",
+		map[string]string{"experiment_id": id, "decision": outcome.Decision})
+	writeJSON(w, http.StatusOK, outcome)
+}
+
+func (h *handler) adminExperimentKnowledge(w http.ResponseWriter, r *http.Request) {
+	items, err := experiment.SearchKnowledge(r.Context(), h.db,
+		r.URL.Query().Get("q"), r.URL.Query().Get("decision"))
+	if err != nil {
+		h.logger.Error("experiment knowledge", "err", err)
+		writeError(w, http.StatusInternalServerError, "knowledge error")
 		return
 	}
-	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "experiment.decision",
-		map[string]string{"experiment_id": id, "decision": req.Decision})
-	writeJSON(w, http.StatusOK, map[string]bool{"decided": true})
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
