@@ -2,7 +2,7 @@
 """Evaluate recommendation models on the LK v3 dataset.
 
 Usage:
-    python3 analysis/evaluate.py --dataset "/path/to/Датасет_Рекомендации_ЛК_v4.xlsx"
+    python3 analysis/evaluate.py --dataset "/path/to/Датасет_Рекомендации_ЛК_v5.xlsx"
 
 The dataset is not stored in the repository. The script reads the original
 XLSX and prints Precision@3 / Fill Rate for the protocol groups.
@@ -28,6 +28,12 @@ def load(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
     clients = pd.read_excel(path, sheet_name="Клиенты", dtype=str)[
         ["client_id", "client_group", "industry", "segment", "lk_access"]
     ]
+    if "product_group" not in sales.columns:
+        sales["product_group"] = ""
+    sales["product_group"] = sales["product_group"].fillna("").astype(str)
+    sales["product_group"] = sales.apply(
+        lambda r: r["product_group"] or r["item_id"], axis=1
+    )
     sales = sales.merge(clients, on="client_id", how="left")
     return sales, clients
 
@@ -135,14 +141,24 @@ class Model:
         return out
 
 
-def evaluate(model: Model, ids: set[str], group: str) -> tuple[float, float, int]:
+def evaluate(model: Model, ids: set[str], group: str, item_group: dict[str, str],
+             train_items: dict[str, set[str]]) -> tuple[float, float, int, int, int]:
     values, filled = [], 0
+    variant_hits, new_hits = 0, 0
     for client_id in ids:
         rec = model.recommend(client_id, group)
         if rec:
             filled += 1
-        values.append(len(set(rec) & model.test_new[client_id]) / 3)
-    return sum(values) / len(values), filled / len(ids), len(ids)
+        hits = set(rec) & model.test_new[client_id]
+        values.append(len(hits) / 3)
+        known_groups = {item_group.get(i, i) for i in train_items.get(client_id, set())}
+        for item in hits:
+            if item_group.get(item, item) in known_groups:
+                variant_hits += 1
+            else:
+                new_hits += 1
+    return (sum(values) / len(values), filled / len(ids), len(ids),
+            variant_hits, new_hits)
 
 
 def cross_cut_orders(sales: pd.DataFrame) -> set[str]:
@@ -163,6 +179,7 @@ def main() -> None:
     train, test, train_items, test_new, group_a, group_b = split(sales)
     model = Model(train, train_items)
     model.test_new = test_new
+    item_group = dict(zip(sales["item_id"], sales["product_group"]))
 
     print("Dataset:", args.dataset)
     train_instances = train[["order_id", "order_week"]].drop_duplicates().shape[0]
@@ -178,7 +195,9 @@ def main() -> None:
     for label, group in [("A", group_a), ("B", group_b)]:
         for client_group in ["B2B", "B2C"]:
             ids = group & set(clients[clients.client_group == client_group].client_id)
-            precision, fill, n = evaluate(model, ids, client_group)
+            precision, fill, n, variant_hits, new_hits = evaluate(
+                model, ids, client_group, item_group, train_items
+            )
             rows.append(
                 {
                     "group": label,
@@ -186,20 +205,36 @@ def main() -> None:
                     "n": n,
                     "precision_at_3": precision,
                     "fill_rate": fill,
+                    "variant_hits": variant_hits,
+                    "new_hits": new_hits,
                 }
             )
-            print(f"{label} {client_group}: n={n} P@3={precision:.4f} Fill={fill:.3f}")
+            hits = variant_hits + new_hits
+            print(
+                f"{label} {client_group}: n={n} P@3={precision:.4f} Fill={fill:.3f} "
+                f"variants={variant_hits} new={new_hits} "
+                f"(variant share={variant_hits / hits:.1%})" if hits else ""
+            )
         ids = group
-        precision, fill, n = evaluate(model, ids, "B2B")
         # overall group: use B2B model for B2B clients and B2C popularity for B2C clients
-        values, filled = [], 0
+        values, filled, variant_hits, new_hits = [], 0, 0, 0
         for client_id in ids:
             client_group = clients.loc[clients.client_id == client_id, "client_group"].iloc[0]
             rec = model.recommend(client_id, client_group)
             if rec:
                 filled += 1
-            values.append(len(set(rec) & test_new[client_id]) / 3)
-        print(f"{label} all: n={n} P@3={sum(values)/len(values):.4f} Fill={filled/n:.3f}")
+            hits = set(rec) & test_new[client_id]
+            values.append(len(hits) / 3)
+            known_groups = {item_group.get(i, i) for i in train_items.get(client_id, set())}
+            for item in hits:
+                if item_group.get(item, item) in known_groups:
+                    variant_hits += 1
+                else:
+                    new_hits += 1
+        hits = variant_hits + new_hits
+        print(f"{label} all: n={len(ids)} P@3={sum(values)/len(values):.4f} Fill={filled/len(ids):.3f} "
+              f"variants={variant_hits} new={new_hits}"
+              + (f" (variant share={variant_hits/hits:.1%})" if hits else ""))
 
     if args.json:
         args.json.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")

@@ -17,6 +17,7 @@ type GraphNode struct {
 	Title         string `json:"title"`
 	Category      string `json:"category"`
 	Family        string `json:"family"`
+	FamilyID      string `json:"family_id"`
 	ExternalCount int    `json:"external_count"`
 	Buyers        int    `json:"buyers"`
 	B2CBuyers     int    `json:"b2c_buyers"`
@@ -168,7 +169,7 @@ func LoadDemoGraphPage(ctx context.Context, dbc *sql.DB, audience, industry, seg
 	if err := appendManualEdges(ctx, dbc, &graph); err != nil {
 		return DemoGraph{}, err
 	}
-	graph.Families = familyOptions(graph.Nodes)
+	graph.Families = applyFamilyLabels(graph.Nodes)
 	periods, err := loadGraphPeriods(ctx, dbc)
 	if err != nil {
 		return DemoGraph{}, err
@@ -275,11 +276,33 @@ func familyForTitle(title, category string) string {
 		return "Microsoft Project"
 	case has("pdf"):
 		return "PDF Toolkit"
+	case has("операционн"):
+		return "Операционная система"
+	case has("резервн") || has("бэкап"):
+		return "Резервное копирование"
+	case has("сопровожд"):
+		return "Техническое сопровождение"
+	case has("активац"):
+		return "Активация"
+	case has("скзи"):
+		return "СКЗИ"
+	case has("модул"):
+		return "Модуль"
+	case has("средство"):
+		return "Средство"
+	case has("простая"):
+		return "Простая лицензия"
 	}
-	stop := map[string]bool{"лицензия": true, "дистрибутив": true, "программа": true,
-		"программы": true, "эвм": true, "право": true, "использование": true,
-		"использования": true, "предоставление": true, "доступа": true,
-		"сервисам": true, "неисключительное": true, "бессрочная": true}
+	stop := map[string]bool{"лицензия": true, "лицензии": true, "дистрибутив": true,
+		"программа": true, "программы": true, "эвм": true, "право": true,
+		"использование": true, "использования": true, "предоставление": true,
+		"доступа": true, "сервисам": true, "неисключительное": true,
+		"бессрочная": true, "бессрочный": true, "сертификат": true,
+		"сертификата": true, "на": true, "для": true, "по": true, "с": true,
+		"и": true, "в": true, "от": true, "до": true, "или": true,
+		"год": true, "года": true, "месяц": true, "месяца": true, "шт": true,
+		"пользователь": true, "пользователя": true, "рабочее": true,
+		"место": true, "версия": true, "версии": true}
 	for _, w := range strings.FieldsFunc(t, func(r rune) bool {
 		return !(r >= 'a' && r <= 'z') && !(r >= 'а' && r <= 'я') && !(r >= '0' && r <= '9')
 	}) {
@@ -409,22 +432,57 @@ func CreateManualDatasetRelation(ctx context.Context, dbc *sql.DB, from, to, typ
 	return affected > 0, nil
 }
 
-func familyOptions(nodes []GraphNode) []GraphFilterOption {
-	counts := map[string]int{}
-	for _, n := range nodes {
-		if n.Family != "" {
-			counts[n.Family]++
-		}
+func applyFamilyLabels(nodes []GraphNode) []GraphFilterOption {
+	type groupInfo struct {
+		labels map[string]int
+		count  int
 	}
-	out := make([]GraphFilterOption, 0, len(counts))
-	for value, count := range counts {
-		out = append(out, GraphFilterOption{Value: value, Label: value, Count: count})
+	groups := map[string]*groupInfo{}
+	for i := range nodes {
+		gid := nodes[i].FamilyID
+		if gid == "" {
+			gid = nodes[i].Family
+		}
+		if gid == "" {
+			gid = nodes[i].Category
+		}
+		nodes[i].FamilyID = gid
+		gi := groups[gid]
+		if gi == nil {
+			gi = &groupInfo{labels: map[string]int{}}
+			groups[gid] = gi
+		}
+		label := nodes[i].Family
+		if label == "" {
+			label = gid
+		}
+		gi.labels[label]++
+		gi.count++
+	}
+	best := map[string]string{}
+	for gid, gi := range groups {
+		label, n := gid, 0
+		for l, c := range gi.labels {
+			if c > n || (c == n && l < label) {
+				label, n = l, c
+			}
+		}
+		best[gid] = label
+	}
+	labelCounts := map[string]int{}
+	for i := range nodes {
+		nodes[i].Family = best[nodes[i].FamilyID]
+		labelCounts[nodes[i].Family]++
+	}
+	out := make([]GraphFilterOption, 0, len(labelCounts))
+	for label, count := range labelCounts {
+		out = append(out, GraphFilterOption{Value: label, Label: label, Count: count})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Count != out[j].Count {
 			return out[i].Count > out[j].Count
 		}
-		return out[i].Value < out[j].Value
+		return out[i].Label < out[j].Label
 	})
 	if len(out) > 60 {
 		out = out[:60]
@@ -498,10 +556,11 @@ func loadSegmentGraph(ctx context.Context, dbc *sql.DB, audience, industry, segm
 			  AND ($3 = '' OR c.segment = $3)
 			GROUP BY o.item_id
 		)
-		SELECT i.item_id, i.title, i.category, b.buyers, b.b2c_buyers
+		SELECT i.item_id, i.title, i.category, i.product_group, b.buyers, b.b2c_buyers
 		FROM buyers b
 		JOIN lk_items i ON i.item_id = b.item_id
-		WHERE CASE WHEN $1 = 'b2c' THEN b.b2c_buyers >= 5 ELSE b.buyers >= 3 END
+		WHERE i.available
+		  AND CASE WHEN $1 = 'b2c' THEN b.b2c_buyers >= 5 ELSE b.buyers >= 3 END
 		ORDER BY b.buyers DESC, i.item_id`, group, industry, segment)
 	if err != nil {
 		return DemoGraph{}, fmt.Errorf("segment nodes: %w", err)
@@ -510,10 +569,12 @@ func loadSegmentGraph(ctx context.Context, dbc *sql.DB, audience, industry, segm
 	nodeIDs := map[string]bool{}
 	for rows.Next() {
 		var n GraphNode
-		if err := rows.Scan(&n.ID, &n.Title, &n.Category, &n.Buyers, &n.B2CBuyers); err != nil {
+		var productGroup string
+		if err := rows.Scan(&n.ID, &n.Title, &n.Category, &productGroup, &n.Buyers, &n.B2CBuyers); err != nil {
 			rows.Close()
 			return DemoGraph{}, err
 		}
+		n.FamilyID = productGroup
 		n.Family = familyForTitle(n.Title, n.Category)
 		nodes = append(nodes, n)
 		nodeIDs[n.ID] = true
@@ -538,8 +599,9 @@ func loadSegmentGraph(ctx context.Context, dbc *sql.DB, audience, industry, segm
 			       count(DISTINCT client_id) FILTER (WHERE client_group = 'B2C') AS b2c_buyers
 			FROM seg GROUP BY item_id
 		), public AS (
-			SELECT item_id FROM buyers
-			WHERE CASE WHEN $1 = 'b2c' THEN b2c_buyers >= 5 ELSE buyers >= 3 END
+			SELECT b.item_id FROM buyers b
+			JOIN lk_items i ON i.item_id = b.item_id AND i.available
+			WHERE CASE WHEN $1 = 'b2c' THEN b.b2c_buyers >= 5 ELSE b.buyers >= 3 END
 		), pairs AS (
 			SELECT a.item_id AS item_a, b.item_id AS item_b,
 			       count(DISTINCT (a.order_id, a.order_week)) AS count
@@ -732,10 +794,11 @@ func loadAggregateGraph(ctx context.Context, dbc *sql.DB, audience string, soloL
 	}
 
 	rows, err := dbc.QueryContext(ctx, `
-		SELECT i.item_id, i.title, i.category, p.buyers, p.b2c_buyers
+		SELECT i.item_id, i.title, i.category, i.product_group, p.buyers, p.b2c_buyers
 		FROM lk_items i
 		JOIN lk_item_privacy p ON p.item_id = i.item_id
-		WHERE CASE WHEN $1 = 'b2c' THEN p.public_b2c ELSE p.public_b2b END
+		WHERE i.available
+		  AND CASE WHEN $1 = 'b2c' THEN p.public_b2c ELSE p.public_b2b END
 		ORDER BY p.buyers DESC, i.item_id`, audience)
 	if err != nil {
 		return DemoGraph{}, fmt.Errorf("demo graph nodes: %w", err)
@@ -747,9 +810,11 @@ func loadAggregateGraph(ctx context.Context, dbc *sql.DB, audience string, soloL
 	nodeIDs := map[string]bool{}
 	for rows.Next() {
 		var n GraphNode
-		if err := rows.Scan(&n.ID, &n.Title, &n.Category, &n.Buyers, &n.B2CBuyers); err != nil {
+		var productGroup string
+		if err := rows.Scan(&n.ID, &n.Title, &n.Category, &productGroup, &n.Buyers, &n.B2CBuyers); err != nil {
 			return DemoGraph{}, err
 		}
+		n.FamilyID = productGroup
 		n.Family = familyForTitle(n.Title, n.Category)
 		n.Degree = degree[n.ID]
 		n.Solo = !connected[n.ID]

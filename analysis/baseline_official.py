@@ -30,6 +30,12 @@ def load(path: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         ["client_id", "client_group"]
     ]
     sales = sales.drop_duplicates(["order_id", "order_week", "item_id"])
+    if "product_group" not in sales.columns:
+        sales["product_group"] = ""
+    sales["product_group"] = sales["product_group"].fillna("").astype(str)
+    sales["product_group"] = sales.apply(
+        lambda r: r["product_group"] or r["item_id"], axis=1
+    )
     sales = sales.merge(clients, on="client_id", how="left")
     return sales, clients
 
@@ -89,9 +95,11 @@ class Baseline:
         return [item for item, _ in ranked[:k]]
 
 
-def evaluate(model: Baseline, method: str, ids: set[str], train_items, test_new, k=3):
+def evaluate(model: Baseline, method: str, ids: set[str], train_items, test_new,
+             item_group: dict[str, str], k=3):
     values = []
     filled = 0
+    variant_hits, new_hits = 0, 0
     for cid in sorted(ids):
         owned = train_items.get(cid, set())
         rec = (
@@ -101,8 +109,17 @@ def evaluate(model: Baseline, method: str, ids: set[str], train_items, test_new,
         )
         if rec:
             filled += 1
-        values.append(len(set(rec) & test_new.get(cid, set())) / k)
-    return (sum(values) / len(values), filled / len(ids), len(ids)) if values else (0, 0, 0)
+        hits = set(rec) & test_new.get(cid, set())
+        values.append(len(hits) / k)
+        known_groups = {item_group.get(i, i) for i in owned}
+        for item in hits:
+            if item_group.get(item, item) in known_groups:
+                variant_hits += 1
+            else:
+                new_hits += 1
+    if not values:
+        return (0, 0, 0, 0, 0)
+    return (sum(values) / len(values), filled / len(ids), len(ids), variant_hits, new_hits)
 
 
 def main() -> None:
@@ -115,6 +132,7 @@ def main() -> None:
     train, test, train_items, test_new, group_a, group_b = split(sales)
     model = Baseline(train)
     model.train_items = train_items
+    item_group = dict(zip(sales["item_id"], sales["product_group"]))
 
     print("Dataset:", args.dataset)
     print(
@@ -131,7 +149,9 @@ def main() -> None:
                     ids = group_ids
                 else:
                     ids = group_ids & set(clients[clients.client_group == cg].client_id)
-                p3, fill, n = evaluate(model, method, ids, train_items, test_new)
+                p3, fill, n, variant_hits, new_hits = evaluate(
+                    model, method, ids, train_items, test_new, item_group
+                )
                 rows.append(
                     {
                         "method": method,
@@ -140,11 +160,16 @@ def main() -> None:
                         "n": n,
                         "precision_at_3": p3,
                         "fill_rate": fill,
+                        "variant_hits": variant_hits,
+                        "new_hits": new_hits,
                     }
                 )
+                hits = variant_hits + new_hits
                 print(
                     f"{method:11s} {group_name} {cg:3s}: n={n:4d} "
-                    f"P@3={p3*100:5.2f}% Fill={fill*100:5.1f}%"
+                    f"P@3={p3*100:5.2f}% Fill={fill*100:5.1f}% "
+                    f"variants={variant_hits} new={new_hits}"
+                    + (f" (variant share={variant_hits/hits:.1%})" if hits else "")
                 )
 
     if args.json:

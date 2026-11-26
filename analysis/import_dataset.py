@@ -49,10 +49,18 @@ def main() -> None:
     sales["item_id"] = sales["item_id"].str.strip()
     sales["item_name"] = sales["item_name"].fillna("").str.strip()
     sales["sku"] = sales["sku"].fillna("").str.strip()
+    if "product_group" not in sales.columns:
+        sales["product_group"] = ""
+    sales["product_group"] = sales["product_group"].fillna("").str.strip()
+    if "available" not in sales.columns:
+        sales["available"] = "true"
+    sales["available"] = sales["available"].fillna("true").str.lower().isin(
+        ["true", "1", "yes", "да"]
+    )
     clients = clients.fillna("")
 
     items = (
-        sales[["item_id", "sku", "item_name"]]
+        sales[["item_id", "sku", "item_name", "product_group", "available"]]
         .drop_duplicates("item_id")
         .rename(columns={"item_name": "title"})
     )
@@ -86,10 +94,11 @@ def main() -> None:
                          lk_clients, lk_items RESTART IDENTITY CASCADE
             """)
             execute_values(cur, """
-                INSERT INTO lk_items (item_id, sku, title, category, subcategory, source)
+                INSERT INTO lk_items (item_id, sku, title, category, subcategory, product_group, available, source)
                 VALUES %s
             """, [
-                (r.item_id, r.sku, r.title, r.category, r.subcategory, "dataset_v3")
+                (r.item_id, r.sku, r.title, r.category, r.subcategory,
+                 r.product_group, bool(r.available), "dataset_v5")
                 for r in items.itertuples()
             ], page_size=1000)
 
