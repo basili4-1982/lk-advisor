@@ -419,7 +419,7 @@ var lastOps = [];
 var REG_STATUS = {candidate: 'Кандидат', active: 'Активна', rejected: 'Отклонена', stale: 'Устарела', expired: 'Истекла', superseded: 'Заменена'};
 var REG_PROV = {manual: 'Ручная', co_purchase: 'Co-purchase', llm: 'LLM', attribute: 'Атрибуты', rule: 'Правило', import: 'Импорт'};
 var REG_SELECTED = {};
-var REG_PAGE = {items: [], total: 0};
+var REG_PAGE = {items: [], total: 0, familyLabels: {}};
 var REG_VIEW = '';
 
 function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
@@ -757,6 +757,7 @@ el('dataset-candidates').addEventListener('click', async function(ev){
   catch(e){ toast(e.message,true); }
 });
 function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
+function familyLabel(id){ return REG_PAGE.familyLabels[id] || id || '—'; }
 function regProvLabel(p){ return REG_PROV[p] || p || '—'; }
 function regWhen(v){ if(!v) return '—'; var d=new Date(v); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU'); }
 function regEvidence(ev){
@@ -787,6 +788,8 @@ async function loadRegistry(){
     var metrics = await api('GET','/v1/admin/registry/metrics');
     REG_PAGE.items = data.items || [];
     REG_PAGE.total = data.total || REG_PAGE.items.length;
+    REG_PAGE.familyLabels = {};
+    (metrics.family_options || []).forEach(function(g){ REG_PAGE.familyLabels[g.value] = g.label; });
     renderRegistryMetrics(metrics);
     fillRegistrySelects(metrics);
     renderRegistry();
@@ -844,7 +847,7 @@ function renderRegistry(){
       '<td>'+esc(regProvLabel(r.provenance_kind))+'</td>'+
       '<td>'+Math.round((r.confidence||0)*100)+'%</td>'+
       '<td>'+regEvidence(r.evidence)+'</td>'+
-      '<td>'+esc(r.from_family||'—')+'</td>'+
+      '<td>'+esc(familyLabel(r.from_family))+'</td>'+
       '<td>'+regWhen(r.valid_until)+'</td>'+
       '<td>v'+esc(r.version||1)+'</td>'+
     '</tr>';
@@ -860,7 +863,7 @@ function renderRegistryDetail(id){
     '<div class="form-title">'+esc(r.from_title||r.from_item_id)+' → '+esc(r.to_title||r.to_item_id)+'</div>'+
     '<div class="hint">'+esc(typeTitle(r.type))+' · '+esc(regStatusLabel(r.status))+' · '+esc(regProvLabel(r.provenance_kind))+' · '+Math.round((r.confidence||0)*100)+'%</div>'+
     '<div style="margin:8px 0">'+regEvidence(r.evidence)+'</div>'+
-    '<div class="hint">Семейство: '+esc(r.from_family||'—')+' → '+esc(r.to_family||'—')+' · версия '+esc(r.version||1)+
+    '<div class="hint">Семейство: '+esc(familyLabel(r.from_family))+' → '+esc(familyLabel(r.to_family))+' · версия '+esc(r.version||1)+
       (r.rejection_reason?' · причина отказа: '+esc(r.rejection_reason):'')+'</div>'+
     '<div class="toolbar" style="margin-top:8px">'+
       '<button class="small" data-reg-review="confirm" data-reg-review-id="'+r.id+'">Подтвердить</button>'+
