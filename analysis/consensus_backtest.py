@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from evaluate import Model, cross_cut_orders, load, split
+from evaluate import Model, load, split
 
 ROOT = Path(__file__).resolve().parent
 REPORT = ROOT / "consensus_report.md"
@@ -129,16 +129,21 @@ class Slices:
         for item in self.neighbors:
             self.neighbors[item].sort(key=lambda x: (-x[1], x[0]))
 
-        end = pd.to_datetime(b2b["order_week"]).max()
-        age = (end - pd.to_datetime(b2b["order_week"])).dt.days / 7.0
+        # Official popularity counts distinct clients. For decay we use each
+        # client's last purchase date in the train window.
+        unique = b2b.sort_values("week_date").drop_duplicates(
+            ["client_id", "item_id"], keep="last"
+        )
+        end = pd.to_datetime(unique["week_date"]).max()
+        age = (end - pd.to_datetime(unique["week_date"])).dt.days / 7.0
         decay = 0.5 ** (age / 8.0)
         self.recent = (
-            b2b.assign(_w=decay).groupby("item_id")["_w"].sum().sort_values(ascending=False)
+            unique.assign(_w=decay).groupby("item_id")["_w"].sum().sort_values(ascending=False)
         )
-        self.segment = b2b.groupby("item_id").size().sort_values(ascending=False)
+        self.segment = unique.groupby("item_id").size().sort_values(ascending=False)
         self.category = {
             cat: group.groupby("item_id").size().sort_values(ascending=False)
-            for cat, group in b2b.groupby("category")
+            for cat, group in unique.groupby("category")
         }
 
     def candidates(self, owned: set[str]) -> dict[str, dict[str, float]]:
@@ -387,8 +392,7 @@ def main() -> None:
 
     sales, clients = load(args.dataset)
     sales["week_date"] = pd.to_datetime(sales["order_week"])
-    cross_cut = cross_cut_orders(sales)
-    sales = sales[~sales["order_id"].isin(cross_cut)].copy()
+    # Official split: no cross-cut exclusion.
     train, test, train_items, test_new, group_a, group_b = split(sales)
     train = train.copy()
     test = test.copy()

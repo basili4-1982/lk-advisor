@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from evaluate import TEST_START, TRAIN_END, Model, cross_cut_orders, load, split
+from evaluate import TEST_START, TRAIN_END, Model, load, split
 from import_dataset import category_for
 
 ROOT = Path(__file__).resolve().parent
@@ -64,6 +64,8 @@ def popularity(train: pd.DataFrame, audience: str | None = None,
         df = df[df["week_date"] >= since]
     if months is not None:
         df = df[df["month"].isin([pd.Period(year=y, month=m, freq="M") for y, m in months])]
+    # Official popularity counts distinct clients, not sale rows.
+    df = df.sort_values("week_date").drop_duplicates(["client_id", "item_id"], keep="last")
     if half_life_weeks:
         end = train["week_date"].max()
         age = (end - df["week_date"]).dt.days / 7.0
@@ -152,9 +154,8 @@ def main() -> None:
     sales["month"] = sales["week_date"].dt.to_period("M")
     sales["category"] = sales["item_name"].map(category_for)
 
-    cross_cut = cross_cut_orders(sales)
-    excluded_rows = int(sales["order_id"].isin(cross_cut).sum())
-    sales = sales[~sales["order_id"].isin(cross_cut)].copy()
+    # Official split: rows are assigned by their own order_week.
+    excluded_rows = 0
 
     train, test, train_items, test_new, group_a, group_b = split(sales)
     train = train.copy()
@@ -392,7 +393,7 @@ def main() -> None:
     # ---------- 8. Report ----------
     metrics = {
         "rows": int(len(sales)),
-        "excluded_cross_cut_orders": len(cross_cut),
+        "excluded_cross_cut_orders": 0,
         "excluded_rows": excluded_rows,
         "weeks": int(sales["week_date"].nunique()),
         "first_week": str(sales["week_date"].min().date()),
@@ -434,7 +435,7 @@ def main() -> None:
     lines = []
     lines.append("# Сезонность и время: что показывают данные\n")
     lines.append(f"- Период: **{metrics['first_week']} — {metrics['last_week']}**, {metrics['weeks']} недель.")
-    lines.append(f"- Строк после исключения cross-cut: **{len(sales):,}** (исключено {excluded_rows} строк / {len(cross_cut)} заказов).")
+    lines.append(f"- Строк в официальном split: **{len(sales):,}** (cross-cut заказы не исключаются: разные недели — разные покупки).")
     lines.append(f"- Тестовые месяцы: **{', '.join(metrics['test_months'])}**; сезонные месяцы: **{', '.join(metrics['seasonal_months'])}**.")
     lines.append("")
     lines.append("## 1. Общая сезонность\n")

@@ -2,7 +2,7 @@
 """Evaluate recommendation models on the LK v3 dataset.
 
 Usage:
-    python3 analysis/evaluate.py --dataset "/path/to/Датасет_Рекомендации_ЛК_v3.xlsx"
+    python3 analysis/evaluate.py --dataset "/path/to/Датасет_Рекомендации_ЛК_v4.xlsx"
 
 The dataset is not stored in the repository. The script reads the original
 XLSX and prints Precision@3 / Fill Rate for the protocol groups.
@@ -63,12 +63,14 @@ class Model:
     def __init__(self, train: pd.DataFrame, train_items: dict[str, set[str]]):
         self.train_items = train_items
 
-        # Popularity is counted like the organisers' baseline: over sale rows.
-        self.pop_all = train.groupby("item_id").size().sort_values(ascending=False)
+        # Official baseline popularity: distinct clients, not sale rows.
+        self.pop_all = (
+            train.groupby("item_id")["client_id"].nunique().sort_values(ascending=False)
+        )
         self.pop_b2b = (
             train[train["client_group"] == "B2B"]
-            .groupby("item_id")
-            .size()
+            .groupby("item_id")["client_id"]
+            .nunique()
             .sort_values(ascending=False)
         )
 
@@ -156,13 +158,8 @@ def main() -> None:
     args = parser.parse_args()
 
     sales, clients = load(args.dataset)
-    cross_cut = cross_cut_orders(sales)
-    excluded_rows = int(sales["order_id"].isin(cross_cut).sum())
-    sales = sales[~sales["order_id"].isin(cross_cut)].copy()
-    print(
-        f"excluded cross-cut orders={len(cross_cut)} rows={excluded_rows} "
-        f"(no future leakage into train/test)"
-    )
+    # Official split: train/test is decided per row by order_week. A monthly
+    # subscription is a separate basket, so cross-cut order_ids are not excluded.
     train, test, train_items, test_new, group_a, group_b = split(sales)
     model = Model(train, train_items)
     model.test_new = test_new

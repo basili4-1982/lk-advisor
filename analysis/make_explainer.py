@@ -56,8 +56,8 @@ def main() -> None:
     # Offline backtest chart
     ax = fig.add_subplot(gs[1, 0])
     labels = ["B2B A", "B2B B", "B2C A", "B2C B"]
-    baseline = [3.6, 5.1, 19.4, 19.2]
-    ours = [9.44, 12.25, 19.44, 19.23]
+    baseline = [3.75, 5.22, 20.0, 20.0]
+    ours = [10.38, 13.61, 20.0, 20.0]
     x = range(len(labels))
     ax.bar([i - 0.18 for i in x], baseline, width=0.36, label="baseline", color="#c8102e")
     ax.bar([i + 0.18 for i in x], ours, width=0.36, label="наша модель", color="#1d4ed8")
