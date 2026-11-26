@@ -50,7 +50,7 @@ type CoPurchase struct {
 	B2CHidden bool   `json:"b2c_hidden"`
 }
 
-// LoadDatasetCoverage returns counts for the imported v3 dataset.
+// LoadDatasetCoverage returns counts for the imported v5 dataset.
 func LoadDatasetCoverage(ctx context.Context, dbc *sql.DB) (DatasetCoverage, error) {
 	var c DatasetCoverage
 	if err := dbc.QueryRowContext(ctx, `SELECT count(*) FROM lk_items`).Scan(&c.Items); err != nil {

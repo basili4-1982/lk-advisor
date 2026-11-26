@@ -402,7 +402,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 
         <div id="tab-dataset" class="hidden">
           <div class="formbox">
-            <div class="form-title">Датасет v3 и co-purchase</div>
+            <div class="form-title">Датасет v5 и co-purchase</div>
             <p class="hint">Реальные 1 079 товаров, 32k строк продаж, 19 162 клиента. Связи строим из совместных покупок, затем отправляем в карантин.</p>
             <div class="stats" id="dataset-cards" style="margin:12px 0"></div>
             <div class="toolbar">
@@ -891,7 +891,7 @@ async function loadDataset(){
     var rows=p.items||[];
     el('dataset-pairs').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Раз</th><th>B2B</th><th>B2C</th></tr></thead><tbody>'+
       rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'<div class="hint">'+esc(x.item_a)+'</div></td><td>'+esc(x.title_b)+'<div class="hint">'+esc(x.item_b)+'</div></td><td>'+x.count+'</td><td>'+x.b2b_count+'</td><td>'+(x.b2c_hidden?'<span class="hint">скрыто k<5</span>':x.b2c_count)+'</td></tr>'; }).join('')+'</tbody></table></div>' :
-      '<div class="empty">Нет пар. Импортируйте датасет v3.</div>';
+      '<div class="empty">Нет пар. Импортируйте датасет v5.</div>';
   } catch(e){ el('dataset-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 el('dataset-suggest').addEventListener('click', async function(){

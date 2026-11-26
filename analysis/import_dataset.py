@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Import the LK v3 dataset into PostgreSQL and build the co-purchase graph."""
+"""Import the LK v5 dataset into PostgreSQL and build the co-purchase graph."""
 
 from __future__ import annotations
 
@@ -106,7 +106,7 @@ def main() -> None:
                 INSERT INTO lk_clients (client_id, client_group, client_type, industry, segment, lk_access, source)
                 VALUES %s
             """, [
-                (r.client_id, r.client_group, r.client_type, r.industry, r.segment, r.lk_access, "dataset_v3")
+                (r.client_id, r.client_group, r.client_type, r.industry, r.segment, r.lk_access, "dataset_v5")
                 for r in clients.itertuples()
             ], page_size=1000)
 
@@ -128,7 +128,7 @@ def main() -> None:
                     b2c_count = EXCLUDED.b2c_count,
                     updated_at = now()
             """, [
-                (a, b, n, pair_b2b[(a, b)], pair_b2c[(a, b)], "dataset_v3")
+                (a, b, n, pair_b2b[(a, b)], pair_b2c[(a, b)], "dataset_v5")
                 for (a, b), n in pairs.items()
             ], page_size=1000)
         conn.commit()
