@@ -72,6 +72,8 @@ type RegistryRelation struct {
 	ToFamily        string             `json:"to_family"`
 	FromCategory    string             `json:"from_category"`
 	ToCategory      string             `json:"to_category"`
+	FromShort       string             `json:"from_short"`
+	ToShort         string             `json:"to_short"`
 	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
@@ -114,6 +116,7 @@ const registryColumns = `r.id, r.from_item_id, r.to_item_id, r.type, r.status,
 	COALESCE(f.title, r.from_item_id), COALESCE(t.title, r.to_item_id),
 	COALESCE(f.product_group, ''), COALESCE(t.product_group, ''),
 	COALESCE(f.category, ''), COALESCE(t.category, ''),
+	COALESCE(fa.short_name, ''), COALESCE(ta.short_name, ''),
 	r.updated_at`
 
 // decodeEvidence parses the evidence jsonb column.
@@ -168,6 +171,7 @@ func scanRegistryRelation(rows *sql.Rows) (RegistryRelation, int, error) {
 		&rel.FromTitle, &rel.ToTitle,
 		&rel.FromFamily, &rel.ToFamily,
 		&rel.FromCategory, &rel.ToCategory,
+		&rel.FromShort, &rel.ToShort,
 		&rel.UpdatedAt, &total); err != nil {
 		return RegistryRelation{}, 0, err
 	}
@@ -199,8 +203,10 @@ func buildRelationWhere(f RelationFilter) (string, []any) {
 	if q := strings.TrimSpace(f.Query); q != "" {
 		n := add("%" + q + "%")
 		conds = append(conds, fmt.Sprintf(
-			`(f.title ILIKE $%d OR t.title ILIKE $%d OR r.from_item_id ILIKE $%d OR r.to_item_id ILIKE $%d)`,
-			n, n, n, n))
+			`(f.title ILIKE $%d OR t.title ILIKE $%d OR r.from_item_id ILIKE $%d OR r.to_item_id ILIKE $%d
+			  OR EXISTS (SELECT 1 FROM item_aliases a WHERE a.item_id = r.from_item_id AND a.short_name ILIKE $%d)
+			  OR EXISTS (SELECT 1 FROM item_aliases b WHERE b.item_id = r.to_item_id AND b.short_name ILIKE $%d))`,
+			n, n, n, n, n, n))
 	}
 	if len(f.Types) > 0 {
 		n := add(pq.Array(f.Types))
@@ -282,7 +288,9 @@ func ListRegistryRelations(ctx context.Context, dbc *sql.DB, f RelationFilter) (
 	}
 	from := ` FROM relations r
 		LEFT JOIN lk_items f ON f.item_id = r.from_item_id
-		LEFT JOIN lk_items t ON t.item_id = r.to_item_id`
+		LEFT JOIN lk_items t ON t.item_id = r.to_item_id
+		LEFT JOIN item_aliases fa ON fa.item_id = r.from_item_id
+		LEFT JOIN item_aliases ta ON ta.item_id = r.to_item_id`
 	whereArgs := args
 	args = append(args, limit, offset)
 

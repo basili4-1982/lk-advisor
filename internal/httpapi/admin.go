@@ -93,6 +93,11 @@ table.registry th,table.registry td{padding:4px 6px}
 .pair-from{color:#111827}
 .pair-to{color:#111827;font-weight:600}
 .pair-to .arrow{color:#9ca3af;margin-right:5px;font-weight:400}
+.pair-text{cursor:pointer}
+.pair-from.expanded,.pair-to.expanded{white-space:normal;overflow:visible}
+.pair-text.full{white-space:normal;word-break:break-word;font-weight:600}
+.alias-edit{font-size:12px;color:var(--muted);margin:4px 0}
+.alias-edit b{color:var(--ink)}
 .pair-qual{display:inline-block;font-size:10px;font-weight:600;color:#6b7280;background:#f1f5f9;border-radius:4px;padding:0 4px;vertical-align:1px}
 .pair-delta del{color:#b91c1c;text-decoration:line-through}
 .pair-delta ins{color:#047857;text-decoration:none;font-weight:700}
@@ -924,11 +929,15 @@ var LEAD_PHRASES = [
   /^лицензия на право использования\s+/i,
   /^неисключительное право (на )?использования\s+/i,
   /^дистрибутив программного обеспечения\s+/i,
+  /^дистрибутив\s+/i,
   /^программа фиксации и контроля исходного состояния программного комплекса\s+/i,
   /^установочный комплект[.,]?\s*/i,
   /^сертификат на сопровождение по\s+/i,
   /^базовый пакет для сертифицированного\s+/i,
-  /^средство создания модели системы разграничения доступа\s+/i
+  /^средство создания модели системы разграничения доступа\s+/i,
+  /^сертификат на годовую техническую поддержку\s*/i,
+  /^сертификат на техническую поддержку\s*/i,
+  /^сертификат на сопровождение\s*/i
 ];
 var TAIL_PHRASES = [
   /\s*[-–]?\s*лицензия.*$/i,
@@ -941,6 +950,8 @@ var TAIL_PHRASES = [
   /\s*на \d+ учетн.*$/i,
   /,?\s*на \d+ месяц(а|ев)?.*$/i,
   /\s*на неограниченное количество.*$/i,
+  /\s*на\s+dvd.*$/i,
+  /\s*\.?\s*формуляр.*$/i,
   /,\s*продление.*$/i,
   /,\s*лицензия.*$/i,
   /,\s*клиентская.*$/i,
@@ -953,7 +964,7 @@ var WORD_REPLACEMENTS = [
   [/google workspace/gi,'GWS'], [/microsoft 365/gi,'M365'], [/microsoft/gi,'MS'],
   [/kaspersky endpoint security/gi,'KES'], [/kaspersky small office security/gi,'KSOS'],
   [/российская|russian/gi,''], [/edition/gi,''],
-  [/версии|версия/gi,''], [/исполнение/gi,''],
+  [/версии|версия/gi,''], [/исполнения|исполнение/gi,''],
   [/для бизнеса|бизнеса/gi,'Bus.'],
   [/стандартный|standard/gi,'Std'],
   [/с расширенным функционалом|расширенным функционалом/gi,'Adv'],
@@ -966,7 +977,8 @@ var WORD_REPLACEMENTS = [
   [/\bprofessional\b/gi,'Pro'], [/\benterprise\b/gi,'Ent'],
   [/\bbusiness\b/gi,'Bus.'], [/\badditional\b/gi,'Add'],
   [/\bconcurrent\b/gi,'Conc'], [/\bcertified\b/gi,'Cert'],
-  [/\bsecurity\b/gi,'Sec']
+  [/\bsecurity\b/gi,'Sec'],
+  [/на сервере/gi,'Server'], [/на рабочем месте/gi,'Workstation']
 ];
 function qualifierOf(t){
   t=String(t||'').trim();
@@ -1001,10 +1013,13 @@ function licenseKind(s){
 function shortTitle(t){
   var original=String(t||'').replace(/[«»"]/g,' ').replace(/\s+/g,' ').trim();
   var text=original;
+  if (/^сертификат на годовую техническую поддержку/i.test(text)) text=text.replace(/^сертификат на годовую техническую поддержку\s*/i,'Техподдержка 1 год ');
+  else if (/^сертификат на техническую поддержку/i.test(text)) text=text.replace(/^сертификат на техническую поддержку\s*/i,'Техподдержка ');
+  else if (/^сертификат на сопровождение/i.test(text)) text=text.replace(/^сертификат на сопровождение\s*/i,'Сопровождение ');
   LEAD_PHRASES.forEach(function(re){ text=text.replace(re,''); });
   WORD_REPLACEMENTS.forEach(function(pair){ text=text.replace(pair[0], pair[1]); });
   TAIL_PHRASES.forEach(function(re){ text=text.replace(re,''); });
-  text=text.replace(/\(\s*([\d.]+)\s*\)/g,' $1')
+  text=text.replace(/\(\s*([\d.]+)\s*\)/g,' $1').replace(/\(\s*[-–]\s*/g,'(').replace(/\s*[-–]\s*\)/g,')').replace(/\(\s*\)/g,'')
            .replace(/\s*[-–]\s*$/,'')
            .replace(/\s{2,}/g,' ')
            .trim();
@@ -1020,7 +1035,7 @@ function shortTitle(t){
   if (!text) text=original;
   if (text.length > 40){
     var vt='', brand='';
-    var BRAND_SKIP={'СКЗИ':1,'ПО':1,'ЭВМ':1,'ОС':1,'ПК':1,'АРМ':1,'БД':1,'СУБД':1,'API':1,'SDK':1,'CPU':1,'RAM':1,'РФ':1,'СС':1,'CSP':1,'CAL':1,'ESD':1,'OEM':1};
+    var BRAND_SKIP={'СКЗИ':1,'ПО':1,'ЭВМ':1,'ОС':1,'ПК':1,'АРМ':1,'БД':1,'СУБД':1,'API':1,'SDK':1,'CPU':1,'RAM':1,'РФ':1,'СС':1,'CSP':1,'CAL':1,'ESD':1,'OEM':1,'DVD':1,'CD':1,'USB':1,'BOX':1,'PDF':1,'DOC':1,'XLS':1};
     var parts=text.split(' ');
     for (var bi=0;bi<parts.length;bi++){
       var bk=parts[bi].replace(/^[.,;:()\-]+|[.,;:()\-]+$/g,'');
@@ -1037,25 +1052,30 @@ function shortTitle(t){
   }
   return text;
 }
-function pairCell(from, to){
+function pairCell(from, to, fromShort, toShort){
   from=String(from||''); to=String(to||'');
   var full=esc(from)+' → '+esc(to);
   var qa=qualifierOf(from), qb=qualifierOf(to);
-  var a=shortTitle(qa.rest), b=shortTitle(qb.rest);
-  var ea=editionTag(from), eb=editionTag(to);
-  if (ea) a+=' · '+ea;
-  if (eb) b+=' · '+eb;
-  var ka=licenseKind(from), kb=licenseKind(to);
-  if (ka && kb && ka!==kb){ a+=' · '+ka; b+=' · '+kb; }
-  if (a===b){ a=qa.rest; b=qb.rest; }
-  var fromLine, toLine=esc(b);
-  if (qa.qual && qa.qual===qb.qual) {
-    fromLine='<span class="pair-qual">'+esc(qa.qual)+'</span> '+esc(a);
-  } else {
-    fromLine=(qa.qual?'<span class="pair-qual">'+esc(qa.qual)+'</span> ':'')+esc(a);
-    toLine=(qb.qual?'<span class="pair-qual">'+esc(qb.qual)+'</span> ':'')+esc(b);
+  var a=fromShort || shortTitle(qa.rest);
+  var b=toShort || shortTitle(qb.rest);
+  if (!fromShort && !toShort){
+    var ea=editionTag(from), eb=editionTag(to);
+    if (ea && a.toLowerCase().indexOf(ea.toLowerCase())<0) a+=' · '+ea;
+    if (eb && b.toLowerCase().indexOf(eb.toLowerCase())<0) b+=' · '+eb;
+    var ka=licenseKind(from), kb=licenseKind(to);
+    if (ka && kb && ka!==kb){ a+=' · '+ka; b+=' · '+kb; }
+    if (a===b){ a=qa.rest; b=qb.rest; }
   }
-  return '<span class="pair" data-tip="'+full+'"><span class="pair-from">'+fromLine+'</span><span class="pair-to"><span class="arrow">→</span>'+toLine+'</span></span>';
+  var fromText='<span class="pair-text" data-full="'+esc(from)+'" data-short="'+esc(a)+'">'+esc(a)+'</span>';
+  var toText='<span class="pair-text" data-full="'+esc(to)+'" data-short="'+esc(b)+'">'+esc(b)+'</span>';
+  var fromLine, toLine;
+  if (qa.qual && qa.qual===qb.qual){
+    fromLine='<span class="pair-qual">'+esc(qa.qual)+'</span> '+fromText;
+  } else {
+    fromLine=(qa.qual?'<span class="pair-qual">'+esc(qa.qual)+'</span> ':'')+fromText;
+    toText=(qb.qual?'<span class="pair-qual">'+esc(qb.qual)+'</span> ':'')+toText;
+  }
+  return '<span class="pair" data-tip="'+full+'"><span class="pair-from">'+fromLine+'</span><span class="pair-to"><span class="arrow">→</span>'+toText+'</span></span>';
 }
 function evidenceCell(ev){
   if(!ev || !ev.length) return '—';
@@ -1162,7 +1182,7 @@ function renderRegistry(){
   el('registry-body').innerHTML = rows.map(function(r){
     return '<tr data-reg-id="'+r.id+'">'+
       '<td><input type="checkbox" data-reg-check="'+r.id+'" style="width:auto"'+(REG_SELECTED[r.id]?' checked':'')+'></td>'+
-      '<td>'+pairCell(r.from_title||r.from_item_id, r.to_title||r.to_item_id)+'</td>'+
+      '<td>'+pairCell(r.from_title||r.from_item_id, r.to_title||r.to_item_id, r.from_short, r.to_short)+'</td>'+
       '<td><span class="type-chip" style="--tc:'+typeColor(r.type)+'" data-tip="'+esc(typeDesc(r.type))+'"><i></i>'+esc(typeTitle(r.type))+'</span></td>'+
       '<td><span class="pill '+(r.status==='active'?'on':(r.status==='rejected'?'off':'q'))+'">'+esc(regStatusLabel(r.status))+'</span></td>'+
       '<td><span class="prov-cell">'+esc(regProvLabel(r.provenance_kind))+' '+confMeter(r.confidence)+'</span></td>'+
@@ -1180,6 +1200,8 @@ function renderRegistryDetail(id){
     '<div class="form-title">'+esc(r.from_title||r.from_item_id)+' → '+esc(r.to_title||r.to_item_id)+'</div>'+
     '<div class="hint">'+esc(regTypeLabel(r.type))+' · '+esc(regStatusLabel(r.status))+' · '+esc(regProvLabel(r.provenance_kind))+' · уверенность: '+confMeter(r.confidence)+' '+esc(confText(r.confidence))+'</div>'+
     evidenceList(r.evidence)+'<div class="ev-note">'+esc(evidenceNote(r))+'</div>'+
+    '<div class="alias-edit">Источник: <b>'+esc(r.from_short||'—')+'</b> <button class="secondary small" data-alias-side="from" data-alias-id="'+r.id+'">Алиас</button></div>'+
+    '<div class="alias-edit">Цель: <b>'+esc(r.to_short||'—')+'</b> <button class="secondary small" data-alias-side="to" data-alias-id="'+r.id+'">Алиас</button></div>'+
     '<div class="hint">Семейство: '+esc(familyLabel(r.from_family))+' → '+esc(familyLabel(r.to_family))+
       (r.valid_until?' · до '+esc(regWhen(r.valid_until)):'')+
       (r.rejection_reason?' · причина отказа: '+esc(r.rejection_reason):'')+'</div>'+
@@ -1381,10 +1403,35 @@ el('registry-body').addEventListener('mousemove', function(ev){
 el('registry-body').addEventListener('mouseleave', hideRegistryTip);
 el('registry-body').addEventListener('click', function(ev){
   if (ev.target.dataset.regCheck) return;
+  var pt=ev.target.closest('.pair-text');
+  if (pt){
+    var line=pt.parentElement;
+    var isFull=pt.classList.toggle('full');
+    line.classList.toggle('expanded', isFull);
+    pt.textContent=isFull?pt.dataset.full:pt.dataset.short;
+    return;
+  }
   var tr=ev.target.closest('tr[data-reg-id]');
   if (tr) renderRegistryDetail(tr.dataset.regId);
 });
-el('registry-detail').addEventListener('click', function(ev){
+el('registry-detail').addEventListener('click', async function(ev){
+  var side=ev.target.dataset.aliasSide;
+  if (side){
+    var item=registryItem(ev.target.dataset.aliasId);
+    if (!item) return;
+    var itemID=side==='from'?item.from_item_id:item.to_item_id;
+    var current=side==='from'?item.from_short:item.to_short;
+    var title=side==='from'?item.from_title:item.to_title;
+    var name=prompt('Короткое имя для '+title, current||'');
+    if (name===null) return;
+    try {
+      await api('PUT','/v1/admin/registry/aliases/'+encodeURIComponent(itemID),{short_name:name.trim()});
+      toast('Алиас сохранён');
+      await loadRegistry();
+      if (registryItem(item.id)) renderRegistryDetail(item.id);
+    } catch(e){ toast(e.message,true); }
+    return;
+  }
   var d=ev.target.dataset.regReview, id=ev.target.dataset.regReviewId;
   if (d && id) registryReview(id,d);
 });

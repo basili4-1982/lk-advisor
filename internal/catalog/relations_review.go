@@ -157,6 +157,8 @@ func loadRegistryRelation(ctx context.Context, q queryer, id int64) (RegistryRel
 		FROM relations r
 		LEFT JOIN lk_items f ON f.item_id = r.from_item_id
 		LEFT JOIN lk_items t ON t.item_id = r.to_item_id
+		LEFT JOIN item_aliases fa ON fa.item_id = r.from_item_id
+		LEFT JOIN item_aliases ta ON ta.item_id = r.to_item_id
 		WHERE r.id = $1`, id)
 	if err != nil {
 		return RegistryRelation{}, fmt.Errorf("load relation: %w", err)

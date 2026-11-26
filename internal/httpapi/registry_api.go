@@ -195,3 +195,26 @@ func (h *handler) adminRegistrySweep(w http.ResponseWriter, r *http.Request) {
 	})
 	writeJSON(w, http.StatusOK, map[string]int{"stale": stale, "expired": expired})
 }
+
+func (h *handler) adminRegistryAlias(w http.ResponseWriter, r *http.Request) {
+	itemID := strings.TrimSpace(r.PathValue("item_id"))
+	var req struct {
+		ShortName string `json:"short_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if err := catalog.UpsertItemAlias(r.Context(), h.db, itemID, req.ShortName, "admin"); err != nil {
+		if errors.Is(err, catalog.ErrItemNotFound) {
+			writeError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "registry.alias", map[string]string{
+		"item_id": itemID, "short_name": req.ShortName,
+	})
+	writeJSON(w, http.StatusOK, map[string]bool{"saved": true})
+}

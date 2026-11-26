@@ -228,3 +228,54 @@ func TestDatasetRejectRequiresReason(t *testing.T) {
 		t.Fatalf("dataset reject = status %q reason %q until %v", status, reason, until)
 	}
 }
+
+func TestRegistryAliases(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	clean := func() {
+		dbc.ExecContext(ctx, `DELETE FROM item_aliases WHERE item_id LIKE 'reg-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM relations WHERE from_item_id LIKE 'reg-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'reg-%'`)
+	}
+	clean()
+	defer clean()
+	for _, id := range []string{"reg-a", "reg-b"} {
+		dbc.ExecContext(ctx, `INSERT INTO lk_items (item_id,title,category,product_group)
+			VALUES ($1,$1,'security','REG-G1')`, id)
+	}
+	dbc.ExecContext(ctx, `INSERT INTO relations
+		(from_item_id,to_item_id,type,confidence,status,provenance_kind,source)
+		VALUES ('reg-a','reg-b','accessory',0.8,'candidate','manual','manual')`)
+
+	rec := doJSON(t, h, http.MethodPut, "/v1/admin/registry/aliases/reg-a",
+		`{"short_name":"GWS Bus. Std"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("alias put: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = doJSON(t, h, http.MethodGet,
+		"/v1/admin/registry/relations?q=GWS%20Bus.%20Std", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("alias search: %d %s", rec.Code, rec.Body.String())
+	}
+	var page struct {
+		Total int `json:"total"`
+		Items []struct {
+			FromShort string `json:"from_short"`
+		} `json:"items"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &page)
+	if page.Total != 1 || len(page.Items) != 1 || page.Items[0].FromShort != "GWS Bus. Std" {
+		t.Fatalf("alias search page = %+v", page)
+	}
+
+	rec = doJSON(t, h, http.MethodPut, "/v1/admin/registry/aliases/reg-a", `{"short_name":""}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("alias clear: %d %s", rec.Code, rec.Body.String())
+	}
+	rec = doJSON(t, h, http.MethodGet,
+		"/v1/admin/registry/relations?q=GWS%20Bus.%20Std", "")
+	json.Unmarshal(rec.Body.Bytes(), &page)
+	if page.Total != 0 {
+		t.Fatalf("alias still searchable after clear: %+v", page)
+	}
+}
