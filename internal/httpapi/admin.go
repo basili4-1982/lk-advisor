@@ -403,12 +403,12 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
         <div id="tab-dataset" class="hidden">
           <div class="formbox">
             <div class="form-title">Датасет v5 и co-purchase</div>
-            <p class="hint">Реальные 1 079 товаров, 32k строк продаж, 19 162 клиента. Связи строим из совместных покупок, затем отправляем в карантин.</p>
+            <p class="hint">817 товаров, 30 514 строк продаж, 19 008 клиентов. Co-purchase-кандидаты попадают в реестр со статусом candidate и проверяются в «Каталоге».</p>
             <div class="stats" id="dataset-cards" style="margin:12px 0"></div>
             <div class="toolbar">
-              <button id="dataset-classify">Классифицировать топ-10 через конструктор</button>
-              <button id="dataset-suggest" class="secondary">Быстрые: adjacent_task</button>
-              <span class="hint">Классификация использует активные шаблоны связей и LLM; результат уходит в карантин.</span>
+              <button id="dataset-classify">Разметить топ-10 (LLM/шаблоны)</button>
+              <button id="dataset-suggest" class="secondary">Создать кандидатов из co-purchase</button>
+              <span class="hint">Кандидаты получают статус candidate; отказ требует причины. Подтверждение — в «Каталоге».</span>
             </div>
           </div>
           <div class="formbox">
