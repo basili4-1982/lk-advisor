@@ -922,8 +922,25 @@ var SHORT_STOP = {};
  'редакция редакции издание количество количеством неограниченное неограниченного последующие последующих '+
  'годы подписки подписка продление продления ключ активации активация электронный электронная носитель носителя '+
  'ндс руб рублей all lng retail online download pack license licence edition device year base russian '+
- 'pk lic dwnl dwnld esd nr ce only for with and the к ко об о')
+ 'pk lic dwnl dwnld esd nr ce only for with and the к ко об о функционалом функционал')
   .split(' ').forEach(function(w){ SHORT_STOP[w]=1; });
+var SHORT_ABBR = [
+  ['Google Workspace','GWS'], ['Microsoft 365','M365'], ['Microsoft','MS'],
+  ['Kaspersky Endpoint Security','KES'], ['Kaspersky Small Office Security','KSOS'],
+  ['Business Standard','Bus. Std'], ['Business','Bus.'], ['Standard','Std'],
+  ['Professional','Pro'], ['Enterprise','Ent'], ['Additional','Add'],
+  ['Concurrent','Conc'], ['Certified','Cert'], ['Security','Sec'],
+  ['Стандартный','Std'], ['Расширенный','Adv'], ['бизнеса','Bus.'],
+  ['второй','2-й'], ['первый','1-й'],
+  ['расширенным','Adv'], ['расширенного','Adv'], ['расширенная','Adv'],
+  ['дополнительное','Add']
+];
+function abbreviateTitle(t){
+  SHORT_ABBR.forEach(function(pair){
+    t=t.replace(new RegExp(pair[0].replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'gi'), pair[1]);
+  });
+  return t;
+}
 function shortTitle(t){
   t=String(t||'').replace(/[«»"]/g,' ').replace(/\s+/g,' ').trim();
   var toks=t.split(' '), out=[];
@@ -939,6 +956,10 @@ function shortTitle(t){
   }
   var text=out.join(' ');
   if (!text) text=t;
+  text=abbreviateTitle(text);
+  text=text.split(' ').filter(function(w,i,arr){
+    return i===0 || w.toLowerCase()!==arr[i-1].toLowerCase();
+  }).join(' ');
   if (text.length > 52) text=text.slice(0,49).trim()+'…';
   return text;
 }
