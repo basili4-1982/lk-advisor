@@ -362,7 +362,7 @@ func RegistryMetrics(ctx context.Context, dbc *sql.DB) (RegistryStats, error) {
 	if err := dbc.QueryRowContext(ctx, `
 		WITH deg AS (
 			SELECT to_item_id, count(*) AS d
-			FROM relations WHERE status = 'active' AND type <> 'variant_of'
+			FROM relations WHERE status IN ('active', 'candidate') AND type <> 'variant_of'
 			GROUP BY to_item_id
 		), ranked AS (
 			SELECT to_item_id,
@@ -377,7 +377,7 @@ func RegistryMetrics(ctx context.Context, dbc *sql.DB) (RegistryStats, error) {
 		         100.0 * count(*) FILTER (WHERE r.to_item_id IN (SELECT to_item_id FROM top))
 		         / NULLIF(count(*), 0), 0)
 		FROM relations r
-		WHERE r.status = 'active' AND r.type <> 'variant_of'`).Scan(&m.HubTop1Pct); err != nil {
+		WHERE r.status IN ('active', 'candidate') AND r.type <> 'variant_of'`).Scan(&m.HubTop1Pct); err != nil {
 		return m, fmt.Errorf("registry hub share: %w", err)
 	}
 

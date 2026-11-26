@@ -207,8 +207,10 @@ func TestRegistryMetrics(t *testing.T) {
 	//   active compat.    a->c  (target c)
 	//   active adjacent   b->d  (target d)
 	//   stale  bundle     c->d
-	// Active target degrees: c=2, b=1, d=1 -> 3 targets, top 1% = 1 target (c),
-	// so HubTop1Pct = 2/4 = 50%. StaleShare = stale/(active+stale) = 1/5 = 20%.
+	// Semantic edges (active + candidate, variant_of excluded) target degrees:
+	// c=3 (b->c, a->c active, a->c candidate), b=1, d=1 -> 3 targets, top 1% =
+	// 1 target (c), so HubTop1Pct = 3/5 = 60%.
+	// StaleShare = stale/(active+stale) = 1/5 = 20%.
 	// Distinct items touched by active edges = reg-a..reg-d = 4.
 	extra := []struct {
 		from, to, typ, status, provenance string
@@ -256,8 +258,8 @@ func TestRegistryMetrics(t *testing.T) {
 	if m.StaleShare != 20 {
 		t.Fatalf("stale share = %v, want 20", m.StaleShare)
 	}
-	if m.HubTop1Pct != 50 {
-		t.Fatalf("hub top1 = %v, want 50", m.HubTop1Pct)
+	if m.HubTop1Pct != 60 {
+		t.Fatalf("hub top1 = %v, want 60", m.HubTop1Pct)
 	}
 
 	if m.ByType["accessory"] != 1 || m.ByType["bundle"] != 2 ||

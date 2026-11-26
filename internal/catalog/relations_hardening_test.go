@@ -180,8 +180,11 @@ func TestHubMetricIgnoresVariantStars(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.HubTop1Pct != 50 {
-		t.Fatalf("hub top1 = %v, want 50 (variant_of excluded)", m.HubTop1Pct)
+	// Semantic edges: a→b (active), a→d (active), a→c (candidate from seed).
+	// One of three targets is the hub, so the share is 1/3; the variant star
+	// into reg-a must not change it.
+	if diff := m.HubTop1Pct - 100.0/3.0; diff < -0.01 || diff > 0.01 {
+		t.Fatalf("hub top1 = %v, want 33.33 (variant_of excluded)", m.HubTop1Pct)
 	}
 	dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'reg-v%'`)
 }
