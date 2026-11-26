@@ -565,14 +565,20 @@ async function loadDataset(){
   try {
     var c=await api('GET','/v1/admin/dataset/coverage');
     var cards = [
-      ['Товары', c.items], ['Клиенты', c.clients], ['Заказы', c.orders],
-      ['Инстансы заказов', c.order_instances], ['В нескольких неделях', c.multi_week_orders],
-      ['Пересекают срез', c.cross_cut_orders],
-      ['Пары', c.pairs], ['Пары ≥2', c.frequent_pairs], ['Без связей', c.solo_items],
+      ['Товары', c.items], ['Публичные', c.public_items],
+      ['Скрыто k<3', c.suppressed_items], ['B2C товары', c.b2c_items],
+      ['Скрыто B2C k<5', c.suppressed_b2c_items], ['Клиенты', c.clients],
+      ['Заказы', c.orders], ['Инстансы заказов', c.order_instances],
+      ['В нескольких неделях', c.multi_week_orders], ['Пересекают срез', c.cross_cut_orders],
+      ['Пары', c.pairs], ['Публичные пары', c.public_pairs],
+      ['Публичные B2C пары', c.public_b2c_pairs],
+      ['Пары ≥2', c.frequent_pairs], ['Без связей', c.solo_items],
       ['Кандидаты', c.candidates]
     ];
-    var note = c.cross_cut_orders ? '<div class="hint" style="width:100%;margin:4px 0 0;color:#92400e">Заказы, пересекающие срез, исключаются из офлайн-оценки: иначе будущее попадает в train.</div>' : '';
-    el('dataset-cards').innerHTML = cards.map(function(x){ return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>'; }).join('') + note;
+    var notes = '';
+    if (c.cross_cut_orders) notes += '<div class="hint" style="width:100%;margin:4px 0 0;color:#92400e">Заказы, пересекающие срез, исключаются из офлайн-оценки: иначе будущее попадает в train.</div>';
+    if (c.suppressed_items || c.suppressed_b2c_items) notes += '<div class="hint" style="width:100%;margin:4px 0 0;color:#92400e">Товары с <3 покупателями и B2C-товары с <5 физлицами не показываются поштучно в публичных ответах.</div>';
+    el('dataset-cards').innerHTML = cards.map(function(x){ return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>'; }).join('') + notes;
     var p=await api('GET','/v1/admin/dataset/co-purchases?limit=50');
     var cnd=await api('GET','/v1/admin/dataset/candidates?limit=50');
     var rows=cnd.items||[];
@@ -581,7 +587,7 @@ async function loadDataset(){
       '<div class="empty">Кандидатов пока нет — нажмите «Классифицировать».</div>';
     var rows=p.items||[];
     el('dataset-pairs').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Раз</th><th>B2B</th><th>B2C</th></tr></thead><tbody>'+
-      rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'<div class="hint">'+esc(x.item_a)+'</div></td><td>'+esc(x.title_b)+'<div class="hint">'+esc(x.item_b)+'</div></td><td>'+x.count+'</td><td>'+x.b2b_count+'</td><td>'+x.b2c_count+'</td></tr>'; }).join('')+'</tbody></table></div>' :
+      rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'<div class="hint">'+esc(x.item_a)+'</div></td><td>'+esc(x.title_b)+'<div class="hint">'+esc(x.item_b)+'</div></td><td>'+x.count+'</td><td>'+x.b2b_count+'</td><td>'+(x.b2c_hidden?'<span class="hint">скрыто k<5</span>':x.b2c_count)+'</td></tr>'; }).join('')+'</tbody></table></div>' :
       '<div class="empty">Нет пар. Импортируйте датасет v3.</div>';
   } catch(e){ el('dataset-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }

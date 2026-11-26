@@ -28,22 +28,26 @@ func TestDatasetCoverageDeltaAndCandidateReview(t *testing.T) {
 	}
 	defer dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id IN ($1,$2)`, a, b)
 	if _, err := dbc.ExecContext(ctx, `
-		INSERT INTO co_purchase_pairs (item_a, item_b, count) VALUES ($1,$2,3)
-		ON CONFLICT (item_a,item_b) DO UPDATE SET count=3`, a, b); err != nil {
+		INSERT INTO co_purchase_pairs (item_a, item_b, count, b2b_count, b2c_count)
+		VALUES ($1,$2,3,3,0)
+		ON CONFLICT (item_a,item_b) DO UPDATE SET count=3, b2b_count=3, b2c_count=0`, a, b); err != nil {
 		t.Fatal(err)
 	}
 	defer dbc.ExecContext(ctx, `DELETE FROM co_purchase_pairs WHERE item_a=$1 AND item_b=$2`, a, b)
 
-	dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE order_id IN ('test-order-multi','test-order-cross')`)
+	orderIDs := "'test-order-multi','test-order-cross','test-order-a3','test-order-b3'"
+	dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE order_id IN (`+orderIDs+`)`)
 	if _, err := dbc.ExecContext(ctx, `
 		INSERT INTO lk_orders (order_id, client_id, order_week, item_id) VALUES
-		('test-order-multi', 'test-client', '2026-08-01', $1),
-		('test-order-multi', 'test-client', '2026-08-08', $1),
-		('test-order-cross', 'test-client', '2026-08-31', $2),
-		('test-order-cross', 'test-client', '2026-09-07', $2)`, a, b); err != nil {
+		('test-order-multi', 'test-client-1', '2026-08-01', $1),
+		('test-order-multi', 'test-client-2', '2026-08-08', $1),
+		('test-order-a3', 'test-client-3', '2026-08-15', $1),
+		('test-order-cross', 'test-client-1', '2026-08-31', $2),
+		('test-order-cross', 'test-client-2', '2026-09-07', $2),
+		('test-order-b3', 'test-client-3', '2026-09-14', $2)`, a, b); err != nil {
 		t.Fatal(err)
 	}
-	defer dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE order_id IN ('test-order-multi','test-order-cross')`)
+	defer dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE order_id IN (`+orderIDs+`)`)
 
 	mid, err := catalog.LoadDatasetCoverage(ctx, dbc)
 	if err != nil {
@@ -52,7 +56,7 @@ func TestDatasetCoverageDeltaAndCandidateReview(t *testing.T) {
 	if mid.Items != before.Items+2 || mid.Pairs != before.Pairs+1 {
 		t.Fatalf("before=%+v mid=%+v", before, mid)
 	}
-	if mid.Orders != before.Orders+2 || mid.OrderInstances != before.OrderInstances+4 {
+	if mid.Orders != before.Orders+4 || mid.OrderInstances != before.OrderInstances+6 {
 		t.Fatalf("orders before=%+v mid=%+v", before, mid)
 	}
 	if mid.MultiWeekOrders != before.MultiWeekOrders+2 {
@@ -60,6 +64,9 @@ func TestDatasetCoverageDeltaAndCandidateReview(t *testing.T) {
 	}
 	if mid.CrossCutOrders != before.CrossCutOrders+1 {
 		t.Fatalf("cross-cut before=%+v mid=%+v", before, mid)
+	}
+	if mid.PublicItems != before.PublicItems+2 || mid.SuppressedItems != before.SuppressedItems {
+		t.Fatalf("privacy before=%+v mid=%+v", before, mid)
 	}
 
 	ok, err := catalog.InsertDatasetCandidate(ctx, dbc, a, b, "adjacent_task", 0.8,
@@ -72,7 +79,7 @@ func TestDatasetCoverageDeltaAndCandidateReview(t *testing.T) {
 	if err != nil || ok {
 		t.Fatalf("duplicate insert ok=%v err=%v", ok, err)
 	}
-	list, err := catalog.DatasetCandidates(ctx, dbc, 500)
+	list, err := catalog.DatasetCandidates(ctx, dbc, 500, "b2b")
 	if err != nil {
 		t.Fatal(err)
 	}

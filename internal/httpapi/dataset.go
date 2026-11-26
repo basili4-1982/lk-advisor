@@ -25,7 +25,8 @@ func (h *handler) adminCoPurchases(w http.ResponseWriter, r *http.Request) {
 			limit = v
 		}
 	}
-	items, err := catalog.TopCoPurchases(r.Context(), h.db, limit)
+	audience := r.URL.Query().Get("audience")
+	items, err := catalog.TopCoPurchases(r.Context(), h.db, limit, audience)
 	if err != nil {
 		h.logger.Error("co-purchases", "err", err)
 		writeError(w, http.StatusInternalServerError, "co-purchases error")

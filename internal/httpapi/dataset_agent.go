@@ -33,7 +33,7 @@ func (h *handler) adminClassifyCoPurchases(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusConflict, "нет активных шаблонов связей")
 		return
 	}
-	pairs, err := catalog.TopCoPurchases(r.Context(), h.db, req.Limit)
+	pairs, err := catalog.TopCoPurchases(r.Context(), h.db, req.Limit, "b2b")
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "co-purchases error")
 		return
@@ -139,7 +139,8 @@ func (h *handler) adminDatasetCandidates(w http.ResponseWriter, r *http.Request)
 			limit = v
 		}
 	}
-	items, err := catalog.DatasetCandidates(r.Context(), h.db, limit)
+	audience := r.URL.Query().Get("audience")
+	items, err := catalog.DatasetCandidates(r.Context(), h.db, limit, audience)
 	if err != nil {
 		h.logger.Error("dataset candidates", "err", err)
 		writeError(w, http.StatusInternalServerError, "dataset candidates error")
