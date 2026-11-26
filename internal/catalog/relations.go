@@ -15,6 +15,7 @@ import (
 // Zero values mean "no filter"; user input always goes through SQL parameters.
 type RelationFilter struct {
 	Query         string   `json:"query"`
+	IDs           []int64  `json:"ids"`
 	Types         []string `json:"types"`
 	Statuses      []string `json:"statuses"`
 	Provenance    []string `json:"provenance"`
@@ -184,6 +185,10 @@ func buildRelationWhere(f RelationFilter) (string, []any) {
 		return len(args)
 	}
 
+	if len(f.IDs) > 0 {
+		n := add(pq.Array(f.IDs))
+		conds = append(conds, fmt.Sprintf(`r.id = ANY($%d)`, n))
+	}
 	if q := strings.TrimSpace(f.Query); q != "" {
 		n := add("%" + q + "%")
 		conds = append(conds, fmt.Sprintf(

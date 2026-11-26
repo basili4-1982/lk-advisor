@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -113,7 +114,7 @@ func reviewDecision(decision, note string) (decisionSpec, error) {
 			    rejected_until = NULL`,
 		}, nil
 	case "reject":
-		if note == "" {
+		if strings.TrimSpace(note) == "" {
 			return decisionSpec{}, ErrNoteRequired
 		}
 		return decisionSpec{
@@ -165,10 +166,10 @@ func loadRegistryRelation(ctx context.Context, q queryer, id int64) (RegistryRel
 // so each one gets its own version check and audit event. Concurrent edits are
 // skipped rather than aborting the whole batch, and only successes are counted.
 func BulkReviewRelations(ctx context.Context, dbc *sql.DB, f RelationFilter, decision, note, actor string) (int, error) {
-	if len(f.Types) == 0 && f.MinConfidence <= 0 {
+	if len(f.IDs) == 0 && len(f.Types) == 0 && f.MinConfidence <= 0 {
 		return 0, ErrCriterionRequired
 	}
-	if decision == "reject" && note == "" {
+	if decision == "reject" && strings.TrimSpace(note) == "" {
 		return 0, ErrNoteRequired
 	}
 
