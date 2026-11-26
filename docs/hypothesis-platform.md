@@ -46,8 +46,8 @@ PDF Toolkit как следующий шаг после Office
 
 | Вариант | Exposure | Target shown | Покупки | Conversion | Target conv |
 |---|---:|---:|---:|---:|---:|
-| control | 250 | 29 | 8 | 3.2% | **27.6%** |
-| treatment | 250 | 231 | 65 | 26.0% | **28.1%** |
+| control | 250 | 30 | 8 | 3.2% | **26.7%** |
+| treatment | 250 | 237 | 65 | 26.0% | **27.4%** |
 
 Guardrails в том же прогоне:
 
