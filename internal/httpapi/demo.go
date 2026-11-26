@@ -123,7 +123,8 @@ var scenarios = [
   {id:'smb-002', label:'Апгрейд', note:'Visio Standard → Professional, акция 10%', client:'ИП Сергеев', context:'SMB · куплен Microsoft Visio Standard 2024, лицензий нет', sample:'Почему Microsoft Visio Professional 2024?'},
   {id:'smb-003', label:'Апгрейд', note:'Microsoft 365: бизнес стандарт → премиум', client:'ООО «Вектор»', context:'SMB · куплен Microsoft 365 бизнес стандарт, есть старший тариф', sample:'Почему пакет выгоднее?'},
   {id:'smb-005', label:'Допродажа', note:'Visio Professional → Project, нужно согласование', client:'ООО «Куб»', context:'SMB · куплен Visio Professional, доступен Microsoft Project Standard 2024', sample:'Почему нужен менеджер?'},
-  {id:'smb-006', label:'Без истории', note:'fallback на популярное', client:'ООО «Новый клиент»', context:'SMB · истории покупок нет', sample:'Что предложить новому клиенту?'}
+  {id:'smb-006', label:'Без истории', note:'fallback на популярное', client:'ООО «Новый клиент»', context:'SMB · истории покупок нет', sample:'Что предложить новому клиенту?'},
+  {id:'lk-36612', label:'Реальный ЛК', note:'Kaspersky + Adobe expired + Dr.Web + Microsoft 365 Personal', client:'Компания 4', context:'B2B · тестовый ЛК Softline', sample:'Что предложить вместо Adobe?'}
 ];
 var intents = {renewal:'Продление', upsell:'Апгрейд', cross_sell:'Допродажа', analog:'Замена', alternative:'Альтернатива', fallback:'Популярное'};
 var current = (new URLSearchParams(location.search)).get('client') || 'smb-001';

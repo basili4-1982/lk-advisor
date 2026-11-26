@@ -27,6 +27,8 @@ type recommendationRequest struct {
 	ClientID string `json:"client_id"`
 	Event    string `json:"event"`
 	Limit    *int   `json:"limit"`
+	Audience string `json:"audience"`
+	Industry string `json:"industry"`
 }
 
 type recommendationResponse struct {
@@ -68,6 +70,14 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	traceID := newTraceID()
 	p, err := profile.Get(ctx, h.db, req.ClientID)
+	if err == nil {
+		if strings.TrimSpace(req.Audience) != "" {
+			p.Audience = strings.TrimSpace(req.Audience)
+		}
+		if strings.TrimSpace(req.Industry) != "" {
+			p.Industry = strings.TrimSpace(req.Industry)
+		}
+	}
 	if errors.Is(err, profile.ErrNotFound) {
 		writeError(w, http.StatusNotFound, "client not found")
 		return

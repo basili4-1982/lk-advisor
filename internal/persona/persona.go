@@ -30,7 +30,7 @@ func Scores(p model.Profile, products map[string]model.Product) []Score {
 		if !ok {
 			continue
 		}
-		if isStudy(prod.Title) {
+		if isStudy(prod.Title) && prod.Audience != "business" {
 			student++
 			continue
 		}

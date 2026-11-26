@@ -111,6 +111,9 @@ docs/              демо и прогон
 | `docs/data-request.md` | минимальный сет для проверки гипотезы solo |
 | `docs/kickoff-2026-11-26.md` | разбор презентации кик-оффа и изменения плана |
 | `docs/lk-test-account.md` | что внутри тестового ЛК: профиль, продукты, API рекомендаций |
+| `docs/lk-adapter.md` | адаптер под `cross_sell/list` и реальный кейс `lk-36612` |
+| `analysis/README.md` | разбор датасета v3, baseline и наш бэктест |
+| `analysis/evaluate.py` | воспроизводимый Precision@3 / Fill Rate |
 | `docs/relation-validation.md` | ручная очередь проверки связей |
 | `docs/demo-run.md` | прогон демо и ожидаемые ответы |
 | `docs/demo.sh` | пять demo-команд |

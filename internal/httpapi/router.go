@@ -48,6 +48,8 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("POST /v1/recommendations", h.recommendations)
 	mux.HandleFunc("POST /v1/ask", h.ask)
 	mux.HandleFunc("POST /v1/events", h.recordEvent)
+	mux.HandleFunc("POST /v1/lk/cross-sell", h.lkCrossSell)
+	mux.HandleFunc("POST /api/cross_sell/list", h.lkCrossSell)
 	mux.HandleFunc("GET /v1/clients/{id}/profile", h.clientProfile)
 	mux.HandleFunc("GET /v1/products", h.products)
 	mux.HandleFunc("POST /v1/demo/clients/{id}/items", h.addItem)

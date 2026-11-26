@@ -36,6 +36,9 @@ func runSeed(cfg config.Config) error {
 	if err := store.Load(ctx, dbc, ds); err != nil {
 		return err
 	}
+	if err := store.SeedLKCase(ctx, dbc); err != nil {
+		return err
+	}
 	if err := profile.RefreshAll(ctx, dbc); err != nil {
 		return err
 	}

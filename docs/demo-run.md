@@ -25,12 +25,13 @@ BASE=http://localhost:8080 ./docs/demo.sh
 
 Шесть сценариев:
 
-1. `smb-001` — renewal: лицензия Antivirus истекает через 14 дней.
-2. `smb-002` — cross-sell: Vector Editor, активная акция 10% до 30.11.
-3. `smb-005` — upsell: Vector Editor Pro с `manager_approval`.
-4. `/v1/ask` «Почему векторный?» — 2 инструмента, ответ по evidence.
-5. «Какая погода?» — отказ без вызова инструментов.
-6. `smb-006` — fallback: популярное в сегменте.
+1. `lk-36612` — реальный кейс тестового ЛК: Adobe истёк, Kaspersky/Dr.Web активны, Microsoft 365 Personal.
+2. `smb-001` — renewal: лицензия Antivirus истекает через 14 дней.
+3. `smb-002` — cross-sell: Vector Editor, активная акция 10% до 30.11.
+4. `smb-005` — upsell: Vector Editor Pro с `manager_approval`.
+5. `/v1/ask` «Почему векторный?» — 2 инструмента, ответ по evidence.
+6. «Какая погода?» — отказ без вызова инструментов.
+7. `smb-006` — fallback: популярное в сегменте.
 
 ## Что смотреть в JSON
 

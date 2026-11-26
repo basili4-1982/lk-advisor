@@ -80,6 +80,24 @@
 
 Нет `reason`, `evidence`, `score`, `product_id` или графа. `status` управляет показом блока — вероятно, отсюда Fill Rate 54%.
 
+## Реальный кейс в демо
+
+После `make seed` в базе есть клиент `lk-36612` с продуктами из тестового ЛК. Его можно открыть в кабинете:
+
+```text
+http://localhost:8080/?client=lk-36612
+```
+
+И проверить адаптер:
+
+```bash
+curl -s -X POST localhost:8080/api/cross_sell/list \
+  -H 'Content-Type: application/json' \
+  -d '{"client_id":"lk-36612"}'
+```
+
+Ожидаемый топ-3: замена Adobe → CorelDRAW Graphics Suite, курс по Office, PDF Toolkit. Подробно: `docs/lk-adapter.md`.
+
 ## Что это значит для нас
 
 1. Наш ответ можно встроить в тот же контракт: `status` + `data`, добавив `reason`, `evidence`, `score`, `graph`.
