@@ -221,7 +221,7 @@ async function load(focusId){
   drawStats();drawLegend();updateTimeControl();
   if(focusId&&byId[focusId]){showNode(byId[focusId]);setTimeout(()=>focusNode(byId[focusId]),700)}
   else selectInitial();
-  setTimeout(()=>{if(!userInteracted&&!autoFitDone&&graph&&graph.zoomToFit){graph.zoomToFit(700,40,n=>nodeVisible(n));autoFitDone=true}},1200);
+  setTimeout(()=>{if(!userInteracted&&!autoFitDone&&graph&&graph.zoomToFit){graph.zoomToFit(700,90,n=>nodeVisible(n));autoFitDone=true}},1200);
   $('status').textContent='';
 }
 function applyPeriod(d){
@@ -250,7 +250,7 @@ function zoomBy(factor){
     z: target.z+(cam.z-target.z)*factor
   }, target, 250);
 }
-function resetCamera(){userInteracted=true;autoFitDone=true;if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))}
+function resetCamera(){userInteracted=true;autoFitDone=true;if(graph&&graph.zoomToFit)graph.zoomToFit(700,90,n=>nodeVisible(n))}
 function updatePager(){
   $('page-label').textContent=page+' / '+totalPages;
   $('prev-page').disabled=page<=1;
@@ -305,7 +305,7 @@ function showNode(n){
 }
 function focusNode(n){
   if(!graph||!n)return;
-  const d=90,dist=Math.hypot(n.x||0,n.y||0,n.z||0)||1,ratio=1+d/dist;
+  const d=180,dist=Math.hypot(n.x||0,n.y||0,n.z||0)||1,ratio=1+d/dist;
   graph.cameraPosition({x:(n.x||0)*ratio,y:(n.y||0)*ratio,z:(n.z||0)*ratio},n,900);
 }
 function updateTimeControl(){
