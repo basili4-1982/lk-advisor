@@ -414,13 +414,15 @@ func CreateManualDatasetRelation(ctx context.Context, dbc *sql.DB, from, to, typ
 	}
 	res, err := dbc.ExecContext(ctx, `
 		INSERT INTO relations
-			(from_item_id, to_item_id, type, confidence, status, reason, evidence, source)
-		VALUES ($1, $2, $3, $4, $5, $6, '[]'::jsonb, 'manual')
+			(from_item_id, to_item_id, type, confidence, status, reason, evidence,
+			 source, provenance_kind)
+		VALUES ($1, $2, $3, $4, $5, $6, '[]'::jsonb, 'manual', 'manual')
 		ON CONFLICT (from_item_id, to_item_id, type) DO UPDATE SET
 			status = EXCLUDED.status,
 			confidence = EXCLUDED.confidence,
 			reason = EXCLUDED.reason,
 			source = 'manual',
+			provenance_kind = 'manual',
 			reviewed_by = '',
 			reviewed_at = NULL,
 			review_note = ''`,

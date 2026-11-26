@@ -63,6 +63,25 @@ func generateVariants(ctx context.Context, dbc *sql.DB, only []string) (int, err
 	if len(only) > 0 {
 		scopeOuter = fmt.Sprintf(" AND i.item_id = ANY($%d)", len(args))
 	}
+	scopeUpdate := ""
+	if len(only) > 0 {
+		scopeUpdate = fmt.Sprintf(" AND from_item_id = ANY($%d)", len(args))
+	}
+	if _, err := dbc.ExecContext(ctx, `
+		UPDATE relations r
+		SET status = 'superseded', version = r.version + 1, updated_at = now()
+		WHERE r.type = 'variant_of'
+		  AND r.status = 'active'
+		  AND r.to_item_id <> (
+		      SELECT min(i2.item_id) FROM lk_items i2
+		      WHERE i2.product_group = (
+		          SELECT i3.product_group FROM lk_items i3
+		          WHERE i3.item_id = r.from_item_id
+		      )
+		  )`+scopeUpdate, args...); err != nil {
+		return 0, fmt.Errorf("supersede variants: %w", err)
+	}
+
 	query := `
 		WITH groups AS (
 			SELECT product_group, min(item_id) AS rep_id
@@ -122,7 +141,8 @@ func generateCoPurchase(ctx context.Context, dbc *sql.DB, opts GenerateOptions) 
 		             AND r.to_item_id = p.item_b
 		             AND r.type = 'adjacent_task'
 		             AND r.status = 'rejected'
-		             AND (r.rejected_until IS NULL OR r.rejected_until > now())
+		             AND r.rejected_until IS NOT NULL
+		             AND r.rejected_until > now()
 		       ) AS rejected
 		FROM co_purchase_pairs p
 		LEFT JOIN degrees d ON d.item_id = p.item_b
@@ -137,6 +157,7 @@ func generateCoPurchase(ctx context.Context, dbc *sql.DB, opts GenerateOptions) 
 	}
 	defer rows.Close()
 
+	ttlDays := relationTTLDays(ctx, dbc, "adjacent_task")
 	for rows.Next() {
 		var from, to string
 		var count, b2b, targetDegree int
@@ -162,11 +183,18 @@ func generateCoPurchase(ctx context.Context, dbc *sql.DB, opts GenerateOptions) 
 		res, err := dbc.ExecContext(ctx, `
 			INSERT INTO relations
 				(from_item_id, to_item_id, type, confidence, status, reason, evidence,
-				 source, provenance_kind, metadata)
+				 source, provenance_kind, metadata, revalidate_after)
 			VALUES ($1, $2, 'adjacent_task', $3, 'candidate', $4, $5,
-			        'co_purchase', 'co_purchase', '{"typing":"pending"}'::jsonb)
-			ON CONFLICT (from_item_id, to_item_id, type) DO NOTHING`,
-			from, to, confidence, fmt.Sprintf("куплено вместе %d раз", count), evidence)
+			        'co_purchase', 'co_purchase', '{"typing":"pending"}'::jsonb,
+			        now() + ($6 || ' days')::interval)
+			ON CONFLICT (from_item_id, to_item_id, type) DO UPDATE
+			SET status = 'candidate',
+			    version = relations.version + 1,
+			    rejection_reason = '',
+			    rejected_until = NULL,
+			    updated_at = now()
+			WHERE relations.status IN ('rejected', 'stale', 'expired')`,
+			from, to, confidence, fmt.Sprintf("куплено вместе %d раз", count), evidence, ttlDays)
 		if err != nil {
 			return 0, 0, 0, fmt.Errorf("insert co-purchase candidate: %w", err)
 		}
@@ -175,4 +203,15 @@ func generateCoPurchase(ctx context.Context, dbc *sql.DB, opts GenerateOptions) 
 		}
 	}
 	return created, rejected, hub, rows.Err()
+}
+
+// relationTTLDays returns the registry TTL for a relation type, with a safe default.
+func relationTTLDays(ctx context.Context, dbc *sql.DB, code string) int {
+	var days sql.NullInt64
+	if err := dbc.QueryRowContext(ctx,
+		`SELECT default_ttl_days FROM relation_types WHERE code = $1`, code).Scan(&days); err != nil ||
+		!days.Valid || days.Int64 <= 0 {
+		return 180
+	}
+	return int(days.Int64)
 }

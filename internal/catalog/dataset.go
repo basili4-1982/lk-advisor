@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/lib/pq"
@@ -120,7 +121,7 @@ func LoadDatasetCoverage(ctx context.Context, dbc *sql.DB) (DatasetCoverage, err
 		) x`).Scan(&c.ItemsInPairs); err != nil {
 		return c, err
 	}
-	if err := dbc.QueryRowContext(ctx, `SELECT count(*) FROM relations`).Scan(&c.Candidates); err != nil {
+	if err := dbc.QueryRowContext(ctx, `SELECT count(*) FROM relations WHERE status='candidate'`).Scan(&c.Candidates); err != nil {
 		return c, err
 	}
 	c.SoloItems = c.Items - c.ItemsInPairs
@@ -175,13 +176,14 @@ func CreateCoPurchaseCandidates(ctx context.Context, dbc *sql.DB, limit, minCoun
 	}
 	res, err := dbc.ExecContext(ctx, `
 		INSERT INTO relations
-			(from_item_id, to_item_id, type, confidence, status, reason, evidence, source)
+			(from_item_id, to_item_id, type, confidence, status, reason, evidence,
+			 source, provenance_kind)
 		SELECT p.item_a, p.item_b, 'adjacent_task',
 		       LEAST(0.90, 0.55 + p.count * 0.03),
 		       'candidate',
 		       'куплено вместе ' || p.count || ' раз',
 		       jsonb_build_array(jsonb_build_object('source', 'co_purchase', 'value', 'count=' || p.count)),
-		       'co_purchase'
+		       'co_purchase', 'co_purchase'
 		FROM co_purchase_pairs p
 		JOIN lk_item_privacy pa ON pa.item_id = p.item_a AND pa.public_b2b
 		JOIN lk_item_privacy pb ON pb.item_id = p.item_b AND pb.public_b2b
@@ -292,8 +294,9 @@ func DatasetCandidates(ctx context.Context, dbc *sql.DB, limit int, audience str
 func InsertDatasetCandidate(ctx context.Context, dbc *sql.DB, from, to, typ string, confidence float64, reason, evidence, source string) (bool, error) {
 	res, err := dbc.ExecContext(ctx, `
 		INSERT INTO relations
-			(from_item_id, to_item_id, type, confidence, status, reason, evidence, source)
-		VALUES ($1,$2,$3,$4,'candidate',$5,$6,$7)
+			(from_item_id, to_item_id, type, confidence, status, reason, evidence,
+			 source, provenance_kind)
+		VALUES ($1,$2,$3,$4,'candidate',$5,$6,$7,$7)
 		ON CONFLICT (from_item_id, to_item_id, type) DO NOTHING`,
 		from, to, typ, confidence, reason, evidence, source)
 	if err != nil {
@@ -303,15 +306,25 @@ func InsertDatasetCandidate(ctx context.Context, dbc *sql.DB, from, to, typ stri
 	return n > 0, nil
 }
 
-// ReviewDatasetCandidate confirms or rejects one proposal.
+// ReviewDatasetCandidate confirms or rejects one proposal through the same
+// lifecycle as the workbench: version bump, audit event, reject reason and
+// cooldown. The dataset tab is a second door into the same registry, so it
+// must not bypass those invariants.
 func ReviewDatasetCandidate(ctx context.Context, dbc *sql.DB, id int64, status, note string) (bool, error) {
-	res, err := dbc.ExecContext(ctx, `
-		UPDATE relations
-		SET status=$2, reviewed_by='admin', reviewed_at=now(), review_note=$3
-		WHERE id=$1`, id, status, note)
-	if err != nil {
-		return false, fmt.Errorf("review dataset candidate: %w", err)
+	decision := "confirm"
+	if status == "rejected" {
+		decision = "reject"
 	}
-	n, _ := res.RowsAffected()
-	return n > 0, nil
+	var version int
+	if err := dbc.QueryRowContext(ctx,
+		`SELECT version FROM relations WHERE id=$1`, id).Scan(&version); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+		return false, fmt.Errorf("review dataset candidate: load: %w", err)
+	}
+	if _, err := ReviewRegistryRelation(ctx, dbc, id, decision, note, "admin", version); err != nil {
+		return false, err
+	}
+	return true, nil
 }

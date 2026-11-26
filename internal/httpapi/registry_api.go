@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
 )
@@ -142,7 +141,7 @@ func (h *handler) adminRegistryBulkReview(w http.ResponseWriter, r *http.Request
 	if len(req.IDs) > 0 {
 		f.IDs = req.IDs
 	}
-	if len(f.Statuses) == 0 {
+	if len(f.Statuses) == 0 && len(f.IDs) == 0 {
 		f.Statuses = []string{"candidate"}
 	}
 	n, err := catalog.BulkReviewRelations(r.Context(), h.db, f, req.Decision,
@@ -184,7 +183,7 @@ func (h *handler) adminRegistryGenerate(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *handler) adminRegistrySweep(w http.ResponseWriter, r *http.Request) {
-	stale, expired, err := catalog.SweepRelations(r.Context(), h.db, time.Now())
+	stale, expired, err := catalog.SweepRelations(r.Context(), h.db, h.now())
 	if err != nil {
 		h.logger.Error("registry sweep", "err", err)
 		writeError(w, http.StatusInternalServerError, "registry sweep error")

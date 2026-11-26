@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -168,6 +169,14 @@ func (h *handler) adminReviewDatasetCandidate(w http.ResponseWriter, r *http.Req
 	}
 	ok, err := catalog.ReviewDatasetCandidate(r.Context(), h.db, req.ID, status, strings.TrimSpace(req.Note))
 	if err != nil {
+		if errors.Is(err, catalog.ErrNoteRequired) || errors.Is(err, catalog.ErrCriterionRequired) {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if errors.Is(err, catalog.ErrVersionConflict) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
 		writeError(w, http.StatusInternalServerError, "review error")
 		return
 	}

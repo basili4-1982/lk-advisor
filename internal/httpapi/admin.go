@@ -188,6 +188,8 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="active">Активные</option>
               <option value="rejected">Отклонённые</option>
               <option value="stale">Устаревшие</option>
+              <option value="expired">Истёкшие</option>
+              <option value="superseded">Заменённые</option>
             </select>
             <select id="registry-source">
               <option value="">Все источники</option>
@@ -746,7 +748,12 @@ el('dataset-classify').addEventListener('click', async function(){
 el('dataset-candidates').addEventListener('click', async function(ev){
   var mode=ev.target.dataset.candReview, id=ev.target.dataset.candId;
   if (!mode || !id) return;
-  try { await api('POST','/v1/admin/dataset/candidates/review',{id:Number(id),decision:mode,note:''}); toast(mode==='confirm'?'Связь подтверждена':'Связь отклонена'); loadDataset(); }
+  var note='';
+  if (mode==='reject') {
+    note=(prompt('Причина отказа')||'').trim();
+    if (!note) { toast('Нужна причина отказа', true); return; }
+  }
+  try { await api('POST','/v1/admin/dataset/candidates/review',{id:Number(id),decision:mode,note:note}); toast(mode==='confirm'?'Связь подтверждена':'Связь отклонена'); loadDataset(); }
   catch(e){ toast(e.message,true); }
 });
 function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
@@ -773,6 +780,8 @@ function registryQuery(){
   return p.length ? '?'+p.join('&') : '';
 }
 async function loadRegistry(){
+  REG_SELECTED={};
+  if (el('registry-all')) el('registry-all').checked=false;
   try {
     var data = await api('GET','/v1/admin/registry/relations'+registryQuery());
     var metrics = await api('GET','/v1/admin/registry/metrics');

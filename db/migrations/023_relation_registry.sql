@@ -43,6 +43,7 @@ ALTER TABLE relations ALTER COLUMN status SET DEFAULT 'candidate';
 UPDATE relations SET provenance_kind = source WHERE provenance_kind = '';
 UPDATE relations SET status = 'candidate' WHERE status = 'quarantine';
 UPDATE relations SET status = 'active'    WHERE status = 'confirmed';
+UPDATE relations SET status = 'candidate' WHERE status = 'llm_suggested';
 
 CREATE INDEX IF NOT EXISTS relations_status_updated_idx
     ON relations (status, updated_at DESC);

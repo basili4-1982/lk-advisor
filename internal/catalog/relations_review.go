@@ -188,7 +188,7 @@ func BulkReviewRelations(ctx context.Context, dbc *sql.DB, f RelationFilter, dec
 	if len(f.IDs) == 0 && len(f.Types) == 0 && !(f.MinConfidence > 0) {
 		return 0, ErrCriterionRequired
 	}
-	if len(f.Statuses) == 0 {
+	if len(f.Statuses) == 0 && len(f.IDs) == 0 {
 		f.Statuses = []string{"candidate"}
 	}
 	note = strings.TrimSpace(note)
