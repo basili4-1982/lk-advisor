@@ -69,6 +69,7 @@ canvas{display:block;position:absolute;inset:0;width:100%;height:100%;cursor:gra
       <button data-audience="b2b" class="active">B2B</button>
       <button data-audience="b2c">B2C</button>
     </div>
+    <div class="timebox"><input id="time" type="range" min="0" max="0" value="0"><span id="period-label">Все время</span></div>
     <input id="search" type="search" placeholder="Найти товар…">
     <label class="toggle"><input id="solo" type="checkbox" checked> solo</label>
     <a class="link" href="/">Кабинет</a>
@@ -93,6 +94,7 @@ const COLORS={security:'#f87171',office:'#60a5fa',graphics:'#c084fc',backup:'#4a
 const CAT_RU={security:'Безопасность',office:'Офис',graphics:'Графика',backup:'Бэкап',devtools:'Разработка',training:'Обучение',other:'Другое'};
 let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null;
 let audience='b2b',soloOn=true,categoryFilter=null,search='';
+let periods=[],currentPeriod='',initialPeriod=new URLSearchParams(location.search).get('period')||'';
 let transform={x:0,y:0,k:1};
 let seed=1234567;
 function rnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
@@ -102,10 +104,11 @@ function viewport(){return {w:wrap.clientWidth||900,h:wrap.clientHeight||700}}
 function resize(){const vp=viewport(),dpr=window.devicePixelRatio||1;canvas.width=vp.w*dpr;canvas.height=vp.h*dpr;canvas.style.width=vp.w+'px';canvas.style.height=vp.h+'px'}
 async function load(){
   $('status').textContent='Загружаю…';
-  const r=await fetch('/v1/demo/graph?audience='+audience+'&solo_limit=1000');
+  const r=await fetch('/v1/demo/graph?audience='+audience+'&period='+encodeURIComponent(initialPeriod)+'&solo_limit=1000');
   if(!r.ok) throw new Error('HTTP '+r.status);
   DATA=await r.json();
-  build(); drawStats(); drawLegend(); render(); selectInitial();
+  periods=DATA.periods||[]; currentPeriod=DATA.period||'';
+  build(); drawStats(); drawLegend(); render(); updateTimeControl(); selectInitial();
   $('status').textContent='';
 }
 function selectInitial(){
@@ -167,6 +170,21 @@ function fitView(){
   transform.y=(vp.h-bh*transform.k)/2-minY*transform.k;
 }
 function visible(n){return (!n.solo||soloOn)&&(!categoryFilter||n.category===categoryFilter)}
+function nodeRadius(n){
+  if(DATA&&DATA.period){
+    if(n.demand_hidden)return 2.6;
+    return 3+Math.min(11,Math.sqrt(Math.max(1,n.period_buyers))*2.2);
+  }
+  return n.solo?3:4+Math.min(9,Math.sqrt(Math.max(1,n.degree))*2.4);
+}
+function updateTimeControl(){
+  const t=$('time');
+  t.max=Math.max(0,periods.length-1);
+  let idx=periods.findIndex(p=>p.value===currentPeriod);
+  if(idx<0)idx=0;
+  t.value=idx;
+  $('period-label').textContent=periods[idx]?periods[idx].label:'Все время';
+}
 function render(){
   const vp=viewport(),dpr=window.devicePixelRatio||1;
   ctx.setTransform(dpr,0,0,dpr,0,0);
@@ -183,17 +201,23 @@ function render(){
   for(const n of nodes){
     if(!visible(n))continue;
     const match=q&&n.title.toLowerCase().indexOf(q)>=0;
-    const dim=(q&&!match)||(categoryFilter&&n.category!==categoryFilter);
-    ctx.globalAlpha=dim?.12:1;
-    if(selected===n||hover===n){ctx.beginPath();ctx.arc(n.x,n.y,n.r+5,0,Math.PI*2);ctx.strokeStyle=n.color;ctx.lineWidth=2;ctx.stroke()}
-    ctx.beginPath();ctx.arc(n.x,n.y,n.r,0,Math.PI*2);
+    const hidePeriod=DATA&&DATA.period&&n.demand_hidden;
+    const dim=(q&&!match)||(categoryFilter&&n.category!==categoryFilter)||hidePeriod;
+    const r=nodeRadius(n);
+    ctx.globalAlpha=dim?.22:1;
+    if(DATA&&DATA.period&&!n.demand_hidden&&!n.growth_hidden&&Math.abs(n.growth)>=.15){
+      ctx.beginPath();ctx.arc(n.x,n.y,r+3.5,0,Math.PI*2);
+      ctx.strokeStyle=n.growth>0?'rgba(74,222,128,.8)':'rgba(248,113,113,.8)';ctx.lineWidth=1.6;ctx.stroke();
+    }
+    if(selected===n||hover===n){ctx.beginPath();ctx.arc(n.x,n.y,r+5,0,Math.PI*2);ctx.strokeStyle=n.color;ctx.lineWidth=2;ctx.stroke()}
+    ctx.beginPath();ctx.arc(n.x,n.y,r,0,Math.PI*2);
     if(n.solo){ctx.fillStyle='rgba(71,85,105,.62)';ctx.fill();ctx.strokeStyle='rgba(148,163,184,.55)';ctx.lineWidth=1;ctx.stroke()}
     else{ctx.fillStyle=n.color;ctx.fill()}
     if(selected===n||hover===n||match){
       ctx.globalAlpha=dim?.25:.95;
       ctx.fillStyle='#e2e8f0';ctx.font=(selected===n?'600 ':'500 ')+(11/transform.k)+'px Inter, system-ui, sans-serif';
       const label=n.title.length>36?n.title.slice(0,35)+'…':n.title;
-      ctx.fillText(label,n.x+n.r+4,n.y+3);
+      ctx.fillText(label,n.x+r+4,n.y+3);
     }
     ctx.globalAlpha=1;
   }
@@ -202,6 +226,7 @@ function render(){
 function drawStats(){
   const c=DATA.coverage;
   const cards=[['Публичные товары',c.public_items],['Публичные связи',c.public_pairs],['В связях',DATA.connected],['Solo',DATA.public_solo],['Скрыто k<3',c.suppressed_items],['Скрыто B2C k<5',c.suppressed_b2c_items]];
+  if(DATA.period){cards.push(['Спрос за период',DATA.period_public_items]);cards.push(['Скрыто за период',DATA.period_hidden_items])}
   $('stats').innerHTML=cards.map(x=>'<div class="stat"><b>'+fmt(x[1])+'</b><span>'+esc(x[0])+'</span></div>').join('');
 }
 function drawLegend(){
@@ -218,6 +243,12 @@ function showNode(n){
   const nb=edges.filter(e=>e.a===n||e.b===n).map(e=>({node:e.a===n?e.b:e.a,count:e.count,b2b:e.b2b_count,b2c:e.b2c_count,hidden:e.b2c_hidden})).sort((a,b)=>b.count-a.count);
   let h='<div class="panel-kicker">'+esc(CAT_RU[n.category]||n.category)+'</div><h2>'+esc(n.title)+'</h2>';
   h+='<div class="metrics"><div><b>'+fmt(n.buyers)+'</b><span>покупателей</span></div><div><b>'+fmt(n.degree)+'</b><span>связей</span></div><div><b>'+fmt(n.b2c_buyers)+'</b><span>B2C</span></div></div>';
+  if(DATA.period){
+    h+='<h3>Спрос за '+esc(DATA.period_label)+'</h3>';
+    if(n.demand_hidden){h+='<div class="note">Меньше '+(audience==='b2c'?5:3)+' покупателей за период — цифра скрыта по k-порогу.</div>'}
+    else{h+='<div class="metrics"><div><b>'+fmt(n.period_buyers)+'</b><span>покупателей</span></div><div><b>'+(n.growth_hidden?'—':((n.growth>=0?'+':'')+Math.round(n.growth*100)+'%'))+'</b><span>к прошлому</span></div><div><b>'+(n.growth_hidden?'—':fmt(n.prev_buyers))+'</b><span>было</span></div></div>'}
+  }
+  if(!n.renewal_hidden){h+='<h3>Продление</h3><div class="metrics"><div><b>'+Math.round(n.renewal_share*100)+'%</b><span>повторов</span></div><div><b>'+n.renewal_days+'</b><span>дней медиана</span></div></div>'}
   if(n.solo){h+='<div class="note">Публичных связей нет. Кандидат на достройку: co-client, семейство товаров, атрибуты или сервис.</div>'}
   else{h+='<h3>С этим покупают</h3><div>';nb.slice(0,14).forEach(x=>{h+='<button class="nb" data-id="'+esc(x.node.id)+'"><span>'+esc(x.node.title)+'</span><b>'+x.count+'</b></button>'});h+='</div>'}
   h+='<div class="foot">Показаны только публичные связи: у товара ≥3 покупателя, у B2B-пары ≥3 совместных покупки. B2C-счётчики меньше 5 скрыты.</div>';
@@ -230,7 +261,7 @@ function pick(x,y){
   let best=null,bd=1e9;
   for(const n of nodes){
     if(!visible(n))continue;
-    const d=Math.hypot(n.x-x,n.y-y),hit=Math.max(n.r+6,10/transform.k);
+    const d=Math.hypot(n.x-x,n.y-y),hit=Math.max(nodeRadius(n)+6,10/transform.k);
     if(d<hit&&d<bd){bd=d;best=n}
   }
   return best;
@@ -257,6 +288,26 @@ canvas.addEventListener('wheel',e=>{
   const factor=e.deltaY<0?1.12:.89,k2=Math.max(.15,Math.min(4,transform.k*factor));
   transform.x=mx-(mx-transform.x)*(k2/transform.k);transform.y=my-(my-transform.y)*(k2/transform.k);transform.k=k2;render();
 },{passive:false});
+function applyPeriod(d){
+  const map={};d.nodes.forEach(n=>{map[n.id]=n});
+  nodes.forEach(n=>{const x=map[n.id];if(!x)return;n.period_buyers=x.period_buyers;n.prev_buyers=x.prev_buyers;n.growth=x.growth;n.demand_hidden=x.demand_hidden;n.growth_hidden=x.growth_hidden;n.renewal_share=x.renewal_share;n.renewal_days=x.renewal_days;n.renewal_hidden=x.renewal_hidden});
+  DATA.period=d.period;DATA.period_label=d.period_label;DATA.period_items=d.period_items;DATA.period_public_items=d.period_public_items;DATA.period_hidden_items=d.period_hidden_items;
+  currentPeriod=d.period;initialPeriod=d.period;updateTimeControl();drawStats();render();if(selected)showNode(selected);
+}
+async function loadPeriod(value){
+  $('status').textContent='Считаю…';
+  const r=await fetch('/v1/demo/graph?audience='+audience+'&period='+encodeURIComponent(value)+'&solo_limit=1000');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  applyPeriod(await r.json());
+  $('status').textContent='';
+}
+$('time').addEventListener('input',e=>{
+  const p=periods[Number(e.target.value)];if(p)$('period-label').textContent=p.label;
+});
+$('time').addEventListener('change',e=>{
+  const p=periods[Number(e.target.value)];if(!p)return;
+  loadPeriod(p.value).catch(err=>{$('status').textContent='Ошибка: '+err.message});
+});
 $('search').addEventListener('input',e=>{search=e.target.value;render()});
 $('search').addEventListener('keydown',e=>{
   if(e.key!=='Enter')return;

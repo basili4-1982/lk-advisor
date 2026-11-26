@@ -25,6 +25,11 @@ func TestDemoGraphEndpoints(t *testing.T) {
 		t.Fatalf("audience = %q", out.Audience)
 	}
 
+	rec = doJSON(t, h, http.MethodGet, "/v1/demo/graph?audience=b2b&period=2026-08", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("period graph: %d %s", rec.Code, rec.Body.String())
+	}
+
 	rec = doJSON(t, h, http.MethodGet, "/demo/graph", "")
 	if rec.Code != http.StatusOK {
 		t.Fatalf("page: %d", rec.Code)

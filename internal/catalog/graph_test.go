@@ -94,6 +94,23 @@ func TestDemoGraphUsesPublicLayer(t *testing.T) {
 	if graph.Connected < 2 || graph.PublicSolo < 1 {
 		t.Fatalf("connected=%d solo=%d", graph.Connected, graph.PublicSolo)
 	}
+
+	month, err := catalog.LoadDemoGraphAt(ctx, dbc, "b2b", "2026-08", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if month.Period != "2026-08" || month.PeriodPublicItems < 2 {
+		t.Fatalf("period graph = %+v", month)
+	}
+	foundDemand := false
+	for _, n := range month.Nodes {
+		if n.ID == "graph-pub-a" && n.PeriodBuyers >= 3 {
+			foundDemand = true
+		}
+	}
+	if !foundDemand {
+		t.Fatalf("period demand missing: %+v", month.Nodes)
+	}
 	for _, n := range graph.Nodes {
 		if n.ID == "graph-pub-solo" && !n.Solo {
 			t.Fatalf("graph-pub-solo should be solo: %+v", n)

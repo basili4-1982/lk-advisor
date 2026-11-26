@@ -16,7 +16,8 @@ func (h *handler) demoGraph(w http.ResponseWriter, r *http.Request) {
 			soloLimit = v
 		}
 	}
-	graph, err := catalog.LoadDemoGraph(r.Context(), h.db, audience, soloLimit)
+	period := r.URL.Query().Get("period")
+	graph, err := catalog.LoadDemoGraphAt(r.Context(), h.db, audience, period, soloLimit)
 	if err != nil {
 		h.logger.Error("demo graph", "err", err)
 		writeError(w, http.StatusInternalServerError, "demo graph error")
