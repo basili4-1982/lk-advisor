@@ -121,6 +121,8 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 .type-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
 .type-card{border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
 .type-card .hint{margin-top:6px}
+.tip{position:fixed;z-index:50;max-width:380px;background:#111827;color:#fff;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.35;box-shadow:0 12px 32px rgba(0,0,0,.28);pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .12s}
+.tip.on{opacity:1;transform:none}
 .toast{position:fixed;right:20px;bottom:20px;background:#111827;color:#fff;padding:11px 15px;border-radius:10px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:9}
 .toast.show{opacity:1;transform:none}
 .toast.err{background:#991b1b}
@@ -428,6 +430,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
   </div>
 </main>
 <div class="toast" id="toast"></div>
+<div class="tip" id="registry-tip" role="tooltip"></div>
 <script>
 var REL_TYPES = {
   upgrade: 'Апгрейд', adjacent_task: 'Дополнение', substitute: 'Замена',
@@ -786,6 +789,22 @@ el('dataset-candidates').addEventListener('click', async function(ev){
 });
 function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
 function familyLabel(id){ return REG_PAGE.familyLabels[id] || id || '—'; }
+function positionRegistryTip(t, x, y){
+  var w=t.offsetWidth, h=t.offsetHeight;
+  var left=Math.min(x+14, window.innerWidth-w-8);
+  var top=y+16;
+  if (top+h > window.innerHeight-8) top=y-h-10;
+  t.style.left=Math.max(8,left)+'px';
+  t.style.top=Math.max(8,top)+'px';
+}
+function showRegistryTip(text, x, y){
+  var t=el('registry-tip');
+  if(!text){ t.classList.remove('on'); return; }
+  t.textContent=text;
+  t.classList.add('on');
+  positionRegistryTip(t, x, y);
+}
+function hideRegistryTip(){ el('registry-tip').classList.remove('on'); }
 function regProvLabel(p){ return REG_PROV[p] || p || '—'; }
 function regWhen(v){ if(!v) return '—'; var d=new Date(v); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU'); }
 function regEvidence(ev){
@@ -872,8 +891,8 @@ function renderRegistry(){
   el('registry-body').innerHTML = rows.map(function(r){
     return '<tr data-reg-id="'+r.id+'">'+
       '<td><input type="checkbox" data-reg-check="'+r.id+'" style="width:auto"'+(REG_SELECTED[r.id]?' checked':'')+'></td>'+
-      '<td><span class="clip" title="'+esc(r.from_title||r.from_item_id)+'">'+esc(r.from_title||r.from_item_id)+'</span></td>'+
-      '<td><span class="clip" title="'+esc(r.to_title||r.to_item_id)+'">'+esc(r.to_title||r.to_item_id)+'</span></td>'+
+      '<td><span class="clip" data-tip="'+esc(r.from_title||r.from_item_id)+'">'+esc(r.from_title||r.from_item_id)+'</span></td>'+
+      '<td><span class="clip" data-tip="'+esc(r.to_title||r.to_item_id)+'">'+esc(r.to_title||r.to_item_id)+'</span></td>'+
       '<td><span class="pill type">'+esc(typeTitle(r.type))+'</span></td>'+
       '<td><span class="pill '+(r.status==='active'?'on':(r.status==='rejected'?'off':'q'))+'">'+esc(regStatusLabel(r.status))+'</span></td>'+
       '<td>'+esc(regProvLabel(r.provenance_kind))+'</td>'+
@@ -1087,6 +1106,12 @@ el('registry-body').addEventListener('change', function(ev){
   var id=ev.target.dataset.regCheck;
   if (id) REG_SELECTED[id]=ev.target.checked;
 });
+el('registry-body').addEventListener('mousemove', function(ev){
+  var n=ev.target.closest('[data-tip]');
+  if (n) showRegistryTip(n.getAttribute('data-tip'), ev.clientX, ev.clientY);
+  else hideRegistryTip();
+});
+el('registry-body').addEventListener('mouseleave', hideRegistryTip);
 el('registry-body').addEventListener('click', function(ev){
   if (ev.target.dataset.regCheck) return;
   var tr=ev.target.closest('tr[data-reg-id]');
