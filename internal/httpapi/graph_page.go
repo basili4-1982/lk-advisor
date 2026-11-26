@@ -43,6 +43,20 @@ label.toggle input{accent-color:#1d4ed8}
 .zoomctl button{width:32px;height:32px;background:rgba(11,18,32,.9);border:1px solid var(--line);color:var(--text);border-radius:8px;cursor:pointer;font:inherit;font-size:17px;line-height:1}
 .zoomctl button:hover{border-color:rgba(96,165,250,.6);color:#fff}
 .zoomctl button.reset{font-size:13px}
+.focusbar{display:flex;align-items:center;justify-content:space-between;gap:8px;background:rgba(29,78,216,.14);border:1px solid rgba(96,165,250,.3);border-radius:9px;padding:7px 9px;margin-bottom:12px;font-size:11px;color:#bfdbfe}
+.focusbar button{background:rgba(15,23,42,.8);border:1px solid rgba(96,165,250,.4);color:#dbeafe;border-radius:7px;padding:4px 8px;font:inherit;font-size:11px;cursor:pointer}
+.modal{position:fixed;inset:0;background:rgba(2,6,23,.68);display:flex;align-items:center;justify-content:center;z-index:40}
+.modal.hidden{display:none}
+.modal-card{width:min(480px,calc(100vw - 32px));background:#0f172a;border:1px solid rgba(148,163,184,.25);border-radius:16px;padding:20px;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+.modal-card h3{margin:0 0 4px;font-size:17px}
+.modal-card .hint{margin-bottom:12px}
+.modal-card label{display:block;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:10px 0 5px}
+.modal-card select,.modal-card textarea{width:100%;background:rgba(15,23,42,.9);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px;font:inherit;font-size:12.5px}
+.modal-card textarea{min-height:64px;resize:vertical}
+.modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+.modal-actions button{border-radius:8px;padding:8px 12px;font:inherit;font-size:12px;cursor:pointer}
+.modal-actions .save{background:var(--blue);border:0;color:#fff}
+.modal-actions .cancel{background:transparent;border:1px solid var(--line);color:var(--muted)}
 main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
 .graph-wrap{position:relative;min-width:0;overflow:hidden;height:100%}
 #graph{position:absolute;inset:0}
@@ -105,18 +119,26 @@ main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
     <div class="legend" id="legend"></div>
     <div class="hint">Клик по узлу — карточка и связи. Вращение — мышь, колесо — масштаб.</div>
     <div class="pager"><button id="prev-page" title="Назад">‹</button><span id="page-label">1 / 1</span><button id="next-page" title="Вперёд">›</button><select id="page-size" title="Точек на странице"><option value="250">250</option><option value="500">500</option><option value="1000" selected>1000</option></select></div>
-    <div class="zoomctl"><button id="zoom-in" title="Приблизить">+</button><button id="zoom-out" title="Отдалить">−</button><button id="zoom-reset" class="reset" title="Сбросить камеру">⌂</button></div>
+    <div class="zoomctl"><button id="zoom-in" title="Приблизить">+</button><button id="zoom-out" title="Отдалить">−</button><button id="zoom-reset" class="reset" title="Сбросить камеру">⌂</button><button id="focus-all" title="Показать всех">◎</button></div>
   </section>
   <aside class="panel" id="panel"></aside>
 </main>
 <div id="tooltip"></div>
+<div id="link-modal" class="modal hidden"><div class="modal-card">
+  <h3>Создать связь</h3>
+  <div class="hint" id="link-pair"></div>
+  <label>Тип связи</label><select id="link-type"></select>
+  <label>Статус</label><select id="link-status"><option value="quarantine">В карантин</option><option value="confirmed">Сразу подтвердить</option></select>
+  <label>Почему эти товары связаны</label><textarea id="link-note" placeholder="Например: дополняет по задаче, куплено вместе, альтернатива…"></textarea>
+  <div class="modal-actions"><button class="cancel" id="link-cancel">Отмена</button><button class="save" id="link-save">Создать</button></div>
+</div></div>
 <script src="/static/3d-force-graph.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
 const wrap=$('graph-wrap');
 const COLORS={security:'#f87171',office:'#60a5fa',graphics:'#c084fc',backup:'#4ade80',devtools:'#fbbf24',training:'#2dd4bf',other:'#94a3b8'};
 const CAT_RU={security:'Безопасность',office:'Офис',graphics:'Графика',backup:'Бэкап',devtools:'Разработка',training:'Обучение',other:'Другое'};
-let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null,focusMode=false,selectedNeighbors=new Set();
+let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null,focusMode=false,selectedNeighbors=new Set(),selectedComponent=new Set(),selectedDepths={},linkSource=null,linkTarget=null,relationTypes=[];
 let audience='b2b',soloOn=false,categoryFilter=null,search='',initialIndustry=new URLSearchParams(location.search).get('industry')||'',initialSegment=new URLSearchParams(location.search).get('segment')||'',initialFamily=new URLSearchParams(location.search).get('family')||'',industryFilter=initialIndustry,segmentFilter=initialSegment,familyFilter=initialFamily;
 let periods=[],currentPeriod='',initialPeriod=new URLSearchParams(location.search).get('period')||'',page=Math.max(1,parseInt(new URLSearchParams(location.search).get('page')||'1',10)||1),pageSize=Math.max(250,Math.min(1000,parseInt(new URLSearchParams(location.search).get('page_size')||'1000',10)||1000)),totalPages=1;
 let graph=null,autoFitDone=false,userInteracted=false;
@@ -139,7 +161,7 @@ function initGraph(){
     .linkOpacity(.58)
     .linkVisibility(linkVisible)
     .nodeVisibility(nodeVisible)
-    .onNodeClick(n=>{showNode(n);focusNode(n)})
+    .onNodeClick(n=>{if(linkSource){if(n.id!==linkSource.id)openLinkModal(linkSource,n);return}showNode(n);focusNode(n)})
     .onNodeHover(n=>{hover=n;refresh()})
     .onBackgroundClick(()=>{showNode(null);focusMode=false;refresh()});
   if(graph.d3Force){
@@ -154,13 +176,12 @@ function nodeVisible(n){
   if(n.solo&&!soloOn)return false;
   if(categoryFilter&&n.category!==categoryFilter)return false;
   if(familyFilter&&n.family!==familyFilter)return false;
-  if(focusMode&&selected){return n.id===selected.id||selectedNeighbors.has(n.id)}
+  if(focusMode&&selected){return selectedComponent.has(n.id)}
   return true;
 }
 function linkVisible(l){
   const a=byId[sourceID(l)],b=byId[targetID(l)];
   if(!(a&&b&&nodeVisible(a)&&nodeVisible(b)))return false;
-  if(focusMode&&selected)return sourceID(l)===selected.id||targetID(l)===selected.id;
   return true;
 }
 function nodeVal(n){
@@ -177,17 +198,22 @@ function nodeColor(n){
   if(hover&&hover.id===n.id)return '#f8fafc';
   if(q&&n.title.toLowerCase().indexOf(q)>=0)return '#f8fafc';
   if(dim)return '#1e293b';
+  if(focusMode&&selected){const d=selectedDepths[n.id];if(d!==undefined&&d>1)return '#475569'}
   if(n.external_count>0)return '#fbbf24';
   if(n.solo)return '#64748b';
   return COLORS[n.category]||COLORS.other;
 }
 function linkWidth(l){
+  if(l.manual)return 1.8;
   if(selected&&(sourceID(l)===selected.id||targetID(l)===selected.id))return 1.8;
+  if(focusMode)return .7;
   if(hover&&(sourceID(l)===hover.id||targetID(l)===hover.id))return 1.5;
   return Math.min(3.4,.8+Math.log((l.count||1)+1)*.35);
 }
 function linkColor(l){
-  if(selected&&(sourceID(l)===selected.id||targetID(l)===selected.id))return 'rgba(96,165,250,.85)';
+  if(l.manual)return 'rgba(74,222,128,.9)';
+  if(selected&&(sourceID(l)===selected.id||targetID(l)===selected.id))return 'rgba(96,165,250,.9)';
+  if(focusMode)return 'rgba(100,116,139,.3)';
   if(hover&&(sourceID(l)===hover.id||targetID(l)===hover.id))return 'rgba(96,165,250,.55)';
   return 'rgba(148,163,184,.4)';
 }
@@ -206,6 +232,15 @@ function populateFilters(){
   fillFilter('family-filter',DATA.families,'Все семейства',familyFilter);
   fillFilter('industry-filter',DATA.industries,'Все отрасли',industryFilter);
   fillFilter('segment-filter',DATA.segments,'Все сегменты',segmentFilter);
+}
+async function loadRelationTypes(){
+  try{
+    const r=await fetch('/v1/admin/state');const d=await r.json();
+    relationTypes=(d.relation_types||[]).filter(t=>!t.status||t.status==='active');
+  }catch(e){
+    relationTypes=[{code:'adjacent_task',title:'Дополняет'},{code:'accessory',title:'Аксессуар'},{code:'alternative',title:'Альтернатива'},{code:'upgrade',title:'Апгрейд'}];
+  }
+  if(!relationTypes.length)relationTypes=[{code:'adjacent_task',title:'Дополняет'},{code:'accessory',title:'Аксессуар'},{code:'alternative',title:'Альтернатива'}];
 }
 async function load(focusId){
   $('status').textContent='Загружаю…';
@@ -276,6 +311,7 @@ function drawLegend(){
   const counts={};nodes.forEach(n=>{counts[n.category]=(counts[n.category]||0)+1});
   let h='<button class="leg '+(categoryFilter===null?'active':'')+'" data-cat="all"><i style="background:#e2e8f0"></i>Все</button>';
   if((DATA.external_edges||[]).length)h+='<span class="leg"><i style="background:#fbbf24"></i>за страницей</span>';
+  if((DATA.edges||[]).some(e=>e.manual))h+='<span class="leg"><i style="background:#4ade80"></i>ручная связь</span>';
   Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).forEach(c=>{
     h+='<button class="leg '+(categoryFilter===c?'active':'')+'" data-cat="'+esc(c)+'"><i style="background:'+(COLORS[c]||COLORS.other)+'"></i>'+esc(CAT_RU[c]||c)+' · '+counts[c]+'</button>';
   });
@@ -284,9 +320,16 @@ function drawLegend(){
 function showNode(n){
   selected=n||null;
   focusMode=!!n;
-  selectedNeighbors=new Set();
+  selectedNeighbors=new Set();selectedComponent=new Set();selectedDepths={};
   if(n){
-    edges.forEach(e=>{if(sourceID(e)===n.id)selectedNeighbors.add(targetID(e));if(targetID(e)===n.id)selectedNeighbors.add(sourceID(e))});
+    const adj={};
+    edges.forEach(e=>{const a=sourceID(e),b=targetID(e);(adj[a]=adj[a]||[]).push(b);(adj[b]=adj[b]||[]).push(a)});
+    const q=[n.id];selectedDepths[n.id]=0;selectedComponent.add(n.id);
+    for(let i=0;i<q.length;i++){
+      const cur=q[i],d=selectedDepths[cur];
+      (adj[cur]||[]).forEach(v=>{if(selectedDepths[v]===undefined){selectedDepths[v]=d+1;selectedComponent.add(v);q.push(v)}});
+    }
+    selectedNeighbors=new Set([...selectedComponent].filter(id=>selectedDepths[id]===1));
   }
   refresh();
   if(!n){$('panel').innerHTML='<div class="empty">Выберите товар на графе. Панель покажет покупателей, число связей и что покупают вместе с ним.</div>';return}
@@ -294,7 +337,9 @@ function showNode(n){
     const other=byId[sourceID(e)===n.id?targetID(e):sourceID(e)];
     return other?{node:other,count:e.count,b2b:e.b2b_count,b2c:e.b2c_count,hidden:e.b2c_hidden}:null;
   }).filter(Boolean).sort((a,b)=>b.count-a.count);
-  let h='<div class="panel-kicker">'+esc(CAT_RU[n.category]||n.category)+(n.family?' · '+esc(n.family):'')+'</div><h2>'+esc(n.title)+'</h2>';
+  const componentEdges=edges.filter(e=>selectedComponent.has(sourceID(e))&&selectedComponent.has(targetID(e))).length;
+  let h='<div class="focusbar"><span>Компонента: '+selectedComponent.size+' узлов · '+componentEdges+' связей</span><span><button id="show-all">Показать всех</button> <button id="create-link">Создать связь</button></span></div>';
+  h+='<div class="panel-kicker">'+esc(CAT_RU[n.category]||n.category)+(n.family?' · '+esc(n.family):'')+'</div><h2>'+esc(n.title)+'</h2>';
   h+='<div class="metrics"><div><b>'+fmt(n.buyers)+'</b><span>покупателей</span></div><div><b>'+fmt(n.degree)+'</b><span>связей</span></div><div><b>'+fmt(n.b2c_buyers)+'</b><span>B2C</span></div></div>';
   if(DATA.period){
     h+='<h3>Спрос за '+esc(DATA.period_label)+'</h3>';
@@ -304,20 +349,44 @@ function showNode(n){
   if(!n.renewal_hidden){h+='<h3>Продление</h3><div class="metrics"><div><b>'+Math.round(n.renewal_share*100)+'%</b><span>повторов</span></div><div><b>'+n.renewal_days+'</b><span>дней медиана</span></div></div>'}
   if(n.solo){h+='<div class="note">Публичных связей нет. Кандидат на достройку: co-client, семейство товаров, атрибуты или сервис.</div>'}
   else{h+='<h3>С этим покупают</h3><div>';nb.slice(0,14).forEach(x=>{h+='<button class="nb" data-id="'+esc(x.node.id)+'"><span>'+esc(x.node.title)+'</span><b>'+x.count+'</b></button>'});h+='</div>'}
-  h+='<div class="actions" style="margin-top:10px"><button class="secondary" id="show-all">Показать всех</button>'+(n.family?'<button class="secondary" id="show-family">Семейство «'+esc(n.family)+'»</button>':'')+'</div>';
+  h+='<div class="actions" style="margin-top:10px">'+(n.family?'<button class="secondary" id="show-family">Семейство «'+esc(n.family)+'»</button>':'')+'</div>';
   const ext=(DATA.external_edges||[]).filter(e=>e.from===n.id);
   if(ext.length){h+='<h3>За пределами страницы</h3><div>';ext.slice(0,12).forEach(e=>{h+='<button class="nb" data-ext-id="'+esc(e.to)+'" data-ext-page="'+e.target_page+'"><span>'+esc(e.title)+'</span><b>стр. '+e.target_page+'</b></button>'});h+='</div>'}
   h+='<div class="foot">Показаны только публичные связи: у товара ≥3 покупателя, у B2B-пары ≥3 совместных покупки. B2C-счётчики меньше 5 скрыты.</div>';
   $('panel').innerHTML=h;
   $('panel').querySelectorAll('.nb').forEach(b=>b.onclick=()=>{const x=byId[b.dataset.id];if(x){showNode(x);focusNode(x)}});
-  const sa=$('show-all');if(sa)sa.onclick=()=>{focusMode=false;showNode(null);resetCamera()};
+  const sa=$('show-all');if(sa)sa.onclick=()=>{focusMode=false;selectedComponent=new Set();selectedDepths={};showNode(null);resetCamera()};
+  const cl=$('create-link');if(cl)cl.onclick=()=>startLink(n);
   const sf=$('show-family');if(sf)sf.onclick=()=>{familyFilter=n.family||'';fillFilter('family-filter',DATA.families,'Все семейства',familyFilter);drawStats();refresh()};
   $('panel').querySelectorAll('[data-ext-id]').forEach(b=>b.onclick=()=>{page=Number(b.dataset.extPage)||1;load(b.dataset.extId)});
+}
+function startLink(n){
+  linkSource=n;linkTarget=null;focusMode=false;selected=null;showNode(null);
+  $('status').textContent='Выберите второй товар для «'+n.title+'»';
+  refresh();
+}
+function openLinkModal(a,b){
+  linkSource=a;linkTarget=b;
+  $('link-pair').textContent=a.title+'  →  '+b.title;
+  $('link-type').innerHTML=relationTypes.map(t=>'<option value="'+esc(t.code)+'">'+esc(t.title||t.code)+'</option>').join('');
+  $('link-note').value='';
+  $('link-modal').classList.remove('hidden');
+}
+function closeLinkModal(){ $('link-modal').classList.add('hidden'); }
+async function saveLink(){
+  if(!linkSource||!linkTarget)return;
+  const body={from_item_id:linkSource.id,to_item_id:linkTarget.id,type:$('link-type').value,status:$('link-status').value,confidence:0.8,reason:$('link-note').value};
+  try{
+    await fetch('/v1/admin/dataset/relations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(async r=>{if(!r.ok)throw new Error((await r.json()).error||'HTTP '+r.status)});
+    const src=linkSource.id;closeLinkModal();linkSource=null;linkTarget=null;
+    $('status').textContent='Связь создана и отправлена в конструктор';
+    await load(src);
+  }catch(e){ $('status').textContent='Ошибка: '+e.message; }
 }
 function focusNode(n){
   if(!graph||!n)return;
   userInteracted=true;autoFitDone=true;
-  if(graph.zoomToFit)graph.zoomToFit(700,140,x=>x.id===n.id||selectedNeighbors.has(x.id));
+  if(graph.zoomToFit)graph.zoomToFit(700,140,x=>selectedComponent.has(x.id));
 }
 function updateTimeControl(){
   const t=$('time');
@@ -335,6 +404,10 @@ function selectInitial(){
   else n=byId[q];
   if(n){showNode(n);setTimeout(()=>focusNode(n),700)}
 }
+$('focus-all').addEventListener('click',()=>{focusMode=false;showNode(null);resetCamera()});
+$('link-cancel').addEventListener('click',()=>{closeLinkModal();linkSource=null;linkTarget=null;showNode(null)});
+$('link-save').addEventListener('click',saveLink);
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){if(!$('link-modal').classList.contains('hidden')){closeLinkModal();linkSource=null;linkTarget=null;showNode(null)}else{focusMode=false;showNode(null);resetCamera()}}});
 $('zoom-in').addEventListener('click',()=>zoomBy(.8));
 $('zoom-out').addEventListener('click',()=>zoomBy(1.25));
 $('zoom-reset').addEventListener('click',resetCamera);
@@ -355,7 +428,7 @@ window.addEventListener('resize',()=>{resizeGraph()});
 wrap.addEventListener('pointerdown',()=>{userInteracted=true;autoFitDone=true},{passive:true});
 wrap.addEventListener('wheel',()=>{userInteracted=true;autoFitDone=true},{passive:true});
 initGraph();
-load().catch(err=>{$('status').textContent='Ошибка: '+err.message});
+loadRelationTypes().finally(()=>load().catch(err=>{$('status').textContent='Ошибка: '+err.message}));
 </script>
 </body>
 </html>`

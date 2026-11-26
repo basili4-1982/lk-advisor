@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 // GraphNode is one public item in the demo relation graph.
@@ -39,6 +41,9 @@ type GraphEdge struct {
 	B2BCount  int    `json:"b2b_count"`
 	B2CCount  int    `json:"b2c_count"`
 	B2CHidden bool   `json:"b2c_hidden"`
+	Type      string `json:"type,omitempty"`
+	Status    string `json:"status,omitempty"`
+	Manual    bool   `json:"manual,omitempty"`
 }
 
 // ExternalEdge is a link from the current page to a node on another page.
@@ -159,6 +164,9 @@ func LoadDemoGraphPage(ctx context.Context, dbc *sql.DB, audience, industry, seg
 	}
 	if graph.PublicPairs == 0 {
 		graph.PublicPairs = len(graph.Edges)
+	}
+	if err := appendManualEdges(ctx, dbc, &graph); err != nil {
+		return DemoGraph{}, err
 	}
 	graph.Families = familyOptions(graph.Nodes)
 	periods, err := loadGraphPeriods(ctx, dbc)
@@ -294,6 +302,111 @@ func filterLabel(audience, industry, segment string) string {
 		parts = append(parts, segment)
 	}
 	return strings.Join(parts, " · ")
+}
+
+func appendManualEdges(ctx context.Context, dbc *sql.DB, g *DemoGraph) error {
+	if len(g.Nodes) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(g.Nodes))
+	for _, n := range g.Nodes {
+		ids = append(ids, n.ID)
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT from_item_id, to_item_id, type, status, confidence::float8
+		FROM lk_relation_candidates
+		WHERE source = 'manual'
+		  AND status IN ('quarantine', 'confirmed')
+		  AND from_item_id = ANY($1)
+		  AND to_item_id = ANY($1)`, pq.Array(ids))
+	if err != nil {
+		return fmt.Errorf("manual graph edges: %w", err)
+	}
+	defer rows.Close()
+	manual := []GraphEdge{}
+	for rows.Next() {
+		var e GraphEdge
+		var confidence float64
+		if err := rows.Scan(&e.Source, &e.Target, &e.Type, &e.Status, &confidence); err != nil {
+			return err
+		}
+		e.Manual = true
+		e.Count = 1
+		manual = append(manual, e)
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	if len(manual) == 0 {
+		return nil
+	}
+	g.Edges = append(g.Edges, manual...)
+
+	connected := map[string]bool{}
+	degree := map[string]int{}
+	for _, e := range g.Edges {
+		degree[e.Source]++
+		degree[e.Target]++
+		connected[e.Source] = true
+		connected[e.Target] = true
+	}
+	for i := range g.Nodes {
+		g.Nodes[i].Degree = degree[g.Nodes[i].ID]
+		g.Nodes[i].Solo = !connected[g.Nodes[i].ID]
+	}
+	g.Connected = len(connected)
+	g.PublicSolo = 0
+	for _, n := range g.Nodes {
+		if n.Solo {
+			g.PublicSolo++
+		}
+	}
+	return nil
+}
+
+// CreateManualDatasetRelation stores a human-created relation in the constructor queue.
+func CreateManualDatasetRelation(ctx context.Context, dbc *sql.DB, from, to, typ, status string, confidence float64, reason string) (bool, error) {
+	from, to, typ = strings.TrimSpace(from), strings.TrimSpace(to), strings.TrimSpace(typ)
+	if from == "" || to == "" || from == to || typ == "" {
+		return false, fmt.Errorf("from_item_id, to_item_id and type are required")
+	}
+	if status != "quarantine" && status != "confirmed" {
+		return false, fmt.Errorf("status must be quarantine or confirmed")
+	}
+	if confidence <= 0 || confidence > 1 {
+		confidence = 0.8
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT item_id FROM lk_items WHERE item_id IN ($1, $2)`, from, to)
+	if err != nil {
+		return false, err
+	}
+	n := 0
+	for rows.Next() {
+		n++
+	}
+	rows.Close()
+	if n != 2 {
+		return false, fmt.Errorf("item not found")
+	}
+	res, err := dbc.ExecContext(ctx, `
+		INSERT INTO lk_relation_candidates
+			(from_item_id, to_item_id, type, confidence, status, reason, evidence, source)
+		VALUES ($1, $2, $3, $4, $5, $6, '[]'::jsonb, 'manual')
+		ON CONFLICT (from_item_id, to_item_id, type) DO UPDATE SET
+			status = EXCLUDED.status,
+			confidence = EXCLUDED.confidence,
+			reason = EXCLUDED.reason,
+			source = 'manual',
+			reviewed_by = '',
+			reviewed_at = NULL,
+			review_note = ''`,
+		from, to, typ, confidence, status, strings.TrimSpace(reason))
+	if err != nil {
+		return false, fmt.Errorf("create manual relation: %w", err)
+	}
+	affected, _ := res.RowsAffected()
+	return affected > 0, nil
 }
 
 func familyOptions(nodes []GraphNode) []GraphFilterOption {

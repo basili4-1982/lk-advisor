@@ -94,6 +94,24 @@ func TestDemoGraphUsesPublicLayer(t *testing.T) {
 	if graph.Connected < 2 || graph.PublicSolo < 1 {
 		t.Fatalf("connected=%d solo=%d", graph.Connected, graph.PublicSolo)
 	}
+	if _, err := catalog.CreateManualDatasetRelation(ctx, dbc,
+		"graph-pub-a", "graph-pub-b", "adjacent_task", "quarantine", 0.8, "manual test"); err != nil {
+		t.Fatal(err)
+	}
+	defer dbc.ExecContext(ctx, `DELETE FROM lk_relation_candidates WHERE source='manual' AND reason='manual test'`)
+	manualGraph, err := catalog.LoadDemoGraph(ctx, dbc, "b2b", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foundManual := false
+	for _, e := range manualGraph.Edges {
+		if e.Manual && e.Source == "graph-pub-a" && e.Target == "graph-pub-b" {
+			foundManual = true
+		}
+	}
+	if !foundManual {
+		t.Fatalf("manual edge missing: %+v", manualGraph.Edges)
+	}
 
 	month, err := catalog.LoadDemoGraphAt(ctx, dbc, "b2b", "2026-08", 1000)
 	if err != nil {
