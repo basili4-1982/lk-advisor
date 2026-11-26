@@ -14,6 +14,7 @@
 | `Document` | id, client_id, order_id, type, created_at, downloaded_at | документы |
 | `Event` | id, client_id, type, ts, context | вход, просмотр, скачивание |
 | `Rule` | id, type, condition, action | запреты и ограничения |
+| `Promotion` | id, product_id, discount, valid_from, valid_to, conditions | акции для urgency и ответа |
 | `GroundTruth` | client_id, event, expected_product_id, expected_type | оценка |
 
 ### Типы связей
@@ -126,6 +127,7 @@
 - 200 заказов;
 - 1000 событий;
 - 20 запретов и ограничений;
+- 40 акций (15% товаров);
 - 50 размеченных кейсов.
 
 Файлы:
@@ -140,6 +142,7 @@ data/
   orders.csv
   events.csv
   rules.csv
+  promotions.csv
   ground_truth.csv
 ```
 
@@ -153,6 +156,8 @@ Seed: 42. Все суммы в рублях, даты в ISO 8601.
 - 20% клиентов без истории — для fallback.
 - 10% товаров — аналоги снятых с продажи.
 - 5% связей — неподтверждённые, с `confidence < 0.7`.
+- 15% товаров — активная акция; половина кончается в ближайшие 7 дней, половина — в 30.
+- Часть акций просрочена или начнётся позже — они не влияют на выдачу.
 
 ## 4. Сценарии для демо
 
