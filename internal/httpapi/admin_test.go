@@ -103,7 +103,7 @@ func TestAdminPage(t *testing.T) {
 		t.Fatalf("status = %d", rec.Code)
 	}
 	body := rec.Body.String()
-	for _, needle := range []string{"Реестр связей", "Каталог", "Типы связей", "Данные", "Гипотезы"} {
+	for _, needle := range []string{"Аналитика рекомендаций", "Дашборд", "Каталог", "Типы связей", "Гипотезы"} {
 		if !contains(body, needle) {
 			t.Fatalf("unexpected page: missing %q", needle)
 		}

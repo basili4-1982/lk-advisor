@@ -14,7 +14,7 @@ const adminHTML = `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LK Advisor — реестр связей</title>
+<title>LK Advisor — аналитика рекомендаций</title>
 <style>
 :root{--bg:#f6f7fb;--card:#fff;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--red:#c8102e;--blue:#1d4ed8;--green:#047857;--amber:#b45309;--purple:#6d28d9}
 *{box-sizing:border-box}
@@ -105,6 +105,20 @@ table.registry th,table.registry td{padding:4px 6px}
 .danger-zone{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin:22px 0 4px;padding-top:14px;border-top:1px solid var(--line)}
 .danger-copy{text-align:right}
 .danger-copy b{color:#7f1d1d;font-size:13px}
+.chart{display:grid;gap:10px;margin-top:12px}
+.chart-row{display:grid;grid-template-columns:80px 1fr;gap:10px;align-items:end}
+.chart-row>span{font-size:12px;color:var(--muted);padding-bottom:6px}
+.chart-bars{display:flex;gap:18px;align-items:flex-end;height:100px;border-bottom:1px solid var(--line);padding-bottom:4px}
+.chart-col{display:flex;flex-direction:column;align-items:center;gap:3px;width:64px}
+.chart-col i{display:block;width:30px;border-radius:4px 4px 0 0;background:#c7d2fe}
+.chart-col.ours i{background:#1d4ed8}
+.chart-col b{font-size:11px}
+.chart-col span{font-size:10px;color:var(--muted);white-space:nowrap}
+.donuts{display:flex;gap:28px;flex-wrap:wrap;margin-top:12px}
+.donut-wrap{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px}
+.donut-wrap small{color:var(--muted)}
+.donut{width:78px;height:78px;border-radius:50%;background:conic-gradient(#6366f1 calc(var(--v)*1%), #22c55e 0);display:grid;place-items:center}
+.donut .hole{width:52px;height:52px;background:#fff;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800}
 button.danger{background:#7f1d1d;color:#fff;padding:12px 22px;font-size:14px;border-radius:10px;font-weight:800}
 button.danger:hover{background:#991b1b}
 .pair-qual{display:inline-block;font-size:10px;font-weight:600;color:#6b7280;background:#f1f5f9;border-radius:4px;padding:0 4px;vertical-align:1px}
@@ -200,8 +214,8 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
   <nav><a href="/">Кабинет</a><a href="/api">API</a></nav>
 </div></header>
 <main class="wrap">
-  <h1>Реестр связей</h1>
-  <p class="lead">Связи каталога: источник, доказательство, статус и решение человека.</p>
+  <h1>Аналитика рекомендаций</h1>
+  <p class="lead">Качество, покрытие и структура рекомендаций по каталогу.</p>
   <div class="stats hero-stats">
     <div class="stat"><b id="st-products">—</b><span>товаров в каталоге</span></div>
     <div class="stat"><b id="st-relations">—</b><span>связей между товарами</span></div>
@@ -211,9 +225,9 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
   <div class="layout">
     <section class="panel">
       <div class="tabs">
-        <button class="tab on" data-tab="registry">Каталог</button>
+        <button class="tab on" data-tab="dataset">Дашборд</button>
+        <button class="tab" data-tab="registry">Каталог</button>
         <button class="tab" data-tab="types">Типы связей</button>
-        <button class="tab" data-tab="dataset">Данные</button>
         <button class="tab" data-tab="experiments">Гипотезы</button>
       </div>
       <div class="tabbody">
@@ -252,7 +266,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           </table></div>
         </div>
 
-        <div id="tab-registry">
+        <div id="tab-registry" class="hidden">
           <div class="stats" id="registry-metrics" style="margin-bottom:12px"></div>
           <div class="toolbar">
             <input id="registry-search" placeholder="Поиск по товару или id">
@@ -400,21 +414,78 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <p class="hint">Изменение весов влияет на порядок карточек, но не отменяет правила совместимости, аудитории и безопасности.</p>
         </div>
 
-        <div id="tab-dataset" class="hidden">
+        <div id="tab-dataset">
           <div class="formbox">
-            <div class="form-title">Датасет v5 и co-purchase</div>
-            <p class="hint">817 товаров, 30 514 строк продаж, 19 008 клиентов. Co-purchase-кандидаты попадают в реестр со статусом candidate и проверяются в «Каталоге».</p>
-            <div class="stats" id="dataset-cards" style="margin:12px 0"></div>
-            <div class="toolbar">
-              <button id="dataset-classify">Разметить топ-10 (LLM/шаблоны)</button>
-              <button id="dataset-suggest" class="secondary">Создать кандидатов из co-purchase</button>
-              <button id="dataset-open-catalog" class="secondary small">Проверить кандидатов в Каталоге</button>
-              <span class="hint">Проверка и решения — только в «Каталоге».</span>
+            <div class="form-title">Качество рекомендаций · офлайн-бэктест v5</div>
+            <p class="hint">Официальный протокол: basket = (order_id, order_week), train до 31.08.2026, test с 07.09.2026, Precision@3 по всем 817 item_id.</p>
+            <div class="stats">
+              <div class="stat"><b>11.37%</b><span>A · наша P@3</span></div>
+              <div class="stat"><b>+102%</b><span>A · к baseline</span></div>
+              <div class="stat"><b>14.53%</b><span>B · наша P@3</span></div>
+              <div class="stat"><b>+142%</b><span>B · к baseline</span></div>
+            </div>
+            <div class="tablewrap"><table>
+              <thead><tr><th>Группа</th><th>Popularity</th><th>Co-purchase</th><th>Наша модель</th><th>Рост к лучшему baseline</th></tr></thead>
+              <tbody>
+                <tr><td>A · B2B</td><td>3.75%</td><td>4.53%</td><td><b>10.38%</b></td><td>+129%</td></tr>
+                <tr><td>A · B2C</td><td>20.00%</td><td>15.24%</td><td><b>20.00%</b></td><td>0% (малая выборка)</td></tr>
+                <tr><td>A · все</td><td>5.44%</td><td>5.64%</td><td><b>11.37%</b></td><td>+102%</td></tr>
+                <tr><td>B · B2B</td><td>5.22%</td><td>4.54%</td><td><b>13.61%</b></td><td>+200%</td></tr>
+                <tr><td>B · B2C</td><td>20.00%</td><td>14.67%</td><td><b>20.00%</b></td><td>0% (малая выборка)</td></tr>
+                <tr><td>B · все</td><td>7.36%</td><td>6.01%</td><td><b>14.53%</b></td><td>+142%</td></tr>
+              </tbody>
+            </table></div>
+          </div>
+
+          <div class="formbox">
+            <div class="form-title">P@3: baseline против нашей модели</div>
+            <div class="chart">
+              <div class="chart-row"><span>A · все</span><div class="chart-bars">
+                <div class="chart-col"><b>5.44</b><i style="height:33px"></i><span>popularity</span></div>
+                <div class="chart-col"><b>5.64</b><i style="height:34px"></i><span>co-purchase</span></div>
+                <div class="chart-col ours"><b>11.37</b><i style="height:68px"></i><span>наша</span></div>
+              </div></div>
+              <div class="chart-row"><span>B · все</span><div class="chart-bars">
+                <div class="chart-col"><b>7.36</b><i style="height:44px"></i><span>popularity</span></div>
+                <div class="chart-col"><b>6.01</b><i style="height:36px"></i><span>co-purchase</span></div>
+                <div class="chart-col ours"><b>14.53</b><i style="height:87px"></i><span>наша</span></div>
+              </div></div>
+              <div class="chart-row"><span>A · B2B</span><div class="chart-bars">
+                <div class="chart-col"><b>3.75</b><i style="height:22px"></i><span>popularity</span></div>
+                <div class="chart-col"><b>4.53</b><i style="height:27px"></i><span>co-purchase</span></div>
+                <div class="chart-col ours"><b>10.38</b><i style="height:62px"></i><span>наша</span></div>
+              </div></div>
+              <div class="chart-row"><span>B · B2B</span><div class="chart-bars">
+                <div class="chart-col"><b>5.22</b><i style="height:31px"></i><span>popularity</span></div>
+                <div class="chart-col"><b>4.54</b><i style="height:27px"></i><span>co-purchase</span></div>
+                <div class="chart-col ours"><b>13.61</b><i style="height:82px"></i><span>наша</span></div>
+              </div></div>
             </div>
           </div>
+
           <div class="formbox">
-            <div class="form-title">Сильные совместные покупки</div>
-            <div id="dataset-pairs"></div>
+            <div class="form-title">Структура попаданий: варианты и новые продукты</div>
+            <p class="hint">Вариант — product_group уже есть в истории клиента. Новый продукт — такого product_group в истории не было. B2C variant share = 0 по данным.</p>
+            <div class="donuts">
+              <div class="donut-wrap"><div class="donut" style="--v:58.5"><div class="hole">58.5%</div></div><span>A · B2B</span><small>варианты</small></div>
+              <div class="donut-wrap"><div class="donut" style="--v:65"><div class="hole">65.0%</div></div><span>B · B2B</span><small>варианты</small></div>
+              <div class="donut-wrap"><div class="donut" style="--v:0"><div class="hole">0%</div></div><span>B2C</span><small>варианты</small></div>
+            </div>
+            <div class="hint">Baseline co-purchase variant share: A B2B 12.2%, B B2B 10.0%.</div>
+          </div>
+
+          <div class="formbox">
+            <div class="form-title">Текущее состояние реестра</div>
+            <div class="stats" id="dataset-registry"></div>
+            <div class="toolbar" style="margin-top:8px">
+              <button id="dataset-open-catalog" class="secondary small">Проверить кандидатов в Каталоге</button>
+            </div>
+          </div>
+
+          <div class="formbox">
+            <div class="form-title">Источник данных</div>
+            <div class="stats" id="dataset-cards"></div>
+            <div class="hint" style="margin-top:8px">Источник: v5, 817 товаров и 419 product_group; загруженные позиции не входят в офлайн-оценку.</div>
           </div>
         </div>
 
@@ -864,41 +935,30 @@ async function reviewDecision(decision, items){
 async function loadDataset(){
   try {
     var c=await api('GET','/v1/admin/dataset/coverage');
-    var cards = [
-      ['Товары', c.items], ['Публичные', c.public_items],
-      ['Скрыто k<3', c.suppressed_items], ['B2C товары', c.b2c_items],
-      ['Скрыто B2C k<5', c.suppressed_b2c_items], ['Клиенты', c.clients],
+    var m=await api('GET','/v1/admin/registry/metrics');
+    var volumes = [
+      ['Товары', c.items], ['Клиенты', c.clients],
       ['Заказы', c.orders], ['Инстансы заказов', c.order_instances],
-      ['В нескольких неделях', c.multi_week_orders], ['Пересекают срез', c.cross_cut_orders],
-      ['Пары', c.pairs], ['Публичные пары', c.public_pairs],
-      ['Публичные B2C пары', c.public_b2c_pairs],
-      ['Пары ≥2', c.frequent_pairs], ['Без связей', c.solo_items],
-      ['Кандидаты', c.candidates]
+      ['Co-purchase пары', c.pairs], ['Публичные пары', c.public_pairs],
+      ['B2C товары', c.b2c_items], ['Без связей', c.solo_items]
     ];
-    var notes = '';
-    if (c.cross_cut_orders) notes += '<div class="hint" style="width:100%;margin:4px 0 0;color:#92400e">Заказы, пересекающие срез, исключаются из офлайн-оценки: иначе будущее попадает в train.</div>';
-    if (c.suppressed_items || c.suppressed_b2c_items) notes += '<div class="hint" style="width:100%;margin:4px 0 0;color:#92400e">Товары с <3 покупателями и B2C-товары с <5 физлицами не показываются поштучно в публичных ответах.</div>';
-    el('dataset-cards').innerHTML = cards.map(function(x){ return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>'; }).join('') + notes;
-    var p=await api('GET','/v1/admin/dataset/co-purchases?limit=50');
-    var rows=p.items||[];
-    el('dataset-pairs').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Раз</th><th>B2B</th><th>B2C</th></tr></thead><tbody>'+
-      rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'<div class="hint">'+esc(x.item_a)+'</div></td><td>'+esc(x.title_b)+'<div class="hint">'+esc(x.item_b)+'</div></td><td>'+x.count+'</td><td>'+x.b2b_count+'</td><td>'+(x.b2c_hidden?'<span class="hint">скрыто k<5</span>':x.b2c_count)+'</td></tr>'; }).join('')+'</tbody></table></div>' :
-      '<div class="empty">Нет пар. Импортируйте датасет v5.</div>';
+    el('dataset-cards').innerHTML = volumes.map(function(x){
+      return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>';
+    }).join('');
+    var live = [
+      ['Связей', m.total], ['Активных', m.active],
+      ['Кандидатов', m.candidates], ['Покрытие', (m.coverage_pct||0).toFixed(1)+'%'],
+      ['Stale', (m.stale_share||0).toFixed(1)+'%'], ['Хабы top-1%', (m.hub_top1_pct||0).toFixed(1)+'%']
+    ];
+    el('dataset-registry').innerHTML = live.map(function(x){
+      return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>';
+    }).join('');
   } catch(e){ el('dataset-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 el('dataset-open-catalog').addEventListener('click', function(){
   document.querySelector('[data-tab=registry]').click();
   el('registry-status').value='candidate';
   loadRegistry();
-});
-el('dataset-suggest').addEventListener('click', async function(){
-  try { var d=await api('POST','/v1/admin/dataset/co-purchases/suggest',{limit:100,min_count:2}); toast('Создано предложений: '+(d.created||0)); loadDataset(); }
-  catch(e){ toast(e.message,true); }
-});
-el('dataset-classify').addEventListener('click', async function(){
-  toast('Классифицирую топ-10 через шаблоны…');
-  try { var d=await api('POST','/v1/admin/dataset/co-purchases/classify',{limit:10}); toast('Обработано: '+d.processed+', создано: '+d.created+', пропущено: '+d.skipped); loadDataset(); }
-  catch(e){ toast(e.message,true); }
 });
 function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
 function familyLabel(id){ return REG_PAGE.familyLabels[id] || id || '—'; }
@@ -1829,6 +1889,8 @@ load().then(function(){
       document.body.classList.add('registry-mode');
       document.querySelector('.layout').classList.add('registry-mode');
       loadRegistry();
+    } else if (on && on.dataset.tab === 'dataset') {
+      loadDataset();
     }
   }
 }).catch(function(e){ toast('Не удалось загрузить состояние: '+e.message, true); });
