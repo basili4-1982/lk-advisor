@@ -309,6 +309,9 @@ func TestRegistryMetrics(t *testing.T) {
 	if len(m.FamilyOptions) == 0 {
 		t.Fatal("family options are empty")
 	}
+	if m.FamilyLabels["REG-G1"] == "" {
+		t.Fatalf("family labels missing REG-G1: %+v", m.FamilyLabels)
+	}
 	for _, o := range m.FamilyOptions {
 		if o.Value == "" || o.Label == "" || o.Count <= 0 {
 			t.Fatalf("bad family option %+v", o)

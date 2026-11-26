@@ -102,6 +102,7 @@ type RegistryStats struct {
 	ByProvenance    map[string]int      `json:"by_provenance"`
 	Families        []string            `json:"families"`
 	FamilyOptions   []GraphFilterOption `json:"family_options"`
+	FamilyLabels    map[string]string   `json:"family_labels"`
 }
 
 const registryColumns = `r.id, r.from_item_id, r.to_item_id, r.type, r.status,
@@ -420,6 +421,7 @@ func RegistryMetrics(ctx context.Context, dbc *sql.DB) (RegistryStats, error) {
 		m.Families = m.Families[:100]
 	}
 	m.FamilyOptions = make([]GraphFilterOption, 0, len(groups))
+	m.FamilyLabels = make(map[string]string, len(groups))
 	for group, info := range groups {
 		label, best := group, 0
 		for candidate, n := range info.labels {
@@ -427,6 +429,7 @@ func RegistryMetrics(ctx context.Context, dbc *sql.DB) (RegistryStats, error) {
 				label, best = candidate, n
 			}
 		}
+		m.FamilyLabels[group] = label
 		m.FamilyOptions = append(m.FamilyOptions, GraphFilterOption{
 			Value: group, Label: label, Count: info.count,
 		})

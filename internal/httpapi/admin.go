@@ -788,8 +788,8 @@ async function loadRegistry(){
     var metrics = await api('GET','/v1/admin/registry/metrics');
     REG_PAGE.items = data.items || [];
     REG_PAGE.total = data.total || REG_PAGE.items.length;
-    REG_PAGE.familyLabels = {};
-    (metrics.family_options || []).forEach(function(g){ REG_PAGE.familyLabels[g.value] = g.label; });
+    REG_PAGE.familyLabels = metrics.family_labels || {};
+    (metrics.family_options || []).forEach(function(g){ if (!REG_PAGE.familyLabels[g.value]) REG_PAGE.familyLabels[g.value] = g.label; });
     renderRegistryMetrics(metrics);
     fillRegistrySelects(metrics);
     renderRegistry();
