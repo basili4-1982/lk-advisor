@@ -9,45 +9,51 @@ const demoHTML = `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>LK Advisor — личный кабинет (демо)</title>
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--text:#1c1f23;--muted:#6b7280;--line:#e5e7eb;--accent:#cc1e35;--blue:#2563eb;--green:#059669;--purple:#7c3aed}
+:root{--bg:#f4f6fa;--card:#fff;--text:#111827;--muted:#64748b;--line:#e2e8f0;--accent:#cc1e35;--blue:#2563eb;--green:#059669;--purple:#7c3aed;--shadow:0 12px 34px rgba(15,23,42,.07);--shadow-soft:0 4px 16px rgba(15,23,42,.05)}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica,sans-serif;line-height:1.45}
-header{background:#111827;color:#fff;padding:18px 0}
+body{margin:0;background:radial-gradient(900px 500px at 18% -10%,#e8eeff 0,transparent 55%),var(--bg);color:var(--text);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased}
+header{background:linear-gradient(135deg,#070b14 0%,#111827 58%,#1f2937 100%);color:#fff;padding:20px 0;border-bottom:1px solid rgba(255,255,255,.07);box-shadow:0 10px 34px rgba(15,23,42,.2)}
 .wrap{max-width:1120px;margin:0 auto;padding:0 20px}
 .header-row{display:flex;align-items:center;justify-content:space-between;gap:16px}
 .brand{display:flex;align-items:center;gap:12px}
-.admin-link{color:#cbd5e1;text-decoration:none;font-size:13px;border:1px solid #374151;padding:7px 11px;border-radius:8px}
-.admin-link:hover{color:#fff;border-color:#6b7280}
+.admin-link{color:#cbd5e1;text-decoration:none;font-size:12.5px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.14);padding:8px 12px;border-radius:10px;transition:.15s}
+.admin-link:hover{color:#fff;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.08)}
 .head-links{display:flex;gap:8px;align-items:center}
-.logo{width:34px;height:34px;border-radius:8px;background:var(--accent);display:grid;place-items:center;font-weight:bold}
-h1{font-size:20px;margin:0}
-.sub{color:#9ca3af;font-size:13px}
-.tabs{display:flex;gap:8px;flex-wrap:wrap;margin:20px 0}
-.client{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
+.logo{width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,#e11d48,#991b1b);display:grid;place-items:center;font-weight:800;font-size:13px;letter-spacing:.5px;box-shadow:0 8px 22px rgba(225,29,72,.35)}
+h1{font-size:22px;margin:0;letter-spacing:-.02em}
+.sub{color:#94a3b8;font-size:12.5px;margin-top:2px}
+.tabs{display:flex;gap:10px;flex-wrap:wrap;margin:24px 0}
+.client{background:linear-gradient(135deg,#fff 0%,#f8fafc 100%);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:14px;padding:18px 20px;margin-bottom:18px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center;box-shadow:var(--shadow-soft)}
 .client b{font-size:16px}
 .client .ctx{color:var(--muted);font-size:13px;max-width:680px}
-.profile-grid{display:grid;grid-template-columns:1.5fr 1fr;gap:20px}
+.profile-grid{display:grid;grid-template-columns:1.1fr 1fr;gap:24px}
 @media(max-width:860px){.profile-grid{grid-template-columns:1fr}}
-.profile-grid h3{font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 8px}
+.profile-grid h3{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:0 0 8px;white-space:nowrap}
 .profile-grid ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:6px;font-size:13px}
 .profile-grid li{display:flex;gap:6px;flex-wrap:wrap}
+#purchases li{display:block;padding:7px 0;border-bottom:1px solid var(--line)}
+#purchases li b{display:block;font-size:12.5px;line-height:1.3}
+#purchases li .meta{display:block;margin-top:2px;font-size:11px;white-space:nowrap}
+#purchases li:last-child{border-bottom:0}
 .owned{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;font-size:13px}
 .owned li{display:flex;align-items:center;justify-content:space-between;gap:10px;border-bottom:1px solid var(--line);padding-bottom:8px}
 .owned .rm{border:0;background:none;color:var(--accent);cursor:pointer;font:inherit;font-size:12px}
 .add-row{display:flex;gap:8px;margin-top:10px}
 .add-row select{flex:1;min-width:0;border:1px solid var(--line);border-radius:8px;padding:8px;font:inherit}
 #profile-panel{margin-bottom:20px}
-.card.top{border-color:var(--accent);box-shadow:0 0 0 2px #fde8ec}
-.tab{border:1px solid var(--line);background:#fff;border-radius:8px;padding:8px 12px;cursor:pointer;font:inherit;text-align:left}
-.tab b{display:block;font-size:13px}
-.tab span{font-size:11px;color:var(--muted)}
-.tab.active{border-color:var(--accent);box-shadow:0 0 0 2px #fde8ec}
+.card.top{border-color:rgba(204,30,53,.35);box-shadow:0 0 0 1px rgba(204,30,53,.12),0 12px 30px rgba(204,30,53,.06)}
+.tab{border:1px solid var(--line);background:#fff;border-radius:12px;padding:10px 14px;cursor:pointer;font:inherit;text-align:left;transition:.15s;box-shadow:0 1px 2px rgba(15,23,42,.03)}
+.tab:hover{border-color:#cbd5e1;transform:translateY(-1px)}
+.tab b{display:block;font-size:12.5px}
+.tab span{font-size:10.5px;color:var(--muted)}
+.tab.active{border-color:var(--accent);box-shadow:0 0 0 2px #fde8ec,0 6px 18px rgba(204,30,53,.08)}
 .grid{display:grid;grid-template-columns:1.4fr 1fr;gap:20px;align-items:start}
 @media(max-width:860px){.grid{grid-template-columns:1fr}}
-.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
-.panel h2{font-size:15px;margin:0 0 12px}
-.card{border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
-.card h3{margin:6px 0 4px;font-size:17px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px;box-shadow:var(--shadow-soft)}
+.panel h2{font-size:16px;margin:0 0 14px;letter-spacing:-.01em}
+.card{border:1px solid var(--line);border-radius:14px;padding:16px;margin-bottom:14px;background:#fff;box-shadow:0 2px 10px rgba(15,23,42,.03);transition:.15s}
+.card:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(15,23,42,.07)}
+.card h3{margin:8px 0 4px;font-size:18px;letter-spacing:-.01em;line-height:1.3}
 .badge{display:inline-block;font-size:11px;font-weight:bold;padding:2px 8px;border-radius:999px;background:#eef2ff;color:var(--blue)}
 .badge.upsell{background:#f3e8ff;color:var(--purple)}
 .badge.cross_sell{background:#e7f7ef;color:var(--green)}
@@ -55,13 +61,20 @@ h1{font-size:20px;margin:0}
 .badge.alternative{background:#fff4e5;color:#b45309}
 .meta{color:var(--muted);font-size:13px}
 .promo{display:inline-block;margin-left:8px;font-size:11px;font-weight:bold;color:#b45309;background:#fef3c7;padding:2px 8px;border-radius:999px}
-.reason{margin:10px 0 8px}
+.reason{margin:12px 0 10px;color:#334155}
 .evidence{font-size:11px;color:var(--muted)}
-.evidence summary{cursor:pointer}
-.evidence pre{white-space:pre-wrap;margin:6px 0 0;background:#f9fafb;padding:8px;border-radius:6px}
-.actions{display:flex;gap:8px;margin-top:10px}
-button.primary{background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 12px;cursor:pointer;font:inherit}
-button.ghost{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px;cursor:pointer;font:inherit}
+.evidence summary{cursor:pointer;color:#64748b}
+.evidence pre{white-space:pre-wrap;margin:8px 0 0;background:#f8fafc;border:1px solid var(--line);padding:10px;border-radius:8px;font-size:11px}
+.actions{display:flex;gap:8px;margin-top:12px}
+button.primary{background:var(--accent);color:#fff;border:0;border-radius:9px;padding:9px 14px;cursor:pointer;font:inherit;font-weight:600;box-shadow:0 5px 16px rgba(204,30,53,.2)}
+button.primary:hover{background:#b91c1c}
+button.ghost{background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 14px;cursor:pointer;font:inherit}
+button.ghost:hover{border-color:#cbd5e1;background:#f8fafc}
+.price-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:2px}
+.price{font-size:16px;font-weight:750;letter-spacing:-.01em}
+.score{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:6px;padding:2px 6px}
+.scorebar{height:4px;background:#f1f5f9;border-radius:999px;overflow:hidden;margin:8px 0 2px}
+.scorebar i{display:block;height:100%;background:linear-gradient(90deg,#fb7185,#cc1e35);border-radius:999px}
 .banner{background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;padding:10px 12px;border-radius:8px;margin-bottom:12px;font-size:13px}
 .messages{display:flex;flex-direction:column;gap:10px;max-height:420px;overflow:auto;margin-bottom:12px}
 .msg{padding:10px 12px;border-radius:10px;font-size:14px;white-space:pre-wrap}
@@ -265,6 +278,7 @@ function loadAudit(id){
   fetch('/v1/demo/clients/' + encodeURIComponent(id) + '/audit')
     .then(function(r){ return r.json(); })
     .then(function(list){
+      el('audit-panel').style.display = (list && list.length) ? '' : 'none';
       el('audit').innerHTML = (list && list.length) ? list.map(function(x){
         var verb = x.action === 'add' ? 'Добавили ' : 'Убрали ';
         return '<li><span><b>' + verb + esc(x.title) + '</b><br><span class="meta">' +
@@ -335,10 +349,11 @@ function renderRecs(data){
     card.innerHTML =
       '<span class="badge ' + esc(badge) + '">' + esc(intents[r.type] || r.type) + '</span>' +
       '<h3>' + esc(r.title) + '</h3>' +
-      '<div class="meta">' + money(r.price.amount) + ' · score ' + Number(r.score).toFixed(2) + cons + promo + '</div>' +
+      '<div class="price-line"><span class="price">' + money(r.price.amount) + '</span><span class="score">score ' + Number(r.score).toFixed(2) + '</span>' + cons + promo + '</div>' +
+      '<div class="scorebar"><i style="width:' + Math.round(Math.max(0, Math.min(1, Number(r.score))) * 100) + '%"></i></div>' +
       '<p class="reason">' + esc(r.reason) + '</p>' +
       '<details class="evidence"><summary>Evidence</summary><pre>' + esc(ev) + '</pre></details>' +
-      '<div class="actions"><button class="ghost" type="button">Почему это?</button><button class="ghost" type="button">Купить</button></div>';
+      '<div class="actions"><button class="primary" type="button">Почему это?</button><button class="ghost" type="button">Купить</button></div>';
 
     var buttons = card.querySelectorAll('button');
     buttons[0].onclick = function(){ logEvent(r.product_id, 'clicked'); ask('Почему ' + r.title + '?'); };

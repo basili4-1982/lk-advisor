@@ -19,24 +19,25 @@ const adminHTML = `<!doctype html>
 :root{--bg:#f6f7fb;--card:#fff;--ink:#111827;--muted:#6b7280;--line:#e5e7eb;--red:#c8102e;--blue:#1d4ed8;--green:#047857;--amber:#b45309;--purple:#6d28d9}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
-.top{background:#0f172a;color:#fff;padding:18px 0}
+.top{background:linear-gradient(135deg,#070b14 0%,#111827 60%,#1f2937 100%);color:#fff;padding:18px 0;border-bottom:1px solid rgba(255,255,255,.07);box-shadow:0 8px 28px rgba(15,23,42,.16)}
 .wrap{max-width:1240px;margin:0 auto;padding:0 24px}
 .top .wrap{display:flex;align-items:center;justify-content:space-between;gap:20px}
 .brand{display:flex;align-items:center;gap:12px}
-.logo{background:var(--red);color:#fff;font-weight:800;border-radius:8px;width:42px;height:42px;display:grid;place-items:center;font-size:15px}
+.logo{background:linear-gradient(135deg,#e11d48,#991b1b);color:#fff;font-weight:800;border-radius:11px;width:42px;height:42px;display:grid;place-items:center;font-size:14px;letter-spacing:.5px;box-shadow:0 8px 22px rgba(225,29,72,.3)}
 .brand b{display:block;font-size:18px}
 .brand small{color:#94a3b8}
 nav a{color:#cbd5e1;text-decoration:none;margin-left:18px}
 nav a:hover{color:#fff}
 main{padding:28px 0 60px}
-h1{font-size:30px;margin:0 0 6px}
+h1{font-size:28px;margin:0 0 6px;letter-spacing:-.02em}
 .lead{color:var(--muted);margin:0 0 20px;max-width:760px}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:22px}
-.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:0 3px 12px rgba(15,23,42,.035);transition:.15s}
+.stat:hover{transform:translateY(-1px);box-shadow:0 10px 26px rgba(15,23,42,.07)}
 .stat b{display:block;font-size:22px}
 .stat span{color:var(--muted);font-size:12px}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
-.panel,.card{background:var(--card);border:1px solid var(--line);border-radius:14px}
+.panel,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(15,23,42,.045)}
 .panel{padding:0;overflow:hidden}
 .tabs{display:flex;gap:4px;padding:10px;border-bottom:1px solid var(--line);background:#fbfbfd;flex-wrap:wrap}
 .tab{border:0;background:transparent;padding:9px 14px;border-radius:9px;cursor:pointer;color:var(--muted);font-weight:600}
