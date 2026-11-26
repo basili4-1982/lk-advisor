@@ -29,7 +29,8 @@ label.toggle input{accent-color:#1d4ed8}
 .link:hover{color:#fff;border-color:rgba(96,165,250,.5)}
 main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 72px)}
 .graph-wrap{position:relative;min-width:0;overflow:hidden;height:100%}
-canvas{display:block;position:absolute;inset:0;width:100%;height:100%;cursor:grab}
+#graph{position:absolute;inset:0}
+#graph canvas{display:block;width:100%;height:100%}
 .stats{position:absolute;top:14px;left:14px;display:flex;gap:8px;flex-wrap:wrap;max-width:calc(100% - 28px);z-index:2;pointer-events:none}
 .stat{background:rgba(11,18,32,.84);border:1px solid var(--line);border-radius:10px;padding:8px 11px;min-width:96px;box-shadow:0 8px 26px rgba(0,0,0,.22)}
 .stat b{display:block;font-size:16px;line-height:1.1}
@@ -69,9 +70,12 @@ canvas{display:block;position:absolute;inset:0;width:100%;height:100%;cursor:gra
       <button data-audience="b2b" class="active">B2B</button>
       <button data-audience="b2c">B2C</button>
     </div>
+    <select id="family-filter" class="filter-select" title="Семейство"></select>
+    <select id="industry-filter" class="filter-select" title="Отрасль"></select>
+    <select id="segment-filter" class="filter-select" title="Сегмент"></select>
     <div class="timebox"><input id="time" type="range" min="0" max="0" value="0"><span id="period-label">Все время</span></div>
     <input id="search" type="search" placeholder="Найти товар…">
-    <label class="toggle"><input id="solo" type="checkbox" checked> solo</label>
+    <label class="toggle"><input id="solo" type="checkbox"> solo</label>
     <a class="link" href="/">Кабинет</a>
     <span class="status" id="status"></span>
   </div>
@@ -79,153 +83,143 @@ canvas{display:block;position:absolute;inset:0;width:100%;height:100%;cursor:gra
 <main>
   <section class="graph-wrap" id="graph-wrap">
     <div class="stats" id="stats"></div>
-    <canvas id="graph"></canvas>
+    <div id="graph"></div>
     <div class="legend" id="legend"></div>
-    <div class="hint">Клик по узлу — карточка и связи. Колесо — зум, перетаскивание — панорама.</div>
+    <div class="hint">Клик по узлу — карточка и связи. Вращение — мышь, колесо — масштаб.</div>
   </section>
   <aside class="panel" id="panel"></aside>
 </main>
 <div id="tooltip"></div>
+<script src="/static/3d-force-graph.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);
-const canvas=$('graph'), ctx=canvas.getContext('2d'), wrap=$('graph-wrap');
-const W=1000,H=760,CENTER={x:W/2,y:H/2};
+const wrap=$('graph-wrap');
 const COLORS={security:'#f87171',office:'#60a5fa',graphics:'#c084fc',backup:'#4ade80',devtools:'#fbbf24',training:'#2dd4bf',other:'#94a3b8'};
 const CAT_RU={security:'Безопасность',office:'Офис',graphics:'Графика',backup:'Бэкап',devtools:'Разработка',training:'Обучение',other:'Другое'};
 let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null;
-let audience='b2b',soloOn=true,categoryFilter=null,search='';
+let audience='b2b',soloOn=false,categoryFilter=null,search='',initialIndustry=new URLSearchParams(location.search).get('industry')||'',initialSegment=new URLSearchParams(location.search).get('segment')||'',initialFamily=new URLSearchParams(location.search).get('family')||'',industryFilter=initialIndustry,segmentFilter=initialSegment,familyFilter=initialFamily;
 let periods=[],currentPeriod='',initialPeriod=new URLSearchParams(location.search).get('period')||'';
-let transform={x:0,y:0,k:1};
-let seed=1234567;
-function rnd(){seed=(seed*1664525+1013904223)>>>0;return seed/4294967296}
+let graph=null;
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function fmt(n){return Number(n||0).toLocaleString('ru-RU')}
-function viewport(){return {w:wrap.clientWidth||900,h:wrap.clientHeight||700}}
-function resize(){const vp=viewport(),dpr=window.devicePixelRatio||1;canvas.width=vp.w*dpr;canvas.height=vp.h*dpr;canvas.style.width=vp.w+'px';canvas.style.height=vp.h+'px'}
+function sourceID(l){return l.source&&l.source.id?l.source.id:l.source}
+function targetID(l){return l.target&&l.target.id?l.target.id:l.target}
+function initGraph(){
+  graph=new ForceGraph3D($('graph'),{controlType:'trackball'})
+    .backgroundColor('#070b14')
+    .showNavInfo(false)
+    .nodeId('id')
+    .nodeVal(nodeVal)
+    .nodeColor(nodeColor)
+    .nodeLabel(n=>n.title)
+    .nodeOpacity(.92)
+    .nodeRelSize(7)
+    .linkColor(linkColor)
+    .linkWidth(linkWidth)
+    .linkOpacity(.58)
+    .linkVisibility(linkVisible)
+    .nodeVisibility(nodeVisible)
+    .onNodeClick(n=>{showNode(n);focusNode(n)})
+    .onNodeHover(n=>{hover=n;refresh()});
+  if(graph.d3Force){
+    const charge=graph.d3Force('charge');if(charge&&charge.strength)charge.strength(-35);
+    const link=graph.d3Force('link');if(link&&link.distance)link.distance(45);
+  }
+  if(graph.cooldownTicks)graph.cooldownTicks(220);
+  if(graph.onEngineStop)graph.onEngineStop(()=>{if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))});
+  resizeGraph();
+}
+function resizeGraph(){if(graph)graph.width(wrap.clientWidth).height(wrap.clientHeight)}
+function nodeVisible(n){
+  if(n.solo&&!soloOn)return false;
+  if(categoryFilter&&n.category!==categoryFilter)return false;
+  if(familyFilter&&n.family!==familyFilter)return false;
+  return true;
+}
+function linkVisible(l){
+  const a=byId[sourceID(l)],b=byId[targetID(l)];
+  return !!(a&&b&&nodeVisible(a)&&nodeVisible(b));
+}
+function nodeVal(n){
+  if(DATA&&DATA.period){
+    if(n.demand_hidden)return 2;
+    return 6+Math.min(24,(n.period_buyers||0)/6);
+  }
+  return n.solo?2:5+Math.min(22,Math.sqrt((n.degree||1))*4);
+}
+function nodeColor(n){
+  const q=search.trim().toLowerCase();
+  const dim=(q&&n.title.toLowerCase().indexOf(q)<0)||(categoryFilter&&n.category!==categoryFilter);
+  if(selected&&selected.id===n.id)return '#ffffff';
+  if(hover&&hover.id===n.id)return '#f8fafc';
+  if(q&&n.title.toLowerCase().indexOf(q)>=0)return '#f8fafc';
+  if(dim)return '#1e293b';
+  if(n.solo)return '#64748b';
+  return COLORS[n.category]||COLORS.other;
+}
+function linkWidth(l){
+  if(selected&&(sourceID(l)===selected.id||targetID(l)===selected.id))return 1.8;
+  if(hover&&(sourceID(l)===hover.id||targetID(l)===hover.id))return 1.5;
+  return Math.min(3.4,.8+Math.log((l.count||1)+1)*.35);
+}
+function linkColor(l){
+  if(selected&&(sourceID(l)===selected.id||targetID(l)===selected.id))return 'rgba(96,165,250,.85)';
+  if(hover&&(sourceID(l)===hover.id||targetID(l)===hover.id))return 'rgba(96,165,250,.55)';
+  return 'rgba(148,163,184,.4)';
+}
+function refresh(){
+  if(!graph)return;
+  graph.nodeVal(nodeVal);graph.nodeColor(nodeColor);graph.nodeVisibility(nodeVisible);
+  graph.linkColor(linkColor);graph.linkWidth(linkWidth);graph.linkVisibility(linkVisible);
+  graph.refresh();
+}
+function fillFilter(id, items, allLabel, current){
+  const s=$(id);
+  s.innerHTML='<option value="">'+allLabel+'</option>'+(items||[]).map(o=>'<option value="'+esc(o.value)+'">'+esc(o.label)+' ('+o.count+')</option>').join('');
+  s.value=current||'';
+}
+function populateFilters(){
+  fillFilter('family-filter',DATA.families,'Все семейства',familyFilter);
+  fillFilter('industry-filter',DATA.industries,'Все отрасли',industryFilter);
+  fillFilter('segment-filter',DATA.segments,'Все сегменты',segmentFilter);
+}
 async function load(){
   $('status').textContent='Загружаю…';
-  const r=await fetch('/v1/demo/graph?audience='+audience+'&period='+encodeURIComponent(initialPeriod)+'&solo_limit=1000');
-  if(!r.ok) throw new Error('HTTP '+r.status);
+  const r=await fetch('/v1/demo/graph?audience='+audience+'&industry='+encodeURIComponent(industryFilter)+'&segment='+encodeURIComponent(segmentFilter)+'&period='+encodeURIComponent(initialPeriod)+'&solo_limit=1000');
+  if(!r.ok)throw new Error('HTTP '+r.status);
   DATA=await r.json();
-  periods=DATA.periods||[]; currentPeriod=DATA.period||'';
-  build(); drawStats(); drawLegend(); render(); updateTimeControl(); selectInitial();
+  periods=DATA.periods||[];currentPeriod=DATA.period||'';
+  populateFilters();
+  selected=null;hover=null;showNode(null);
+  nodes=DATA.nodes.map(n=>Object.assign({},n));
+  byId={};nodes.forEach(n=>byId[n.id]=n);
+  edges=DATA.edges.map(e=>Object.assign({},e));
+  if(!graph)initGraph();
+  graph.graphData({nodes:nodes,links:edges});
+  drawStats();drawLegend();updateTimeControl();selectInitial();
+  setTimeout(()=>{if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))},1200);
   $('status').textContent='';
 }
-function selectInitial(){
-  const q=new URLSearchParams(location.search).get('select');
-  if(!q)return;
-  if(q==='top'){
-    const n=nodes.filter(x=>!x.solo).sort((a,b)=>b.degree-a.degree)[0];
-    if(n){showNode(n);centerOn(n)}
-    return;
-  }
-  const n=byId[q];if(n){showNode(n);centerOn(n)}
+function applyPeriod(d){
+  const map={};d.nodes.forEach(n=>{map[n.id]=n});
+  nodes.forEach(n=>{const x=map[n.id];if(!x)return;n.period_buyers=x.period_buyers;n.prev_buyers=x.prev_buyers;n.growth=x.growth;n.demand_hidden=x.demand_hidden;n.growth_hidden=x.growth_hidden;n.renewal_share=x.renewal_share;n.renewal_days=x.renewal_days;n.renewal_hidden=x.renewal_hidden});
+  DATA.period=d.period;DATA.period_label=d.period_label;DATA.period_items=d.period_items;DATA.period_public_items=d.period_public_items;DATA.period_hidden_items=d.period_hidden_items;
+  currentPeriod=d.period;initialPeriod=d.period;updateTimeControl();drawStats();refresh();if(selected)showNode(byId[selected.id]||selected);
 }
-function build(){
-  nodes=DATA.nodes.map(n=>Object.assign({},n,{color:COLORS[n.category]||COLORS.other,r:n.solo?3:4+Math.min(9,Math.sqrt(Math.max(1,n.degree))*2.4)}));
-  byId={}; nodes.forEach(n=>byId[n.id]=n);
-  edges=DATA.edges.map(e=>Object.assign({},e,{a:byId[e.source],b:byId[e.target]})).filter(e=>e.a&&e.b);
-  layout();
-  showNode(null);
-}
-function layout(){
-  seed=1234567;
-  const counts={}; nodes.filter(n=>!n.solo).forEach(n=>{counts[n.category]=(counts[n.category]||0)+1});
-  const cats=Object.keys(counts).sort((a,b)=>counts[b]-counts[a]);
-  const centers={};
-  cats.forEach((c,i)=>{const a=(i/Math.max(1,cats.length))*Math.PI*2-Math.PI/2;centers[c]={x:CENTER.x+Math.cos(a)*225,y:CENTER.y+Math.sin(a)*175}});
-  const connected=nodes.filter(n=>!n.solo);
-  connected.forEach(n=>{const c=centers[n.category]||CENTER;n.x=c.x+(rnd()-.5)*110;n.y=c.y+(rnd()-.5)*110;n.vx=0;n.vy=0});
-  const solo=nodes.filter(n=>n.solo);
-  solo.forEach((n,i)=>{const a=(i/Math.max(1,solo.length))*Math.PI*2;const rad=360+(i%7)*8;n.x=CENTER.x+Math.cos(a)*rad;n.y=CENTER.y+Math.sin(a)*rad*.72;n.vx=0;n.vy=0});
-  for(let step=0;step<240;step++){
-    const alpha=1-step/260;
-    for(const n of connected){
-      for(let s=0;s<26;s++){
-        const o=connected[(rnd()*connected.length)|0];if(o===n)continue;
-        const dx=n.x-o.x,dy=n.y-o.y,d2=dx*dx+dy*dy+.01;
-        if(d2<40000){const d=Math.sqrt(d2),f=alpha*950/d2;n.vx+=dx/d*f;n.vy+=dy/d*f}
-      }
-      const c=centers[n.category]||CENTER;
-      n.vx+=(c.x-n.x)*.0018*alpha;n.vy+=(c.y-n.y)*.0018*alpha;
-    }
-    for(const e of edges){
-      const a=e.a,b=e.b;if(a.solo||b.solo)continue;
-      const dx=b.x-a.x,dy=b.y-a.y,d=Math.sqrt(dx*dx+dy*dy)+.01;
-      const desired=70+Math.min(80,Math.log(e.count+1)*18),f=(d-desired)*.0035*alpha;
-      a.vx+=dx/d*f;a.vy+=dy/d*f;b.vx-=dx/d*f;b.vy-=dy/d*f;
-    }
-    for(const n of connected){n.x+=n.vx;n.y+=n.vy;n.vx*=.82;n.vy*=.82;n.x=Math.max(70,Math.min(W-70,n.x));n.y=Math.max(60,Math.min(H-60,n.y))}
-  }
-  fitView();
-}
-function fitView(){
-  if(!nodes.length)return;
-  const vp=viewport();let minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9;
-  for(const n of nodes){minX=Math.min(minX,n.x);minY=Math.min(minY,n.y);maxX=Math.max(maxX,n.x);maxY=Math.max(maxY,n.y)}
-  const bw=Math.max(100,maxX-minX),bh=Math.max(100,maxY-minY);
-  const k=Math.min((vp.w-120)/bw,(vp.h-120)/bh,1.5);
-  transform.k=Math.max(.15,k);
-  transform.x=(vp.w-bw*transform.k)/2-minX*transform.k;
-  transform.y=(vp.h-bh*transform.k)/2-minY*transform.k;
-}
-function visible(n){return (!n.solo||soloOn)&&(!categoryFilter||n.category===categoryFilter)}
-function nodeRadius(n){
-  if(DATA&&DATA.period){
-    if(n.demand_hidden)return 2.6;
-    return 3+Math.min(11,Math.sqrt(Math.max(1,n.period_buyers))*2.2);
-  }
-  return n.solo?3:4+Math.min(9,Math.sqrt(Math.max(1,n.degree))*2.4);
-}
-function updateTimeControl(){
-  const t=$('time');
-  t.max=Math.max(0,periods.length-1);
-  let idx=periods.findIndex(p=>p.value===currentPeriod);
-  if(idx<0)idx=0;
-  t.value=idx;
-  $('period-label').textContent=periods[idx]?periods[idx].label:'Все время';
-}
-function render(){
-  const vp=viewport(),dpr=window.devicePixelRatio||1;
-  ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.clearRect(0,0,vp.w,vp.h);
-  ctx.save();ctx.translate(transform.x,transform.y);ctx.scale(transform.k,transform.k);
-  const q=search.trim().toLowerCase();
-  for(const e of edges){
-    if(!visible(e.a)||!visible(e.b))continue;
-    const hot=selected===e.a||selected===e.b||hover===e.a||hover===e.b;
-    ctx.strokeStyle=hot?'rgba(96,165,250,.58)':'rgba(148,163,184,.16)';
-    ctx.lineWidth=hot?1.8:Math.min(2.4,.5+Math.log(e.count+1)*.25);
-    ctx.beginPath();ctx.moveTo(e.a.x,e.a.y);ctx.lineTo(e.b.x,e.b.y);ctx.stroke();
-  }
-  for(const n of nodes){
-    if(!visible(n))continue;
-    const match=q&&n.title.toLowerCase().indexOf(q)>=0;
-    const hidePeriod=DATA&&DATA.period&&n.demand_hidden;
-    const dim=(q&&!match)||(categoryFilter&&n.category!==categoryFilter)||hidePeriod;
-    const r=nodeRadius(n);
-    ctx.globalAlpha=dim?.22:1;
-    if(DATA&&DATA.period&&!n.demand_hidden&&!n.growth_hidden&&Math.abs(n.growth)>=.15){
-      ctx.beginPath();ctx.arc(n.x,n.y,r+3.5,0,Math.PI*2);
-      ctx.strokeStyle=n.growth>0?'rgba(74,222,128,.8)':'rgba(248,113,113,.8)';ctx.lineWidth=1.6;ctx.stroke();
-    }
-    if(selected===n||hover===n){ctx.beginPath();ctx.arc(n.x,n.y,r+5,0,Math.PI*2);ctx.strokeStyle=n.color;ctx.lineWidth=2;ctx.stroke()}
-    ctx.beginPath();ctx.arc(n.x,n.y,r,0,Math.PI*2);
-    if(n.solo){ctx.fillStyle='rgba(71,85,105,.62)';ctx.fill();ctx.strokeStyle='rgba(148,163,184,.55)';ctx.lineWidth=1;ctx.stroke()}
-    else{ctx.fillStyle=n.color;ctx.fill()}
-    if(selected===n||hover===n||match){
-      ctx.globalAlpha=dim?.25:.95;
-      ctx.fillStyle='#e2e8f0';ctx.font=(selected===n?'600 ':'500 ')+(11/transform.k)+'px Inter, system-ui, sans-serif';
-      const label=n.title.length>36?n.title.slice(0,35)+'…':n.title;
-      ctx.fillText(label,n.x+r+4,n.y+3);
-    }
-    ctx.globalAlpha=1;
-  }
-  ctx.restore();
+async function loadPeriod(value){
+  $('status').textContent='Считаю…';
+  const r=await fetch('/v1/demo/graph?audience='+audience+'&industry='+encodeURIComponent(industryFilter)+'&segment='+encodeURIComponent(segmentFilter)+'&period='+encodeURIComponent(value)+'&solo_limit=1000');
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  applyPeriod(await r.json());
+  $('status').textContent='';
 }
 function drawStats(){
   const c=DATA.coverage;
-  const cards=[['Публичные товары',c.public_items],['Публичные связи',c.public_pairs],['В связях',DATA.connected],['Solo',DATA.public_solo],['Скрыто k<3',c.suppressed_items],['Скрыто B2C k<5',c.suppressed_b2c_items]];
+  const segment=(DATA.industry||DATA.segment);
+  const cards=segment
+    ? [['Товары в сегменте',DATA.segment_items],['Публичные',DATA.public_items],['Связи',DATA.public_pairs],['В связях',DATA.connected],['Solo',DATA.public_solo],['Скрыто k',DATA.segment_hidden]]
+    : [['Публичные товары',c.public_items],['Публичные связи',c.public_pairs],['В связях',DATA.connected],['Solo',DATA.public_solo],['Скрыто k<3',c.suppressed_items],['Скрыто B2C k<5',c.suppressed_b2c_items]];
+  if(familyFilter){cards.push(['В семействе',nodes.filter(n=>n.family===familyFilter).length])}
   if(DATA.period){cards.push(['Спрос за период',DATA.period_public_items]);cards.push(['Скрыто за период',DATA.period_hidden_items])}
   $('stats').innerHTML=cards.map(x=>'<div class="stat"><b>'+fmt(x[1])+'</b><span>'+esc(x[0])+'</span></div>').join('');
 }
@@ -238,10 +232,13 @@ function drawLegend(){
   $('legend').innerHTML=h;
 }
 function showNode(n){
-  selected=n||null;render();
+  selected=n||null;refresh();
   if(!n){$('panel').innerHTML='<div class="empty">Выберите товар на графе. Панель покажет покупателей, число связей и что покупают вместе с ним.</div>';return}
-  const nb=edges.filter(e=>e.a===n||e.b===n).map(e=>({node:e.a===n?e.b:e.a,count:e.count,b2b:e.b2b_count,b2c:e.b2c_count,hidden:e.b2c_hidden})).sort((a,b)=>b.count-a.count);
-  let h='<div class="panel-kicker">'+esc(CAT_RU[n.category]||n.category)+'</div><h2>'+esc(n.title)+'</h2>';
+  const nb=edges.filter(e=>sourceID(e)===n.id||targetID(e)===n.id).map(e=>{
+    const other=byId[sourceID(e)===n.id?targetID(e):sourceID(e)];
+    return other?{node:other,count:e.count,b2b:e.b2b_count,b2c:e.b2c_count,hidden:e.b2c_hidden}:null;
+  }).filter(Boolean).sort((a,b)=>b.count-a.count);
+  let h='<div class="panel-kicker">'+esc(CAT_RU[n.category]||n.category)+(n.family?' · '+esc(n.family):'')+'</div><h2>'+esc(n.title)+'</h2>';
   h+='<div class="metrics"><div><b>'+fmt(n.buyers)+'</b><span>покупателей</span></div><div><b>'+fmt(n.degree)+'</b><span>связей</span></div><div><b>'+fmt(n.b2c_buyers)+'</b><span>B2C</span></div></div>';
   if(DATA.period){
     h+='<h3>Спрос за '+esc(DATA.period_label)+'</h3>';
@@ -251,81 +248,45 @@ function showNode(n){
   if(!n.renewal_hidden){h+='<h3>Продление</h3><div class="metrics"><div><b>'+Math.round(n.renewal_share*100)+'%</b><span>повторов</span></div><div><b>'+n.renewal_days+'</b><span>дней медиана</span></div></div>'}
   if(n.solo){h+='<div class="note">Публичных связей нет. Кандидат на достройку: co-client, семейство товаров, атрибуты или сервис.</div>'}
   else{h+='<h3>С этим покупают</h3><div>';nb.slice(0,14).forEach(x=>{h+='<button class="nb" data-id="'+esc(x.node.id)+'"><span>'+esc(x.node.title)+'</span><b>'+x.count+'</b></button>'});h+='</div>'}
+  if(n.family){h+='<div class="actions" style="margin-top:10px"><button class="secondary" id="show-family">Показать семейство «'+esc(n.family)+'»</button></div>'}
   h+='<div class="foot">Показаны только публичные связи: у товара ≥3 покупателя, у B2B-пары ≥3 совместных покупки. B2C-счётчики меньше 5 скрыты.</div>';
   $('panel').innerHTML=h;
-  $('panel').querySelectorAll('.nb').forEach(b=>b.onclick=()=>{const x=byId[b.dataset.id];if(x){showNode(x);centerOn(x)}});
+  $('panel').querySelectorAll('.nb').forEach(b=>b.onclick=()=>{const x=byId[b.dataset.id];if(x){showNode(x);focusNode(x)}});
+  const sf=$('show-family');if(sf)sf.onclick=()=>{familyFilter=n.family||'';fillFilter('family-filter',DATA.families,'Все семейства',familyFilter);drawStats();refresh()};
 }
-function centerOn(n){const vp=viewport();transform.k=Math.max(1.1,transform.k);transform.x=vp.w/2-n.x*transform.k;transform.y=vp.h/2-n.y*transform.k;render()}
-function toWorld(e){const r=canvas.getBoundingClientRect();return {x:(e.clientX-r.left-transform.x)/transform.k,y:(e.clientY-r.top-transform.y)/transform.k}}
-function pick(x,y){
-  let best=null,bd=1e9;
-  for(const n of nodes){
-    if(!visible(n))continue;
-    const d=Math.hypot(n.x-x,n.y-y),hit=Math.max(nodeRadius(n)+6,10/transform.k);
-    if(d<hit&&d<bd){bd=d;best=n}
-  }
-  return best;
+function focusNode(n){
+  if(!graph||!n)return;
+  const d=90,dist=Math.hypot(n.x||0,n.y||0,n.z||0)||1,ratio=1+d/dist;
+  graph.cameraPosition({x:(n.x||0)*ratio,y:(n.y||0)*ratio,z:(n.z||0)*ratio},n,900);
 }
-function tooltip(e,n){
-  const t=$('tooltip');
-  if(!n){t.style.display='none';return}
-  t.style.display='block';t.textContent=n.title;t.style.left=(e.clientX+14)+'px';t.style.top=(e.clientY+14)+'px';
+function updateTimeControl(){
+  const t=$('time');
+  t.max=Math.max(0,periods.length-1);
+  let idx=periods.findIndex(p=>p.value===currentPeriod);
+  if(idx<0)idx=0;
+  t.value=idx;
+  $('period-label').textContent=periods[idx]?periods[idx].label:'Все время';
 }
-let drag=null,moved=false;
-canvas.addEventListener('mousedown',e=>{drag={x:e.clientX,y:e.clientY,tx:transform.x,ty:transform.y};moved=false;canvas.style.cursor='grabbing'});
-window.addEventListener('mousemove',e=>{
-  if(drag){const dx=e.clientX-drag.x,dy=e.clientY-drag.y;if(Math.abs(dx)+Math.abs(dy)>3)moved=true;transform.x=drag.tx+dx;transform.y=drag.ty+dy;render();return}
-  const p=toWorld(e),n=pick(p.x,p.y);hover=n;canvas.style.cursor=n?'pointer':'grab';tooltip(e,n);render();
-});
-window.addEventListener('mouseup',e=>{
-  if(!drag)return;
-  const wasMoved=moved;drag=null;canvas.style.cursor='grab';
-  if(!wasMoved){const p=toWorld(e),n=pick(p.x,p.y);showNode(n)}
-});
-canvas.addEventListener('wheel',e=>{
-  e.preventDefault();
-  const r=canvas.getBoundingClientRect(),mx=e.clientX-r.left,my=e.clientY-r.top;
-  const factor=e.deltaY<0?1.12:.89,k2=Math.max(.15,Math.min(4,transform.k*factor));
-  transform.x=mx-(mx-transform.x)*(k2/transform.k);transform.y=my-(my-transform.y)*(k2/transform.k);transform.k=k2;render();
-},{passive:false});
-function applyPeriod(d){
-  const map={};d.nodes.forEach(n=>{map[n.id]=n});
-  nodes.forEach(n=>{const x=map[n.id];if(!x)return;n.period_buyers=x.period_buyers;n.prev_buyers=x.prev_buyers;n.growth=x.growth;n.demand_hidden=x.demand_hidden;n.growth_hidden=x.growth_hidden;n.renewal_share=x.renewal_share;n.renewal_days=x.renewal_days;n.renewal_hidden=x.renewal_hidden});
-  DATA.period=d.period;DATA.period_label=d.period_label;DATA.period_items=d.period_items;DATA.period_public_items=d.period_public_items;DATA.period_hidden_items=d.period_hidden_items;
-  currentPeriod=d.period;initialPeriod=d.period;updateTimeControl();drawStats();render();if(selected)showNode(selected);
+function selectInitial(){
+  const q=new URLSearchParams(location.search).get('select');
+  if(!q)return;
+  let n=null;
+  if(q==='top')n=nodes.filter(x=>!x.solo).sort((a,b)=>b.degree-a.degree)[0];
+  else n=byId[q];
+  if(n){showNode(n);setTimeout(()=>focusNode(n),700)}
 }
-async function loadPeriod(value){
-  $('status').textContent='Считаю…';
-  const r=await fetch('/v1/demo/graph?audience='+audience+'&period='+encodeURIComponent(value)+'&solo_limit=1000');
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  applyPeriod(await r.json());
-  $('status').textContent='';
-}
-$('time').addEventListener('input',e=>{
-  const p=periods[Number(e.target.value)];if(p)$('period-label').textContent=p.label;
-});
-$('time').addEventListener('change',e=>{
-  const p=periods[Number(e.target.value)];if(!p)return;
-  loadPeriod(p.value).catch(err=>{$('status').textContent='Ошибка: '+err.message});
-});
-$('search').addEventListener('input',e=>{search=e.target.value;render()});
-$('search').addEventListener('keydown',e=>{
-  if(e.key!=='Enter')return;
-  const q=search.trim().toLowerCase();if(!q)return;
-  const n=nodes.find(x=>x.title.toLowerCase().indexOf(q)>=0);
-  if(n){showNode(n);centerOn(n)}
-});
-$('solo').addEventListener('change',e=>{soloOn=e.target.checked;render()});
-$('legend').addEventListener('click',e=>{
-  const b=e.target.closest('[data-cat]');if(!b)return;
-  categoryFilter=b.dataset.cat==='all'?null:b.dataset.cat;drawLegend();render();
-});
-document.querySelectorAll('[data-audience]').forEach(b=>b.addEventListener('click',()=>{
-  audience=b.dataset.audience;document.querySelectorAll('[data-audience]').forEach(x=>x.classList.toggle('active',x===b));
-  selected=null;categoryFilter=null;load().catch(err=>{$('status').textContent='Ошибка: '+err.message});
-}));
-window.addEventListener('resize',()=>{resize();render()});
-resize();
+$('family-filter').addEventListener('change',e=>{familyFilter=e.target.value;drawStats();refresh();if(selected)showNode(selected)});
+$('industry-filter').addEventListener('change',e=>{industryFilter=e.target.value;familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})});
+$('segment-filter').addEventListener('change',e=>{segmentFilter=e.target.value;familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})});
+$('time').addEventListener('input',e=>{const p=periods[Number(e.target.value)];if(p)$('period-label').textContent=p.label});
+$('time').addEventListener('change',e=>{const p=periods[Number(e.target.value)];if(!p)return;loadPeriod(p.value).catch(err=>{$('status').textContent='Ошибка: '+err.message})});
+$('search').addEventListener('input',e=>{search=e.target.value;refresh()});
+$('search').addEventListener('keydown',e=>{if(e.key!=='Enter')return;const q=search.trim().toLowerCase();if(!q)return;const n=nodes.find(x=>x.title.toLowerCase().indexOf(q)>=0);if(n){showNode(n);focusNode(n)}});
+$('solo').addEventListener('change',e=>{soloOn=e.target.checked;refresh()});
+$('legend').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(!b)return;categoryFilter=b.dataset.cat==='all'?null:b.dataset.cat;drawLegend();refresh()});
+document.querySelectorAll('[data-audience]').forEach(b=>b.addEventListener('click',()=>{audience=b.dataset.audience;document.querySelectorAll('[data-audience]').forEach(x=>x.classList.toggle('active',x===b));industryFilter='';segmentFilter='';familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})}));
+window.addEventListener('resize',()=>{resizeGraph()});
+initGraph();
 load().catch(err=>{$('status').textContent='Ошибка: '+err.message});
 </script>
 </body>

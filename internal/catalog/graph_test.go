@@ -117,3 +117,68 @@ func TestDemoGraphUsesPublicLayer(t *testing.T) {
 		}
 	}
 }
+
+func TestDemoGraphSegmentFilter(t *testing.T) {
+	dbc := store.OpenTestDB(t)
+	ctx := context.Background()
+	if err := store.Migrate(ctx, dbc); err != nil {
+		t.Fatal(err)
+	}
+	clean := func() {
+		dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE item_id LIKE 'graph-seg-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_clients WHERE client_id LIKE 'graph-seg-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'graph-seg-%'`)
+	}
+	clean()
+	defer clean()
+
+	for _, item := range []string{"graph-seg-it", "graph-seg-it-solo", "graph-seg-mfg"} {
+		if _, err := dbc.ExecContext(ctx, `
+			INSERT INTO lk_items (item_id, title, category) VALUES ($1, $1, 'security')`, item); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for i := 1; i <= 3; i++ {
+		it := "graph-seg-it-client-" + string(rune('0'+i))
+		mfg := "graph-seg-mfg-client-" + string(rune('0'+i))
+		for _, c := range []struct{ id, industry string }{{it, "TEST-IT"}, {mfg, "TEST-MFG"}} {
+			if _, err := dbc.ExecContext(ctx, `
+				INSERT INTO lk_clients (client_id, client_group, industry, segment)
+				VALUES ($1, 'B2B', $2, 'small')`, c.id, c.industry); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := dbc.ExecContext(ctx, `
+			INSERT INTO lk_orders (order_id, client_id, order_week, item_id) VALUES
+			($1, $2, '2026-08-01', 'graph-seg-it'),
+			($1, $2, '2026-08-01', 'graph-seg-it-solo')`, "graph-seg-it-order-"+string(rune('0'+i)), it); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := dbc.ExecContext(ctx, `
+			INSERT INTO lk_orders (order_id, client_id, order_week, item_id) VALUES
+			($1, $2, '2026-08-01', 'graph-seg-mfg')`, "graph-seg-mfg-order-"+string(rune('0'+i)), mfg); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	graph, err := catalog.LoadDemoGraphFiltered(ctx, dbc, "b2b", "TEST-IT", "small", "", 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := map[string]bool{}
+	for _, n := range graph.Nodes {
+		ids[n.ID] = true
+	}
+	if !ids["graph-seg-it"] || !ids["graph-seg-it-solo"] {
+		t.Fatalf("IT nodes missing: %+v", graph.Nodes)
+	}
+	if ids["graph-seg-mfg"] {
+		t.Fatalf("manufacturing item leaked into IT segment: %+v", graph.Nodes)
+	}
+	if len(graph.Edges) != 1 || graph.Edges[0].Source != "graph-seg-it" || graph.Edges[0].Target != "graph-seg-it-solo" {
+		t.Fatalf("segment edges = %+v", graph.Edges)
+	}
+	if graph.FilterLabel != "B2B · TEST-IT · small" {
+		t.Fatalf("filter label = %q", graph.FilterLabel)
+	}
+}

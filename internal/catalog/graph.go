@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -13,6 +14,7 @@ type GraphNode struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
 	Category  string `json:"category"`
+	Family    string `json:"family"`
 	Buyers    int    `json:"buyers"`
 	B2CBuyers int    `json:"b2c_buyers"`
 	Degree    int    `json:"degree"`
@@ -45,14 +47,30 @@ type GraphPeriod struct {
 }
 
 // DemoGraph is the public, privacy-filtered graph payload.
+type GraphFilterOption struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
 type DemoGraph struct {
-	Audience   string          `json:"audience"`
-	Nodes      []GraphNode     `json:"nodes"`
-	Edges      []GraphEdge     `json:"edges"`
-	Coverage   DatasetCoverage `json:"coverage"`
-	Connected  int             `json:"connected"`
-	PublicSolo int             `json:"public_solo"`
-	ShownSolo  int             `json:"shown_solo"`
+	Audience      string              `json:"audience"`
+	Industry      string              `json:"industry"`
+	Segment       string              `json:"segment"`
+	FilterLabel   string              `json:"filter_label"`
+	Industries    []GraphFilterOption `json:"industries"`
+	Segments      []GraphFilterOption `json:"segments"`
+	Families      []GraphFilterOption `json:"families"`
+	Nodes         []GraphNode         `json:"nodes"`
+	Edges         []GraphEdge         `json:"edges"`
+	Coverage      DatasetCoverage     `json:"coverage"`
+	Connected     int                 `json:"connected"`
+	PublicSolo    int                 `json:"public_solo"`
+	ShownSolo     int                 `json:"shown_solo"`
+	PublicItems   int                 `json:"public_items"`
+	PublicPairs   int                 `json:"public_pairs"`
+	SegmentItems  int                 `json:"segment_items"`
+	SegmentHidden int                 `json:"segment_hidden"`
 
 	Period            string        `json:"period"`
 	PeriodLabel       string        `json:"period_label"`
@@ -69,20 +87,56 @@ var monthNames = []string{
 
 // LoadDemoGraph returns the all-time public graph.
 func LoadDemoGraph(ctx context.Context, dbc *sql.DB, audience string, soloLimit int) (DemoGraph, error) {
-	return LoadDemoGraphAt(ctx, dbc, audience, "", soloLimit)
+	return LoadDemoGraphFiltered(ctx, dbc, audience, "", "", "", soloLimit)
 }
 
 // LoadDemoGraphAt returns the public graph plus a monthly demand overlay.
-// The graph structure is all-time and public; only the demand numbers change.
 func LoadDemoGraphAt(ctx context.Context, dbc *sql.DB, audience, period string, soloLimit int) (DemoGraph, error) {
+	return LoadDemoGraphFiltered(ctx, dbc, audience, "", "", period, soloLimit)
+}
+
+// LoadDemoGraphFiltered returns the public graph for an audience and optional
+// industry/segment. Segment filters recompute public items and pairs inside
+// the segment, so k-anonymity is enforced per segment.
+func LoadDemoGraphFiltered(ctx context.Context, dbc *sql.DB, audience, industry, segment, period string, soloLimit int) (DemoGraph, error) {
 	audience = strings.ToLower(strings.TrimSpace(audience))
 	if audience != "b2c" {
 		audience = "b2b"
 	}
-	graph, err := loadAggregateGraph(ctx, dbc, audience, soloLimit)
+	industry = strings.TrimSpace(industry)
+	segment = strings.ToLower(strings.TrimSpace(segment))
+
+	var graph DemoGraph
+	var err error
+	if industry == "" && segment == "" {
+		graph, err = loadAggregateGraph(ctx, dbc, audience, soloLimit)
+	} else {
+		graph, err = loadSegmentGraph(ctx, dbc, audience, industry, segment, soloLimit)
+	}
 	if err != nil {
 		return DemoGraph{}, err
 	}
+	graph.Audience = audience
+	graph.Industry = industry
+	graph.Segment = segment
+	graph.FilterLabel = filterLabel(audience, industry, segment)
+	graph.Industries, graph.Segments, err = loadGraphFilterOptions(ctx, dbc)
+	if err != nil {
+		return DemoGraph{}, err
+	}
+	if industry == "" && segment == "" {
+		graph.PublicItems = graph.Coverage.PublicItems
+		graph.PublicPairs = graph.Coverage.PublicPairs
+		graph.SegmentItems = graph.Coverage.Items
+		graph.SegmentHidden = graph.Coverage.SuppressedItems
+	}
+	if graph.PublicItems == 0 {
+		graph.PublicItems = len(graph.Nodes)
+	}
+	if graph.PublicPairs == 0 {
+		graph.PublicPairs = len(graph.Edges)
+	}
+	graph.Families = familyOptions(graph.Nodes)
 	periods, err := loadGraphPeriods(ctx, dbc)
 	if err != nil {
 		return DemoGraph{}, err
@@ -108,7 +162,7 @@ func LoadDemoGraphAt(ctx context.Context, dbc *sql.DB, audience, period string, 
 	}
 	end := start.AddDate(0, 1, 0)
 	prevStart := start.AddDate(0, -1, 0)
-	periodItems, publicPeriod, err := applyPeriodDemand(ctx, dbc, audience, graph.Nodes, prevStart, start, end)
+	periodItems, publicPeriod, err := applyPeriodDemand(ctx, dbc, audience, industry, segment, graph.Nodes, prevStart, start, end)
 	if err != nil {
 		return DemoGraph{}, err
 	}
@@ -118,6 +172,308 @@ func LoadDemoGraphAt(ctx context.Context, dbc *sql.DB, audience, period string, 
 	graph.PeriodPublicItems = publicPeriod
 	graph.PeriodHiddenItems = periodItems - publicPeriod
 	return graph, nil
+}
+
+func familyForTitle(title, category string) string {
+	t := strings.ToLower(strings.ReplaceAll(title, "ё", "е"))
+	has := func(parts ...string) bool {
+		for _, p := range parts {
+			if !strings.Contains(t, p) {
+				return false
+			}
+		}
+		return true
+	}
+	switch {
+	case has("kaspersky", "endpoint"):
+		return "Kaspersky Endpoint"
+	case has("kaspersky", "small office"):
+		return "Kaspersky Small Office"
+	case has("kaspersky", "standard"):
+		return "Kaspersky Standard"
+	case has("kaspersky", "plus"):
+		return "Kaspersky Plus"
+	case has("kaspersky"):
+		return "Kaspersky"
+	case has("microsoft 365", "business"):
+		return "Microsoft 365 Business"
+	case has("microsoft 365", "premium"):
+		return "Microsoft 365 Premium"
+	case has("microsoft 365", "personal"):
+		return "Microsoft 365 Personal"
+	case has("microsoft 365", "family"):
+		return "Microsoft 365 Family"
+	case has("microsoft 365"):
+		return "Microsoft 365"
+	case has("office", "home"):
+		return "Office Home"
+	case has("office", "professional"):
+		return "Office Professional"
+	case has("office", "pro"):
+		return "Office Professional"
+	case has("office"):
+		return "Microsoft Office"
+	case has("windows", "server"):
+		return "Windows Server"
+	case has("win", "pro"):
+		return "Windows Pro"
+	case has("google workspace"):
+		return "Google Workspace"
+	case has("криптопро", "csp"):
+		return "КриптоПро CSP"
+	case has("криптоарм"):
+		return "КриптоАРМ"
+	case has("магпро"):
+		return "МагПро"
+	case has("dr.web") || has("drweb"):
+		return "Dr.Web"
+	case has("adobe"):
+		return "Adobe"
+	case has("coreldraw"):
+		return "CorelDRAW"
+	case has("nanocad"):
+		return "nanoCAD"
+	case has("anydesk"):
+		return "AnyDesk"
+	case has("visio"):
+		return "Microsoft Visio"
+	case has("project"):
+		return "Microsoft Project"
+	case has("pdf"):
+		return "PDF Toolkit"
+	}
+	stop := map[string]bool{"лицензия": true, "дистрибутив": true, "программа": true,
+		"программы": true, "эвм": true, "право": true, "использование": true,
+		"использования": true, "предоставление": true, "доступа": true,
+		"сервисам": true, "неисключительное": true, "бессрочная": true}
+	for _, w := range strings.FieldsFunc(t, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z') && !(r >= 'а' && r <= 'я') && !(r >= '0' && r <= '9')
+	}) {
+		if len(w) > 2 && !stop[w] {
+			return strings.Title(w)
+		}
+	}
+	if category != "" {
+		return category
+	}
+	return "Другое"
+}
+
+func filterLabel(audience, industry, segment string) string {
+	parts := []string{strings.ToUpper(audience)}
+	if industry != "" {
+		parts = append(parts, industry)
+	}
+	if segment != "" {
+		parts = append(parts, segment)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func familyOptions(nodes []GraphNode) []GraphFilterOption {
+	counts := map[string]int{}
+	for _, n := range nodes {
+		if n.Family != "" {
+			counts[n.Family]++
+		}
+	}
+	out := make([]GraphFilterOption, 0, len(counts))
+	for value, count := range counts {
+		out = append(out, GraphFilterOption{Value: value, Label: value, Count: count})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Count != out[j].Count {
+			return out[i].Count > out[j].Count
+		}
+		return out[i].Value < out[j].Value
+	})
+	if len(out) > 60 {
+		out = out[:60]
+	}
+	return out
+}
+
+func loadGraphFilterOptions(ctx context.Context, dbc *sql.DB) ([]GraphFilterOption, []GraphFilterOption, error) {
+	load := func(q string) ([]GraphFilterOption, error) {
+		rows, err := dbc.QueryContext(ctx, q)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		out := []GraphFilterOption{}
+		for rows.Next() {
+			var o GraphFilterOption
+			if err := rows.Scan(&o.Value, &o.Count); err != nil {
+				return nil, err
+			}
+			o.Label = o.Value
+			out = append(out, o)
+		}
+		return out, rows.Err()
+	}
+	industries, err := load(`SELECT industry, count(*) FROM lk_clients WHERE industry <> '' GROUP BY industry ORDER BY count(*) DESC, industry`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("graph industries: %w", err)
+	}
+	segments, err := load(`SELECT segment, count(*) FROM lk_clients WHERE segment <> '' GROUP BY segment ORDER BY count(*) DESC, segment`)
+	if err != nil {
+		return nil, nil, fmt.Errorf("graph segments: %w", err)
+	}
+	return industries, segments, nil
+}
+
+func loadSegmentGraph(ctx context.Context, dbc *sql.DB, audience, industry, segment string, soloLimit int) (DemoGraph, error) {
+	if soloLimit < 0 {
+		soloLimit = 0
+	}
+	if soloLimit > 1000 {
+		soloLimit = 1000
+	}
+	group := "B2B"
+	k := 3
+	if audience == "b2c" {
+		group = "B2C"
+		k = 5
+	}
+
+	var segmentItems int
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(DISTINCT o.item_id)
+		FROM lk_orders o
+		JOIN lk_clients c ON c.client_id = o.client_id
+		WHERE c.client_group = $1
+		  AND ($2 = '' OR c.industry = $2)
+		  AND ($3 = '' OR c.segment = $3)`, group, industry, segment).Scan(&segmentItems); err != nil {
+		return DemoGraph{}, fmt.Errorf("segment items: %w", err)
+	}
+
+	rows, err := dbc.QueryContext(ctx, `
+		WITH buyers AS (
+			SELECT o.item_id,
+			       count(DISTINCT o.client_id) AS buyers,
+			       count(DISTINCT o.client_id) FILTER (WHERE c.client_group = 'B2C') AS b2c_buyers
+			FROM lk_orders o
+			JOIN lk_clients c ON c.client_id = o.client_id
+			WHERE c.client_group = $1
+			  AND ($2 = '' OR c.industry = $2)
+			  AND ($3 = '' OR c.segment = $3)
+			GROUP BY o.item_id
+		)
+		SELECT i.item_id, i.title, i.category, b.buyers, b.b2c_buyers
+		FROM buyers b
+		JOIN lk_items i ON i.item_id = b.item_id
+		WHERE CASE WHEN $1 = 'b2c' THEN b.b2c_buyers >= 5 ELSE b.buyers >= 3 END
+		ORDER BY b.buyers DESC, i.item_id`, group, industry, segment)
+	if err != nil {
+		return DemoGraph{}, fmt.Errorf("segment nodes: %w", err)
+	}
+	var nodes []GraphNode
+	nodeIDs := map[string]bool{}
+	for rows.Next() {
+		var n GraphNode
+		if err := rows.Scan(&n.ID, &n.Title, &n.Category, &n.Buyers, &n.B2CBuyers); err != nil {
+			rows.Close()
+			return DemoGraph{}, err
+		}
+		n.Family = familyForTitle(n.Title, n.Category)
+		nodes = append(nodes, n)
+		nodeIDs[n.ID] = true
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return DemoGraph{}, err
+	}
+	rows.Close()
+
+	edgeRows, err := dbc.QueryContext(ctx, `
+		WITH seg AS (
+			SELECT DISTINCT o.order_id, o.order_week, o.item_id, o.client_id, c.client_group
+			FROM lk_orders o
+			JOIN lk_clients c ON c.client_id = o.client_id
+			WHERE c.client_group = $1
+			  AND ($2 = '' OR c.industry = $2)
+			  AND ($3 = '' OR c.segment = $3)
+		), buyers AS (
+			SELECT item_id,
+			       count(DISTINCT client_id) AS buyers,
+			       count(DISTINCT client_id) FILTER (WHERE client_group = 'B2C') AS b2c_buyers
+			FROM seg GROUP BY item_id
+		), public AS (
+			SELECT item_id FROM buyers
+			WHERE CASE WHEN $1 = 'b2c' THEN b2c_buyers >= 5 ELSE buyers >= 3 END
+		), pairs AS (
+			SELECT a.item_id AS item_a, b.item_id AS item_b,
+			       count(DISTINCT (a.order_id, a.order_week)) AS count
+			FROM seg a
+			JOIN seg b ON a.order_id = b.order_id AND a.order_week = b.order_week
+			          AND a.item_id < b.item_id
+			GROUP BY 1, 2
+		)
+		SELECT p.item_a, p.item_b, p.count,
+		       CASE WHEN $1 = 'b2b' THEN p.count ELSE 0 END AS b2b_count,
+		       CASE WHEN $1 = 'b2c' THEN p.count ELSE 0 END AS b2c_count
+		FROM pairs p
+		JOIN public pa ON pa.item_id = p.item_a
+		JOIN public pb ON pb.item_id = p.item_b
+		WHERE p.count >= $4
+		ORDER BY p.count DESC, p.item_a, p.item_b
+		LIMIT 2000`, group, industry, segment, k)
+	if err != nil {
+		return DemoGraph{}, fmt.Errorf("segment edges: %w", err)
+	}
+	var edges []GraphEdge
+	degree := map[string]int{}
+	connected := map[string]bool{}
+	for edgeRows.Next() {
+		var e GraphEdge
+		if err := edgeRows.Scan(&e.Source, &e.Target, &e.Count, &e.B2BCount, &e.B2CCount); err != nil {
+			edgeRows.Close()
+			return DemoGraph{}, err
+		}
+		e.B2CHidden = e.B2CCount < 5
+		edges = append(edges, e)
+		degree[e.Source]++
+		degree[e.Target]++
+		connected[e.Source] = true
+		connected[e.Target] = true
+	}
+	if err := edgeRows.Err(); err != nil {
+		edgeRows.Close()
+		return DemoGraph{}, err
+	}
+	edgeRows.Close()
+
+	publicSolo, shownSolo := 0, 0
+	filtered := make([]GraphNode, 0, len(nodes))
+	for _, n := range nodes {
+		n.Family = familyForTitle(n.Title, n.Category)
+		n.Degree = degree[n.ID]
+		n.Solo = !connected[n.ID]
+		if n.Solo {
+			publicSolo++
+			if soloLimit > 0 && shownSolo >= soloLimit {
+				continue
+			}
+			shownSolo++
+		}
+		filtered = append(filtered, n)
+	}
+	coverage, err := LoadDatasetCoverage(ctx, dbc)
+	if err != nil {
+		return DemoGraph{}, err
+	}
+	return DemoGraph{
+		Nodes:         filtered,
+		Edges:         edges,
+		Coverage:      coverage,
+		Connected:     len(connected),
+		PublicSolo:    publicSolo,
+		ShownSolo:     shownSolo,
+		PublicItems:   len(nodes),
+		PublicPairs:   len(edges),
+		SegmentItems:  segmentItems,
+		SegmentHidden: segmentItems - len(nodes),
+	}, nil
 }
 
 func loadAggregateGraph(ctx context.Context, dbc *sql.DB, audience string, soloLimit int) (DemoGraph, error) {
@@ -159,6 +515,7 @@ func loadAggregateGraph(ctx context.Context, dbc *sql.DB, audience string, soloL
 		if err := rows.Scan(&n.ID, &n.Title, &n.Category, &n.Buyers, &n.B2CBuyers); err != nil {
 			return DemoGraph{}, err
 		}
+		n.Family = familyForTitle(n.Title, n.Category)
 		n.Degree = degree[n.ID]
 		n.Solo = !connected[n.ID]
 		if n.Solo {
@@ -298,7 +655,7 @@ func applyRenewal(ctx context.Context, dbc *sql.DB, nodes []GraphNode) error {
 	return nil
 }
 
-func applyPeriodDemand(ctx context.Context, dbc *sql.DB, audience string, nodes []GraphNode,
+func applyPeriodDemand(ctx context.Context, dbc *sql.DB, audience, industry, segment string, nodes []GraphNode,
 	prevStart, start, end time.Time) (int, int, error) {
 	group := "B2B"
 	if audience == "b2c" {
@@ -312,9 +669,11 @@ func applyPeriodDemand(ctx context.Context, dbc *sql.DB, audience string, nodes 
 		FROM lk_orders o
 		JOIN lk_clients c ON c.client_id = o.client_id
 		WHERE c.client_group = $4
+		  AND ($5 = '' OR c.industry = $5)
+		  AND ($6 = '' OR c.segment = $6)
 		  AND o.order_week >= $3 AND o.order_week < $2
 		GROUP BY o.item_id`,
-		start.Format("2006-01-02"), end.Format("2006-01-02"), prevStart.Format("2006-01-02"), group)
+		start.Format("2006-01-02"), end.Format("2006-01-02"), prevStart.Format("2006-01-02"), group, industry, segment)
 	if err != nil {
 		return 0, 0, fmt.Errorf("period demand: %w", err)
 	}
