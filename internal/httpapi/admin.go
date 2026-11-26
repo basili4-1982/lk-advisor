@@ -129,6 +129,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
         <button class="tab" data-tab="types">Типы связей</button>
         <button class="tab" data-tab="rules">Правила</button>
         <button class="tab" data-tab="weights">Веса</button>
+        <button class="tab" data-tab="dataset">Данные</button>
         <button class="tab" data-tab="analytics">Аналитика</button>
         <button class="tab" data-tab="assistant">ИИ-помощник</button>
       </div>
@@ -238,6 +239,27 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button id="weight-save">Сохранить веса</button>
           </div>
           <p class="hint">Изменение весов влияет на порядок карточек, но не отменяет правила совместимости, аудитории и безопасности.</p>
+        </div>
+
+        <div id="tab-dataset" class="hidden">
+          <div class="formbox">
+            <div class="form-title">Датасет v3 и co-purchase</div>
+            <p class="hint">Реальные 1 079 товаров, 32k строк продаж, 19 162 клиента. Связи строим из совместных покупок, затем отправляем в карантин.</p>
+            <div class="stats" id="dataset-cards" style="margin:12px 0"></div>
+            <div class="toolbar">
+              <button id="dataset-classify">Классифицировать топ-10 через конструктор</button>
+              <button id="dataset-suggest" class="secondary">Быстрые: adjacent_task</button>
+              <span class="hint">Классификация использует активные шаблоны связей и LLM; результат уходит в карантин.</span>
+            </div>
+          </div>
+          <div class="formbox">
+            <div class="form-title">Кандидаты связей из данных</div>
+            <div id="dataset-candidates"></div>
+          </div>
+          <div class="formbox">
+            <div class="form-title">Сильные совместные покупки</div>
+            <div id="dataset-pairs"></div>
+          </div>
         </div>
 
         <div id="tab-analytics" class="hidden">
@@ -513,6 +535,41 @@ async function reviewDecision(decision, items){
     await loadReview();
   } catch(e){ toast(e.message,true); }
 }
+async function loadDataset(){
+  try {
+    var c=await api('GET','/v1/admin/dataset/coverage');
+    el('dataset-cards').innerHTML = [
+      ['Товары', c.items], ['Клиенты', c.clients], ['Заказы', c.orders],
+      ['Пары', c.pairs], ['Пары ≥2', c.frequent_pairs], ['Без связей', c.solo_items],
+      ['Кандидаты', c.candidates]
+    ].map(function(x){ return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>'; }).join('');
+    var p=await api('GET','/v1/admin/dataset/co-purchases?limit=50');
+    var cnd=await api('GET','/v1/admin/dataset/candidates?limit=50');
+    var rows=cnd.items||[];
+    el('dataset-candidates').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Тип</th><th>Conf.</th><th>Статус</th><th>Причина</th><th></th></tr></thead><tbody>'+
+      rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'</td><td>'+esc(x.title_b)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+Math.round(x.confidence*100)+'%</td><td>'+esc(x.status)+'</td><td>'+esc(x.reason)+'</td><td><button class="small" data-cand-review="confirm" data-cand-id="'+x.id+'">✓</button> <button class="ghost small" data-cand-review="reject" data-cand-id="'+x.id+'">✕</button></td></tr>'; }).join('')+'</tbody></table></div>' :
+      '<div class="empty">Кандидатов пока нет — нажмите «Классифицировать».</div>';
+    var rows=p.items||[];
+    el('dataset-pairs').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>A</th><th>B</th><th>Раз</th><th>B2B</th><th>B2C</th></tr></thead><tbody>'+
+      rows.map(function(x){ return '<tr><td>'+esc(x.title_a)+'<div class="hint">'+esc(x.item_a)+'</div></td><td>'+esc(x.title_b)+'<div class="hint">'+esc(x.item_b)+'</div></td><td>'+x.count+'</td><td>'+x.b2b_count+'</td><td>'+x.b2c_count+'</td></tr>'; }).join('')+'</tbody></table></div>' :
+      '<div class="empty">Нет пар. Импортируйте датасет v3.</div>';
+  } catch(e){ el('dataset-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
+}
+el('dataset-suggest').addEventListener('click', async function(){
+  try { var d=await api('POST','/v1/admin/dataset/co-purchases/suggest',{limit:100,min_count:2}); toast('Создано предложений: '+(d.created||0)); loadDataset(); }
+  catch(e){ toast(e.message,true); }
+});
+el('dataset-classify').addEventListener('click', async function(){
+  toast('Классифицирую топ-10 через шаблоны…');
+  try { var d=await api('POST','/v1/admin/dataset/co-purchases/classify',{limit:10}); toast('Обработано: '+d.processed+', создано: '+d.created+', пропущено: '+d.skipped); loadDataset(); }
+  catch(e){ toast(e.message,true); }
+});
+el('dataset-candidates').addEventListener('click', async function(ev){
+  var mode=ev.target.dataset.candReview, id=ev.target.dataset.candId;
+  if (!mode || !id) return;
+  try { await api('POST','/v1/admin/dataset/candidates/review',{id:Number(id),decision:mode,note:''}); toast(mode==='confirm'?'Связь подтверждена':'Связь отклонена'); loadDataset(); }
+  catch(e){ toast(e.message,true); }
+});
 function renderRelations(){
   var q = el('rel-search').value.trim().toLowerCase();
   var ft = el('rel-filter-type').value, fs = el('rel-filter-status').value;
@@ -581,7 +638,7 @@ function renderRules(){
       '<div><span class="pill type">'+esc(RULE_TYPES[r.type]||r.type)+'</span> <button class="ghost small" data-rule-del="'+esc(r.id)+'">Удалить</button></div></div>';
   }).join('');
 }
-var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
+var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','dataset.co_purchase_suggest':'Связи из co-purchase созданы','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
 function renderAudit(){
   var list = state.audit || [];
   if (!list.length) { el('audit-list').textContent='Пока нет изменений'; return; }
@@ -629,6 +686,7 @@ document.querySelectorAll('.tab').forEach(function(b){
     document.querySelectorAll('.tabbody > div').forEach(function(x){x.classList.add('hidden');});
     b.classList.add('on'); el('tab-'+b.dataset.tab).classList.remove('hidden');
     if (b.dataset.tab === 'analytics') loadAnalytics();
+    if (b.dataset.tab === 'dataset') loadDataset();
     if (b.dataset.tab === 'validation') loadReview();
   });
 });

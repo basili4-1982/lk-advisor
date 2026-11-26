@@ -1,0 +1,73 @@
+package catalog_test
+
+import (
+	"context"
+	"testing"
+
+	"github.com/basili4-1982/lk-advisor/internal/catalog"
+	"github.com/basili4-1982/lk-advisor/internal/store"
+)
+
+func TestDatasetCoverageDeltaAndCandidateReview(t *testing.T) {
+	dbc := store.OpenTestDB(t)
+	ctx := context.Background()
+	if err := store.Migrate(ctx, dbc); err != nil {
+		t.Fatal(err)
+	}
+	before, err := catalog.LoadDatasetCoverage(ctx, dbc)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const a, b = "test-item-a", "test-item-b"
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO lk_items (item_id, title, category) VALUES
+		($1, 'Test A', 'devtools'), ($2, 'Test B', 'security')
+		ON CONFLICT DO NOTHING`, a, b); err != nil {
+		t.Fatal(err)
+	}
+	defer dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id IN ($1,$2)`, a, b)
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO co_purchase_pairs (item_a, item_b, count) VALUES ($1,$2,3)
+		ON CONFLICT (item_a,item_b) DO UPDATE SET count=3`, a, b); err != nil {
+		t.Fatal(err)
+	}
+	defer dbc.ExecContext(ctx, `DELETE FROM co_purchase_pairs WHERE item_a=$1 AND item_b=$2`, a, b)
+
+	mid, err := catalog.LoadDatasetCoverage(ctx, dbc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mid.Items != before.Items+2 || mid.Pairs != before.Pairs+1 {
+		t.Fatalf("before=%+v mid=%+v", before, mid)
+	}
+
+	ok, err := catalog.InsertDatasetCandidate(ctx, dbc, a, b, "adjacent_task", 0.8,
+		"test", `[{"source":"co_purchase","value":"count=3"}]`, "test")
+	if err != nil || !ok {
+		t.Fatalf("insert ok=%v err=%v", ok, err)
+	}
+	ok, err = catalog.InsertDatasetCandidate(ctx, dbc, a, b, "adjacent_task", 0.8,
+		"test", `[{"source":"co_purchase","value":"count=3"}]`, "test")
+	if err != nil || ok {
+		t.Fatalf("duplicate insert ok=%v err=%v", ok, err)
+	}
+	list, err := catalog.DatasetCandidates(ctx, dbc, 500)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var id int64
+	for _, c := range list {
+		if c.FromID == a && c.ToID == b {
+			id = c.ID
+		}
+	}
+	if id == 0 {
+		t.Fatal("candidate not found")
+	}
+	ok, err = catalog.ReviewDatasetCandidate(ctx, dbc, id, "confirmed", "ok")
+	if err != nil || !ok {
+		t.Fatalf("review ok=%v err=%v", ok, err)
+	}
+	defer dbc.ExecContext(ctx, `DELETE FROM lk_relation_candidates WHERE id=$1`, id)
+}
