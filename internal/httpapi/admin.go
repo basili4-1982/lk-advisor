@@ -119,6 +119,7 @@ table.registry th,table.registry td{padding:4px 6px}
 .donut-wrap small{color:var(--muted);font-weight:400;font-size:13px}
 .donut{width:128px;height:128px;border-radius:50%;background:conic-gradient(#6366f1 calc(var(--v)*1%), #22c55e 0);display:grid;place-items:center}
 .donut .hole{width:84px;height:84px;background:#fff;border-radius:50%;display:grid;place-items:center;font-size:18px;font-weight:800}
+#tab-experiments .tablewrap{min-height:0}
 #tab-dataset .form-title{font-size:18px}
 #tab-dataset .hint{font-size:14px}
 #tab-dataset .stat b{font-size:30px}
@@ -128,6 +129,18 @@ table.registry th,table.registry td{padding:4px 6px}
 .method{display:grid;gap:4px;margin:8px 0 14px;font-size:13.5px;line-height:1.45;color:#374151}
 .method b{color:#111827}
 .method code{background:#f3f4f6;padding:0 4px;border-radius:4px;font-size:12.5px}
+.exp-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+.exp-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:10px 0}
+.exp-kpi{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:9px 11px}
+.exp-kpi b{display:block;font-size:22px}
+.exp-kpi span{font-size:11px;color:var(--muted)}
+.exp-bars{margin:8px 0}
+.exp-bar{display:flex;align-items:center;gap:8px;margin:4px 0;font-size:12px}
+.exp-bar>span{width:74px;color:var(--muted)}
+.exp-bar .track{flex:1;height:11px;background:#eef2ff;border-radius:6px;overflow:hidden}
+.exp-bar i{display:block;height:100%;background:#1d4ed8}
+.exp-bar.control i{background:#94a3b8}
+.exp-bar b{width:52px;text-align:right}
 button.danger{background:#7f1d1d;color:#fff;padding:12px 22px;font-size:14px;border-radius:10px;font-weight:800}
 button.danger:hover{background:#991b1b}
 .pair-qual{display:inline-block;font-size:10px;font-weight:600;color:#6b7280;background:#f1f5f9;border-radius:4px;padding:0 4px;vertical-align:1px}
@@ -508,7 +521,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 
         <div id="tab-experiments" class="hidden">
           <div class="toolbar">
-            <button id="experiment-seed" class="secondary">Создать демо-гипотезу</button>
+            <button id="experiment-seed">Запустить демо-гипотезу</button>
             <button id="experiment-refresh" class="secondary small">Обновить</button>
             <input id="experiment-search" type="search" placeholder="Поиск по базе знаний…" style="max-width:220px">
             <select id="experiment-decision-filter" style="max-width:170px">
@@ -518,8 +531,9 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="extend">extend</option>
             </select>
             <button id="experiment-search-btn" class="secondary small">Найти</button>
-            <span class="hint">Синтетика: 50 клиентов × 10 сессий. Назначение → exposure → метрики → решение.</span>
+            <span class="hint">Демо: 50 клиентов × 10 сессий. Назначение → exposure → метрики → guardrail → решение → база знаний.</span>
           </div>
+          <div class="stats" id="experiments-summary"></div>
           <div id="experiments-list"></div>
           <div id="experiment-knowledge"></div>
         </div>
@@ -808,43 +822,78 @@ async function loadHealth(){
     el('analytics-health').innerHTML = '<div style="margin-bottom:8px">'+types+'</div>' + (low || '<div class="empty">Явных проблем нет</div>');
   } catch(e){ el('analytics-health').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
+var EXP_STATUS = {running:'Идёт', completed:'Завершён', stopped:'Остановлен', paused:'Пауза', draft:'Черновик'};
+var EXP_DECISION = {promote:'Внедрить', reject:'Отклонить', extend:'Продлить'};
+var EXP_DECISION_STATE = {promote:'Внедрена', reject:'Отклонена', extend:'Продлена'};
+function expStatusLabel(s){ return EXP_STATUS[s] || s || '—'; }
+function decisionPill(d){
+  if(!d) return '';
+  var cls = d==='promote' ? 'on' : (d==='reject' ? 'off' : 'q');
+  return '<span class="pill '+cls+'">'+esc(EXP_DECISION_STATE[d]||d)+'</span>';
+}
 async function loadExperiments(){
   try {
     var d=await api('GET','/v1/admin/experiments');
     var rows=d.items||[];
-    if(!rows.length){ el('experiments-list').innerHTML='<div class="empty">Гипотез пока нет — создайте демо-гипотезу.</div>'; return; }
+    var running=rows.filter(function(x){return x.status==='running'&&!x.decision;}).length;
+    var promoted=rows.filter(function(x){return x.decision==='promote';}).length;
+    var rejected=rows.filter(function(x){return x.decision==='reject';}).length;
+    var decided=rows.filter(function(x){return x.decision;}).length;
+    el('experiments-summary').innerHTML = [
+      ['Активных', running], ['Решений', decided], ['Внедрено', promoted], ['Отклонено', rejected]
+    ].map(function(x){ return '<div class="stat"><b>'+x[1]+'</b><span>'+x[0]+'</span></div>'; }).join('');
+    if(!rows.length){ el('experiments-list').innerHTML='<div class="empty">Гипотез пока нет — запустите демо-гипотезу.</div>'; return; }
     el('experiments-list').innerHTML=rows.map(function(x){
       var res=x.results||[];
       var c=res.find(function(r){return r.variant==='control'})||{exposures:0,clicks:0,purchases:0,ctr:0,conversion:0};
       var t=res.find(function(r){return r.variant==='treatment'})||{exposures:0,clicks:0,purchases:0,ctr:0,conversion:0};
       var uplift=c.conversion>0?(t.conversion-c.conversion)/c.conversion*100:0;
-      var table='<div class="tablewrap"><table><thead><tr><th>Вариант</th><th>Exposure</th><th>Клиенты</th><th>Клики</th><th>Покупки</th><th>CTR</th><th>Conversion</th><th>Target shown</th><th>Target conv</th></tr></thead><tbody>'+
+      var delta=(t.conversion-c.conversion)*100;
+      var maxConv=Math.max(c.conversion,t.conversion,0.01);
+      var g=x.guardrail||{};
+      var gBadge=g.blocked
+        ? '<span class="pill" style="background:#fef3c7;color:#92400e">guardrail: '+esc(g.suggested||'extend')+'</span>'
+        : '<span class="pill" style="background:#dcfce7;color:#166534">guardrail ok</span>';
+      var reasons=(g.reasons||[]).join('; ');
+      var guardWarn=g.blocked?'<div class="hint" style="color:#92400e;margin-top:6px">Стоп: '+esc(reasons||'сработал guardrail')+' → рекомендуем '+esc(EXP_DECISION[g.suggested]||g.suggested||'продлить')+'. Внедрение заблокировано.</div>':'';
+      var promoteDisabled=g.blocked?' disabled':'';
+      var actions='';
+      if(!x.decision){
+        actions='<div class="toolbar" style="margin-top:10px">'+
+          '<button data-exp-decision="promote" data-exp-id="'+esc(x.id)+'"'+promoteDisabled+'>Внедрить</button>'+
+          '<button class="ghost" data-exp-decision="reject" data-exp-id="'+esc(x.id)+'">Отклонить</button>'+
+          '<button class="secondary" data-exp-decision="extend" data-exp-id="'+esc(x.id)+'">Продлить</button>'+
+          (x.status==='running'?'<button class="secondary small" data-exp-monitor="'+esc(x.id)+'">Проверить guardrails</button>':'')+
+        '</div>';
+      }
+      var table='<div class="tablewrap" style="margin-top:10px"><table><thead><tr><th>Вариант</th><th>Exposure</th><th>Клиенты</th><th>Клики</th><th>Покупки</th><th>CTR</th><th>Conversion</th><th>Target shown</th><th>Target conv</th></tr></thead><tbody>'+
         [['control',c],['treatment',t]].map(function(pair){
           var r=pair[1];
           return '<tr><td><b>'+esc(pair[0])+'</b></td><td>'+r.exposures+'</td><td>'+r.clients+'</td><td>'+r.clicks+'</td><td>'+r.purchases+'</td><td>'+pct(r.ctr)+'</td><td>'+pct(r.conversion)+'</td><td>'+r.target_exposures+'</td><td>'+pct(r.target_conversion)+'</td></tr>';
         }).join('')+'</tbody></table></div>';
-      var guard='<div class="hint" style="margin-top:8px">Guardrails: renewal '+pct(c.renewal_rate)+' → '+pct(t.renewal_rate)+', upsell '+pct(c.upsell_rate)+' → '+pct(t.upsell_rate)+', fallback '+pct(c.fallback_rate)+' → '+pct(t.fallback_rate)+'</div>';
-      var g=x.guardrail||{};
-      var reasons=(g.reasons||[]).join('; ');
-      var gBadge=g.blocked
-        ? '<span class="pill" style="background:#fef3c7;color:#92400e">guardrail: '+esc(g.suggested||'extend')+'</span>'
-        : '<span class="pill" style="background:#dcfce7;color:#166534">guardrail ok</span>';
-      var guardWarn=g.blocked?'<div class="hint" style="color:#92400e;margin-top:6px">Guardrail: '+esc(reasons||'сработал')+' → рекомендуем '+esc(g.suggested||'extend')+'. Promote остановлен.</div>':'';
-      var promoteDisabled=g.blocked?' disabled':'';
-      var decisions='<div class="toolbar" style="margin-top:8px">'+
-        '<button data-exp-decision="promote" data-exp-id="'+esc(x.id)+'"'+promoteDisabled+'>Подтвердить</button> '+
-        '<button class="ghost" data-exp-decision="reject" data-exp-id="'+esc(x.id)+'">Отклонить</button> '+
-        '<button class="secondary" data-exp-decision="extend" data-exp-id="'+esc(x.id)+'">Продлить</button>'+
-        '<span class="hint">Uplift treatment: '+(uplift>=0?'+':'')+uplift.toFixed(1)+'% · эффект в показе target: '+c.target_exposures+' → '+t.target_exposures+'</span></div>';
-      var decided=x.decision?'<div class="hint" style="margin-top:6px">Решение: <b>'+esc(x.decision)+'</b> '+esc(x.decision_note||'')+'</div>':'';
-      return '<div class="formbox" style="margin-bottom:12px">'+
-        '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">'+
-          '<div><div class="form-title" style="margin:0">'+esc(x.title)+'</div>'+
+      var kpis='<div class="exp-kpis">'+
+        '<div class="exp-kpi"><b>'+pct(c.conversion)+'</b><span>control · conversion</span></div>'+
+        '<div class="exp-kpi"><b>'+pct(t.conversion)+'</b><span>treatment · conversion</span></div>'+
+        '<div class="exp-kpi"><b style="color:'+(delta>=0?'#047857':'#b91c1c')+'">'+(delta>=0?'+':'')+delta.toFixed(1)+' п.п.</b><span>Δ к контролю</span></div>'+
+        '<div class="exp-kpi"><b style="color:'+(uplift>=0?'#047857':'#b91c1c')+'">'+(uplift>=0?'+':'')+uplift.toFixed(1)+'%</b><span>uplift</span></div>'+
+      '</div>';
+      var bars='<div class="exp-bars">'+
+        '<div class="exp-bar control"><span>control</span><div class="track"><i style="width:'+(c.conversion/maxConv*100).toFixed(1)+'%"></i></div><b>'+pct(c.conversion)+'</b></div>'+
+        '<div class="exp-bar"><span>treatment</span><div class="track"><i style="width:'+(t.conversion/maxConv*100).toFixed(1)+'%"></i></div><b>'+pct(t.conversion)+'</b></div>'+
+      '</div>';
+      return '<div class="formbox" style="margin-bottom:14px">'+
+        '<div class="exp-head"><div><div class="form-title" style="margin:0">'+esc(x.title)+'</div>'+
           '<div class="hint">'+esc(x.hypothesis)+'</div></div>'+
-          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+gBadge+'<span class="pill">'+esc(x.status)+'</span></div></div>'+
+          '<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+gBadge+'<span class="pill">'+esc(expStatusLabel(x.status))+'</span>'+decisionPill(x.decision)+'</div></div>'+
         '<div class="hint" style="margin:8px 0">Скоуп: '+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' / '+esc(x.strategy||'все')+' · '+
-          esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+' · '+esc(x.metric)+'</div>'+
-        table+guard+guardWarn+decisions+decided+'</div>';
+          esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+' · метрика: '+esc(x.metric)+'</div>'+
+        kpis+bars+table+
+        '<div class="hint" style="margin-top:8px">Guardrails: renewal '+pct(c.renewal_rate)+' → '+pct(t.renewal_rate)+
+          ', upsell '+pct(c.upsell_rate)+' → '+pct(t.upsell_rate)+
+          ', fallback '+pct(c.fallback_rate)+' → '+pct(t.fallback_rate)+'</div>'+
+        guardWarn+actions+
+        (x.decision?'<div class="hint" style="margin-top:6px">Решение: '+decisionPill(x.decision)+' '+esc(x.decision_note||'')+'</div>':'')+
+      '</div>';
     }).join('');
   } catch(e){ el('experiments-list').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
@@ -854,14 +903,21 @@ async function loadKnowledge(){
     var dec=encodeURIComponent((el('experiment-decision-filter')||{}).value||'');
     var d=await api('GET','/v1/admin/experiments/knowledge?q='+q+'&decision='+dec);
     var rows=d.items||[];
-    var title='<div class="form-title" style="margin-top:18px">База знаний</div>';
+    var title='<div class="form-title" style="margin-top:20px">База знаний</div>';
     if(!rows.length){ el('experiment-knowledge').innerHTML=title+'<div class="empty">Пока нет завершённых гипотез</div>'; return; }
-    el('experiment-knowledge').innerHTML=title+rows.map(function(x){
+    var counts={promote:0,reject:0,extend:0};
+    rows.forEach(function(x){ if(counts[x.decision]!==undefined) counts[x.decision]++; });
+    var summary='<div class="stats">'+
+      '<div class="stat"><b>'+rows.length+'</b><span>завершённых гипотез</span></div>'+
+      '<div class="stat"><b>'+counts.promote+'</b><span>внедрено</span></div>'+
+      '<div class="stat"><b>'+counts.reject+'</b><span>отклонено</span></div>'+
+      '<div class="stat"><b>'+counts.extend+'</b><span>продлено</span></div></div>';
+    el('experiment-knowledge').innerHTML=title+summary+rows.map(function(x){
       return '<div class="formbox" style="margin-bottom:8px">'+
-        '<div style="display:flex;justify-content:space-between;gap:12px"><b>'+esc(x.title)+'</b><span class="pill">'+esc(x.decision)+'</span></div>'+
+        '<div class="exp-head"><b>'+esc(x.title)+'</b>'+decisionPill(x.decision)+'</div>'+
         '<div class="hint" style="margin-top:4px">'+esc(x.hypothesis)+'</div>'+
         '<div class="hint">'+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' / '+esc(x.strategy||'все')+' · '+esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+'</div>'+
-        (x.decision_note?'<div class="hint">'+esc(x.decision_note)+'</div>':'')+
+        (x.decision_note?'<div class="hint" style="margin-top:4px">'+esc(x.decision_note)+'</div>':'')+
       '</div>';
     }).join('');
   } catch(e){ el('experiment-knowledge').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
@@ -1752,6 +1808,12 @@ el('experiment-search-btn').addEventListener('click', loadKnowledge);
 el('experiment-decision-filter').addEventListener('change', loadKnowledge);
 el('experiment-search').addEventListener('keydown', function(e){ if(e.key==='Enter') loadKnowledge(); });
 el('experiments-list').addEventListener('click', async function(ev){
+  var mon=ev.target.dataset.expMonitor;
+  if(mon){
+    try { var r=await api('POST','/v1/admin/experiments/'+encodeURIComponent(mon)+'/monitor',{}); toast(r.stopped?'Остановлено: '+r.outcome:'Guardrails ok'); loadExperiments(); loadKnowledge(); }
+    catch(e){ toast(e.message,true); }
+    return;
+  }
   var mode=ev.target.dataset.expDecision, id=ev.target.dataset.expId;
   if(!mode||!id)return;
   var note = mode==='promote'?'подтверждено на пилоте':(mode==='reject'?'гипотеза не подтверждена':'нужна большая выборка');
