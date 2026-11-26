@@ -37,6 +37,8 @@ h1{font-size:28px;margin:0 0 6px;letter-spacing:-.02em}
 .stat b{display:block;font-size:22px}
 .stat span{color:var(--muted);font-size:12px}
 .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:20px;align-items:start}
+.layout.registry-mode{grid-template-columns:minmax(0,1fr)}
+.layout.registry-mode .side{display:none}
 .panel,.card{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:0 8px 24px rgba(15,23,42,.045)}
 .panel{padding:0;overflow:hidden}
 .tabs{display:flex;gap:4px;padding:10px;border-bottom:1px solid var(--line);background:#fbfbfd;flex-wrap:wrap}
@@ -67,6 +69,9 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .toolbar select{max-width:220px}
 .tablewrap{border:1px solid var(--line);border-radius:12px;overflow:auto;max-height:560px}
 table{border-collapse:collapse;width:100%;font-size:13px}
+table.registry{table-layout:fixed}
+table.registry td{overflow:hidden;text-overflow:ellipsis}
+table.registry td:nth-child(2),table.registry td:nth-child(3){white-space:nowrap}
 th,td{padding:8px 10px;text-align:left;border-bottom:1px solid #f0f1f5;vertical-align:top}
 th{background:#fafafa;color:var(--muted);font-weight:600;position:sticky;top:0;z-index:1}
 tr:hover td{background:#fcfcff}
@@ -200,7 +205,13 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button id="registry-sweep" class="secondary small">Проверить TTL</button>
             <span class="hint" id="registry-count"></span>
           </div>
-          <div class="tablewrap"><table>
+          <div class="tablewrap"><table class="registry" style="min-width:1180px">
+            <colgroup>
+              <col style="width:36px"><col style="width:250px"><col style="width:250px">
+              <col style="width:90px"><col style="width:90px"><col style="width:100px">
+              <col style="width:78px"><col style="width:200px"><col style="width:130px">
+              <col style="width:90px"><col style="width:60px">
+            </colgroup>
             <thead><tr>
               <th><input type="checkbox" id="registry-all" style="width:auto"></th>
               <th>Источник</th><th>Цель</th><th>Тип</th><th>Статус</th>
@@ -996,6 +1007,7 @@ document.querySelectorAll('.tab').forEach(function(b){
     document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on');});
     document.querySelectorAll('.tabbody > div').forEach(function(x){x.classList.add('hidden');});
     b.classList.add('on'); el('tab-'+b.dataset.tab).classList.remove('hidden');
+    document.querySelector('.layout').classList.toggle('registry-mode', b.dataset.tab === 'registry');
     if (b.dataset.tab === 'analytics') loadAnalytics();
     if (b.dataset.tab === 'dataset') loadDataset();
     if (b.dataset.tab === 'registry') loadRegistry();
