@@ -89,7 +89,7 @@ table.registry td{vertical-align:middle}
 table.registry th,table.registry td{padding:4px 6px}
 .clip{display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .clip-sm{max-width:180px}
-.pair{display:block;line-height:1.3;min-width:0}
+.pair{display:block;line-height:1.3;min-width:0;cursor:pointer}
 .pair-from,.pair-to{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .pair-from{color:#111827}
 .pair-to{color:#111827;font-weight:600}
@@ -957,6 +957,7 @@ var TAIL_PHRASES = [
   /,\s*простая.*$/i,
   /\s*право на использование.*$/i,
   /\s*[-–]?\s*неисключительное право.*$/i,
+  /\s*[-–]?\s*неисключительное.*$/i,
   /\s*[-–]?\s*простая.*$/i
 ];
 var WORD_REPLACEMENTS = [
@@ -1402,12 +1403,17 @@ el('registry-body').addEventListener('mousemove', function(ev){
 el('registry-body').addEventListener('mouseleave', hideRegistryTip);
 el('registry-body').addEventListener('click', function(ev){
   if (ev.target.dataset.regCheck) return;
-  var pt=ev.target.closest('.pair-text');
-  if (pt){
-    var line=pt.parentElement;
-    var isFull=pt.classList.toggle('full');
-    line.classList.toggle('expanded', isFull);
-    pt.textContent=isFull?pt.dataset.full:pt.dataset.short;
+  var pair=ev.target.closest('.pair');
+  if (pair){
+    var expanded=!pair.classList.contains('expanded');
+    pair.classList.toggle('expanded', expanded);
+    pair.querySelectorAll('.pair-text').forEach(function(t){
+      t.textContent=expanded?t.dataset.full:t.dataset.short;
+      t.classList.toggle('full', expanded);
+    });
+    pair.querySelectorAll('.pair-from,.pair-to').forEach(function(l){
+      l.classList.toggle('expanded', expanded);
+    });
     return;
   }
   var tr=ev.target.closest('tr[data-reg-id]');
