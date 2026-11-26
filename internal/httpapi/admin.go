@@ -77,7 +77,9 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .toolbar input{flex:0 1 240px;max-width:240px;padding:4px 7px;font-size:12px}
 #registry-note{flex:1 1 280px;max-width:none}
 .toolbar select{flex:0 1 150px;padding:4px 6px;font-size:12px}
-#registry-confidence{flex:0 0 190px;max-width:190px}
+.conf-filter{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);white-space:nowrap}
+.conf-filter input[type=range]{width:130px;padding:0;accent-color:#1d4ed8}
+#registry-conf-label{min-width:44px;color:var(--ink);font-weight:700;font-size:12px}
 .toolbar-filters{display:flex;gap:6px;flex-wrap:wrap;flex:1 1 auto}
 #registry-metrics{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 4px;font-size:12px;color:var(--muted)}
 #registry-metrics b{color:var(--ink);font-size:13px}
@@ -249,13 +251,10 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="stats" id="registry-metrics" style="margin-bottom:12px"></div>
           <div class="toolbar">
             <input id="registry-search" placeholder="Поиск по товару или id">
-            <select id="registry-confidence" title="Фильтр по уверенности">
-              <option value="">Любая уверенность</option>
-              <option value="0.95">Уверенность ≥ 95%</option>
-              <option value="0.85">Уверенность ≥ 85%</option>
-              <option value="0.65">Уверенность ≥ 65%</option>
-              <option value="low">Уверенность &lt; 65%</option>
-            </select>
+            <span class="conf-filter" title="Минимальная уверенность">уверенность
+              <input id="registry-conf-min" type="range" min="0" max="100" step="1" value="0">
+              <span id="registry-conf-label">любая</span>
+            </span>
             <button id="registry-confirm-filter" class="small" title="Подтвердить всех кандидатов по текущему фильтру">Подтвердить все</button>
             <button id="registry-filters-toggle" class="secondary small">Фильтры</button>
             <div id="registry-filters" class="toolbar-filters hidden">
@@ -875,10 +874,20 @@ el('dataset-candidates').addEventListener('click', async function(ev){
 function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
 function familyLabel(id){ return REG_PAGE.familyLabels[id] || id || '—'; }
 function familyCount(id){ return REG_PAGE.familyCounts[id] || 0; }
+function updateConfLabel(){
+  var v=parseInt(el('registry-conf-min').value,10)||0;
+  el('registry-conf-label').textContent = v===0 ? 'любая' : '≥ '+v+'%';
+}
+function confMinValue(){
+  var v=parseInt(el('registry-conf-min').value,10);
+  if (isNaN(v) || v<0) v=0;
+  if (v>100) v=100;
+  return v/100;
+}
 function confBand(c){
   c = Number(c) || 0;
-  if (c >= 0.85) return {label:'высокая', cls:'hi'};
-  if (c >= 0.65) return {label:'средняя', cls:'mid'};
+  if (c >= 0.80) return {label:'высокая', cls:'hi'};
+  if (c >= 0.60) return {label:'средняя', cls:'mid'};
   return {label:'низкая', cls:'lo'};
 }
 function confMeter(c){
@@ -1130,9 +1139,8 @@ function registryQuery(){
   add('family', el('registry-family').value);
   if (REG_VIEW==='disputed') { add('min_conf','0.5'); add('max_conf','0.75'); }
   else {
-    var conf=el('registry-confidence').value || (REG_VIEW==='high' ? '0.85' : '');
-    if (conf==='low') add('max_conf','0.65');
-    else if (conf) add('min_conf', conf);
+    var minConf=confMinValue();
+    if (minConf > 0) add('min_conf', minConf.toFixed(2));
   }
   if (REG_VIEW==='expiring') { add('expiring','30'); }
   add('limit','200');
@@ -1260,9 +1268,8 @@ function registryFilter(){
   if (el('registry-type').value !== 'variant_of') f.exclude_variants=true;
   if (REG_VIEW==='disputed') { f.min_confidence=0.5; f.max_confidence=0.75; }
   else {
-    var conf=el('registry-confidence').value || (REG_VIEW==='high' ? '0.85' : '');
-    if (conf==='low') f.max_confidence=0.65;
-    else if (conf) f.min_confidence=Number(conf);
+    var minConf=confMinValue();
+    if (minConf > 0) f.min_confidence=minConf;
   }
   if (REG_VIEW==='expiring') f.expiring_days=30;
   return f;
@@ -1449,8 +1456,10 @@ document.querySelectorAll('.tab').forEach(function(b){
   });
 });
 el('registry-filters-toggle').addEventListener('click', function(){ el('registry-filters').classList.toggle('hidden'); });
+el('registry-conf-min').addEventListener('input', updateConfLabel);
+updateConfLabel();
 el('registry-search').addEventListener('keyup', function(ev){ if (ev.key==='Enter') loadRegistry(); });
-['registry-type','registry-status','registry-source','registry-family','registry-confidence'].forEach(function(id){
+['registry-type','registry-status','registry-source','registry-family','registry-conf-min'].forEach(function(id){
   el(id).addEventListener('change', loadRegistry);
 });
 document.querySelectorAll('#tab-registry [data-view]').forEach(function(b){
@@ -1463,7 +1472,6 @@ document.querySelectorAll('#tab-registry [data-view]').forEach(function(b){
     el('registry-family').value='';
     if (REG_VIEW==='disputed') el('registry-status').value='candidate';
     if (REG_VIEW==='structural') el('registry-type').value='variant_of';
-    el('registry-confidence').value = (REG_VIEW==='high') ? '0.85' : '';
     loadRegistry();
   });
 });
