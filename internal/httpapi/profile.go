@@ -32,6 +32,7 @@ type profileResponse struct {
 	Segment       string            `json:"segment"`
 	Industry      string            `json:"industry"`
 	Size          string            `json:"size"`
+	Audience      string            `json:"audience"`
 	Environment   model.Environment `json:"environment"`
 	Persona       string            `json:"persona"`
 	PersonaReason string            `json:"persona_reason"`
@@ -76,6 +77,7 @@ func (h *handler) clientProfile(w http.ResponseWriter, r *http.Request) {
 		Segment:       p.Segment,
 		Industry:      p.Industry,
 		Size:          p.Size,
+		Audience:      p.Audience,
 		Environment:   p.Environment,
 		Persona:       personaTop,
 		PersonaReason: personaReason,

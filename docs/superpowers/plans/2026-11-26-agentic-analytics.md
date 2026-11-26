@@ -129,3 +129,24 @@ settings:                auto_strategy, scoring_weights_b2b, scoring_weights_b2c
 - не превышать 20% exploration;
 - не менять веса без минимальной выборки;
 - всегда иметь rollback.
+
+
+## T20. Обратная связь по товарам и связям
+
+- `internal/feedback`: Beta(1,19), CTR, multiplier 0.65–1.35.
+- Буст/штраф применяется к кандидату до разнообразия.
+- Событие хранит `feedback_multiplier`.
+- Минимум 10 показов, иначе нейтрально.
+
+## T21. Exploration-слот
+
+- 10% запросов.
+- Заменяется только последняя `cross_sell`-карточка.
+- Renewal, upsell, analog и alternative не заменяются.
+- Событие пишется с `source=exploration`.
+
+## T22. Позиция клика
+
+- `analytics.Record` находит rank показа и пишет его в клик.
+- Это база для position-bias correction.
+- Сырой CTR пока не корректируется; следующий шаг — IPS/rank prior.

@@ -137,10 +137,18 @@ func insertEvent(ctx context.Context, tx *sql.Tx, traceID, clientID, productID, 
 // Record stores a user action (click or purchase) for a shown item.
 func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, event string) error {
 	var owner, strategyName, audience, weightsVersion string
-	err := dbc.QueryRowContext(ctx,
-		`SELECT client_id, strategy, audience, weights_version
-		 FROM recommendation_requests WHERE trace_id = $1`, traceID).
-		Scan(&owner, &strategyName, &audience, &weightsVersion)
+	var rank int
+	err := dbc.QueryRowContext(ctx, `
+		SELECT r.client_id, r.strategy, r.audience, r.weights_version,
+		       COALESCE((
+		           SELECT e.rank FROM recommendation_events e
+		           WHERE e.trace_id = r.trace_id
+		             AND e.product_id = $2
+		             AND e.event = 'shown'
+		           ORDER BY e.id LIMIT 1
+		       ), 0)
+		FROM recommendation_requests r WHERE r.trace_id = $1`, traceID, productID).
+		Scan(&owner, &strategyName, &audience, &weightsVersion, &rank)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ErrTraceNotFound
 	}
@@ -152,10 +160,10 @@ func Record(ctx context.Context, dbc *sql.DB, traceID, clientID, productID, even
 	}
 	_, err = dbc.ExecContext(ctx, `
 		INSERT INTO recommendation_events
-			(trace_id, client_id, product_id, event, reason, source,
+			(trace_id, client_id, product_id, event, reason, source, rank,
 			 strategy, audience, weights_version)
-		VALUES ($1, $2, $3, $4, 'user', 'client', $5, $6, $7)`,
-		traceID, clientID, productID, event, strategyName, audience, weightsVersion)
+		VALUES ($1, $2, $3, $4, 'user', 'client', $5, $6, $7, $8)`,
+		traceID, clientID, productID, event, rank, strategyName, audience, weightsVersion)
 	if err != nil {
 		return fmt.Errorf("analytics record: %w", err)
 	}

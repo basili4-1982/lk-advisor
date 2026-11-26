@@ -22,7 +22,7 @@ func SeedLKCase(ctx context.Context, dbc *sql.DB) error {
 
 	products := []model.Product{
 		license("prod-lk-kaspersky", "LK-17142", "Kaspersky Endpoint Security для бизнеса — Стандартный, 25–49 Node, 1 year Renewal", "security", "endpoint_security", "Kaspersky", 2500, 45, "active", "business"),
-		license("prod-lk-adobe", "LK-96", "Adobe Creative Cloud for enterprise All Apps, Education Device, Renewal", "graphics", "design", "Adobe", 0, 1, "discontinued", "business"),
+		license("prod-lk-adobe", "LK-96", "Adobe Creative Cloud for enterprise All Apps, Education Device, Renewal", "graphics", "design", "Adobe", 0, 1, "active", "business"),
 		license("prod-lk-drweb", "LK-22", "Dr.Web Desktop Security Suite + Центр Управления, 12 мес., Продление", "security", "endpoint_security", "DrWeb", 1200, 10, "active", "business"),
 		license("prod-lk-m365", "LK-16979", "Microsoft 365 Personal, 1YR", "office", "office_suite", "Microsoft", 7685, 1, "active", "consumer"),
 	}
@@ -47,11 +47,13 @@ func SeedLKCase(ctx context.Context, dbc *sql.DB) error {
 	relations := []model.Relation{
 		{FromID: "prod-lk-kaspersky", ToID: "prod-backup", Type: "adjacent_task", Direction: "forward", Confidence: 0.9, Status: "confirmed", Source: "lk_demo"},
 		{FromID: "prod-lk-kaspersky", ToID: "prod-sl-13", Type: "substitute", Direction: "forward", Confidence: 0.9, Status: "confirmed", Source: "lk_demo"},
-		{FromID: "prod-lk-adobe", ToID: "prod-sl-43", Type: "analog", Direction: "forward", Confidence: 0.95, Status: "confirmed", Source: "lk_demo"},
+		{FromID: "prod-lk-adobe", ToID: "prod-sl-43", Type: "alternative", Direction: "forward", Confidence: 0.9, Status: "confirmed", Source: "lk_demo"},
 		{FromID: "prod-lk-drweb", ToID: "prod-backup", Type: "adjacent_task", Direction: "forward", Confidence: 0.85, Status: "confirmed", Source: "lk_demo"},
 		{FromID: "prod-lk-drweb", ToID: "prod-sl-13", Type: "substitute", Direction: "forward", Confidence: 0.9, Status: "confirmed", Source: "lk_demo"},
 		{FromID: "prod-lk-m365", ToID: "prod-pdf", Type: "adjacent_task", Direction: "forward", Confidence: 0.9, Status: "confirmed", Source: "lk_demo"},
 		{FromID: "prod-lk-m365", ToID: "prod-admin-course", Type: "adjacent_task", Direction: "forward", Confidence: 0.85, Status: "confirmed", Source: "lk_demo"},
+		{FromID: "prod-lk-m365", ToID: "prod-office-business", Type: "upgrade", Direction: "forward", Confidence: 0.95, Status: "confirmed", Source: "lk_demo"},
+		{FromID: "prod-lk-kaspersky", ToID: "prod-security-course", Type: "adjacent_task", Direction: "forward", Confidence: 0.85, Status: "confirmed", Source: "lk_demo"},
 	}
 	orders := make([]model.Order, 0, len(purchases))
 	for _, p := range purchases {

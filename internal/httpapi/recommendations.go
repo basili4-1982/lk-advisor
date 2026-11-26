@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	mathrand "math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/basili4-1982/lk-advisor/internal/analytics"
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
 	"github.com/basili4-1982/lk-advisor/internal/explain"
+	"github.com/basili4-1982/lk-advisor/internal/feedback"
 	"github.com/basili4-1982/lk-advisor/internal/model"
 	"github.com/basili4-1982/lk-advisor/internal/profile"
 	"github.com/basili4-1982/lk-advisor/internal/recommend"
@@ -37,6 +39,7 @@ type recommendationResponse struct {
 	ClientID        string                 `json:"client_id"`
 	Strategy        string                 `json:"strategy"`
 	Intent          string                 `json:"intent"`
+	Weights         model.Weights          `json:"weights"`
 	Recommendations []model.Recommendation `json:"recommendations"`
 	Fallback        bool                   `json:"fallback"`
 	GeneratedAt     time.Time              `json:"generated_at"`
@@ -152,10 +155,29 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	if strategyName != "popular" {
 		allowed, rejected = recommend.Rank(in)
 	}
+	if len(allowed) > 0 {
+		ids := make([]string, 0, len(allowed))
+		for _, c := range allowed {
+			ids = append(ids, c.Product.ID)
+		}
+		if stats, ferr := feedback.Load(ctx, h.db, ids, h.now()); ferr == nil {
+			feedback.Apply(allowed, stats)
+			recommend.Sort(allowed)
+		} else {
+			h.logger.Warn("feedback", "err", ferr)
+		}
+	}
 	cands := recommend.Diversify(allowed, limit)
+	// Explore only the last cross-sell slot: never replace renewal, upsell,
+	// analog or alternative, which carry the main business explanation.
+	if limit >= 3 && len(cands) >= 3 && cands[limit-1].Type == "cross_sell" {
+		if explore, ok := recommend.ExplorationSlot(allowed, cands, mathrand.Float64()); ok {
+			cands[limit-1] = explore
+		}
+	}
 	fallback := false
 	if len(cands) == 0 {
-		popular, err := catalog.Popular(ctx, h.db, 3)
+		popular, err := catalog.PopularByAudience(ctx, h.db, audience, 3)
 		if err != nil {
 			h.logger.Error("popular", "err", err)
 			writeError(w, http.StatusInternalServerError, "fallback error")
@@ -186,17 +208,19 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	recs := make([]model.Recommendation, 0, len(cands))
 	for i, c := range cands {
 		rec := model.Recommendation{
-			ProductID:   c.Product.ID,
-			SKU:         c.Product.SKU,
-			Title:       c.Product.Title,
-			Type:        c.Type,
-			Score:       c.Score,
-			Rank:        i + 1,
-			Evidence:    c.Evidence,
-			Constraints: c.Constraints,
-			Price:       model.Price{Amount: c.Product.Price, Currency: "RUB"},
-			Promo:       c.Promo,
-			ExpiresAt:   h.expiresAt(c, p),
+			ProductID:          c.Product.ID,
+			SKU:                c.Product.SKU,
+			Title:              c.Product.Title,
+			Type:               c.Type,
+			Score:              c.Score,
+			FeedbackMultiplier: c.FeedbackMultiplier,
+			Exploration:        c.Exploration,
+			Rank:               i + 1,
+			Evidence:           c.Evidence,
+			Constraints:        c.Constraints,
+			Price:              model.Price{Amount: c.Product.Price, Currency: "RUB"},
+			Promo:              c.Promo,
+			ExpiresAt:          h.expiresAt(c, p),
 		}
 		if rec.Evidence == nil {
 			rec.Evidence = []model.Evidence{}
@@ -209,6 +233,10 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 			reason = fmt.Sprintf("Рекомендуем %s.", rec.Title)
 		}
 		rec.Reason = reason
+		rec.Factors = &model.ScoreFactors{
+			Relevance: c.Relevance, Urgency: c.Urgency, Affinity: c.Affinity,
+			Margin: c.Margin, Confidence: c.Confidence,
+		}
 		recs = append(recs, rec)
 	}
 
@@ -224,9 +252,13 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		if i < len(recs) {
 			detail = recs[i].Reason
 		}
+		itemSource := source
+		if c.Exploration {
+			itemSource = "exploration"
+		}
 		shownItems = append(shownItems, analytics.Item{
 			ProductID: c.Product.ID, Type: c.Type, Reason: "top_3",
-			Detail: detail, Source: source, Rank: i + 1, Score: c.Score,
+			Detail: detail, Source: itemSource, Rank: i + 1, Score: c.Score,
 		})
 	}
 	skippedItems := make([]analytics.Item, 0, len(rejected)+len(allowed))
@@ -257,6 +289,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		ClientID:        req.ClientID,
 		Strategy:        strategyName,
 		Intent:          intent,
+		Weights:         weights,
 		Recommendations: recs,
 		Fallback:        fallback,
 		GeneratedAt:     h.now().UTC(),

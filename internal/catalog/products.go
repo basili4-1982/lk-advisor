@@ -112,3 +112,37 @@ func Popular(ctx context.Context, dbc *sql.DB, limit int) ([]model.Product, erro
 	}
 	return out, rows.Err()
 }
+
+// PopularByAudience returns bestsellers that fit the client's audience.
+func PopularByAudience(ctx context.Context, dbc *sql.DB, audience string, limit int) ([]model.Product, error) {
+	if audience == "" {
+		return Popular(ctx, dbc, limit)
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT `+productColumns+`
+		FROM products p
+		JOIN (
+			SELECT product_id, count(*) AS c
+			FROM purchases
+			GROUP BY product_id
+			ORDER BY c DESC, product_id
+			LIMIT 200
+		) x ON x.product_id = p.id
+		WHERE p.status = 'active'
+		  AND (p.audience = $2 OR p.audience = 'any')
+		ORDER BY x.c DESC, p.id
+		LIMIT $1`, limit, audience)
+	if err != nil {
+		return nil, fmt.Errorf("popular audience: %w", err)
+	}
+	defer rows.Close()
+	var out []model.Product
+	for rows.Next() {
+		p, err := scanProduct(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}

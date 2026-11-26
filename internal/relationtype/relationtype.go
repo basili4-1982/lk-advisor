@@ -14,16 +14,17 @@ import (
 var codeRe = regexp.MustCompile(`^[a-z][a-z0-9_]{1,31}$`)
 
 // Behaviors are the ways the engine uses a relation.
-var Behaviors = []string{"cross_sell", "upsell", "bundle", "substitute", "analog", "info"}
+var Behaviors = []string{"cross_sell", "upsell", "bundle", "substitute", "alternative", "analog", "info"}
 
 // BehaviorTitles are human-readable behavior names.
 var BehaviorTitles = map[string]string{
-	"cross_sell": "Допродажа",
-	"upsell":     "Апгрейд",
-	"bundle":     "Комплект (апгрейд + допродажа)",
-	"substitute": "Замена",
-	"analog":     "Аналог снятого",
-	"info":       "Только справка",
+	"cross_sell":  "Допродажа",
+	"upsell":      "Апгрейд",
+	"bundle":      "Комплект (апгрейд + допродажа)",
+	"substitute":  "Замена",
+	"alternative": "Альтернатива",
+	"analog":      "Аналог снятого",
+	"info":        "Только справка",
 }
 
 // Builtins returns the stock templates.
@@ -76,6 +77,12 @@ func Builtins() []model.RelationType {
 			DefaultConfidence: 0.9, Status: "active", Builtin: true,
 			Description: "Другой продукт для той же задачи, но не обязательно прямой конкурент. В допродажу не идёт.",
 			Examples:    "два растровых редактора; две CRM; два средства резервного копирования.",
+		},
+		{
+			Code: "alternative", Title: "Альтернатива", Behavior: "alternative", Direction: "forward",
+			DefaultConfidence: 0.8, Status: "active", Builtin: true,
+			Description: "Похожий продукт для той же задачи, но не полный аналог. Показывается как альтернатива, а не как замена.",
+			Examples:    "Adobe CC → CorelDRAW для графики; один антивирус → другой антивирус.",
 		},
 		{
 			Code: "analog", Title: "Аналог снятого", Behavior: "analog", Direction: "forward",

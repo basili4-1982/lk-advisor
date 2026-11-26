@@ -208,7 +208,7 @@ func (a *Agent) loadState(ctx context.Context, clientID string) (state, error) {
 	cands, rejected := recommend.Run(in)
 	usedFallback := false
 	if len(cands) == 0 {
-		popular, err := catalog.Popular(ctx, a.DB, 3)
+		popular, err := catalog.PopularByAudience(ctx, a.DB, p.Audience, 3)
 		if err == nil {
 			for _, prod := range popular {
 				cands = append(cands, model.Candidate{

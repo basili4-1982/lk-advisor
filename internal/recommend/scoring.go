@@ -72,7 +72,7 @@ func Diversify(cands []model.Candidate, limit int) []model.Candidate {
 		if task == "" {
 			task = c.Product.Category
 		}
-		if task == "" || c.Type == "alternative" {
+		if task == "" || c.Type == "alternative" || c.Type == "renewal" || c.Type == "analog" {
 			task = c.Type
 		}
 		if seenTask[task] {
@@ -135,4 +135,25 @@ func Rank(in Input) ([]model.Candidate, []model.Rejection) {
 	}
 	Sort(allowed)
 	return allowed, rejected
+}
+
+// ExplorationSlot picks one extra candidate for the third slot with a small
+// probability. The random value is injected so the policy is testable.
+func ExplorationSlot(allowed, chosen []model.Candidate, random float64) (model.Candidate, bool) {
+	if random >= 0.1 || len(allowed) <= len(chosen) {
+		return model.Candidate{}, false
+	}
+	seen := make(map[string]bool, len(chosen))
+	for _, c := range chosen {
+		seen[c.Product.ID] = true
+	}
+	for i := len(allowed) - 1; i >= 0; i-- {
+		if seen[allowed[i].Product.ID] {
+			continue
+		}
+		out := allowed[i]
+		out.Exploration = true
+		return out, true
+	}
+	return model.Candidate{}, false
 }

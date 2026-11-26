@@ -81,7 +81,13 @@ func (h *handler) adminAnalyticsHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *handler) adminAutoReview(w http.ResponseWriter, r *http.Request) {
-	report, err := analytics.BuildHealth(r.Context(), h.db, 7, 50, h.now())
+	minShown := 50
+	if raw := r.URL.Query().Get("min_shown"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil {
+			minShown = v
+		}
+	}
+	report, err := analytics.BuildHealth(r.Context(), h.db, 7, minShown, h.now())
 	if err != nil {
 		h.logger.Error("auto review", "err", err)
 		writeError(w, http.StatusInternalServerError, "auto review error")

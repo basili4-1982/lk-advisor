@@ -104,3 +104,27 @@ func TestBuildHealth(t *testing.T) {
 		t.Fatalf("types = %+v", h.Types)
 	}
 }
+
+func TestRecordStoresPosition(t *testing.T) {
+	dbc := store.OpenTestDB(t)
+	ctx := context.Background()
+	if err := store.Migrate(ctx, dbc); err != nil {
+		t.Fatal(err)
+	}
+	store.Truncate(t, dbc)
+	shown := []analytics.Item{{ProductID: "prod-a", Type: "cross_sell", Source: "engine", Rank: 2}}
+	if err := analytics.Log(ctx, dbc, "tr-rank", "smb-001", "cross_sell",
+		analytics.Meta{Strategy: "hybrid", Audience: "b2b", WeightsVersion: "v1"}, false, shown, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := analytics.Record(ctx, dbc, "tr-rank", "smb-001", "prod-a", "clicked"); err != nil {
+		t.Fatal(err)
+	}
+	var rank int
+	if err := dbc.QueryRow(`SELECT rank FROM recommendation_events WHERE trace_id='tr-rank' AND event='clicked'`).Scan(&rank); err != nil {
+		t.Fatal(err)
+	}
+	if rank != 2 {
+		t.Fatalf("rank = %d, want 2", rank)
+	}
+}

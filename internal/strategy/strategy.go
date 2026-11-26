@@ -3,7 +3,10 @@ package strategy
 
 import "math/rand"
 
-const exploration = 0.1
+const (
+	exploration = 0.1
+	minObserved = 20
+)
 
 // Stat is one strategy arm with its prior and observed outcomes.
 type Stat struct {
@@ -57,29 +60,48 @@ func ChooseWith(audience string, stats []Stat, random func() float64) string {
 	if len(arms) == 0 {
 		return Default(audience)
 	}
-	hasObservations := false
-	for _, s := range arms {
-		if s.Shown > 0 {
-			hasObservations = true
+	want := Default(audience)
+	var defaultArm *Stat
+	for i := range arms {
+		if arms[i].Strategy == want {
+			defaultArm = &arms[i]
 			break
 		}
 	}
-	if !hasObservations {
-		want := Default(audience)
-		for _, s := range arms {
-			if s.Strategy == want {
-				return want
+	if defaultArm == nil {
+		best := arms[0]
+		for _, s := range arms[1:] {
+			if Score(s) > Score(best) {
+				best = s
 			}
 		}
-		return arms[0].Strategy
+		return best.Strategy
+	}
+	// Do not switch away from the safe default until it has enough impressions.
+	if defaultArm.Shown < minObserved {
+		return want
+	}
+	// Warm up each challenger before comparing it with the default.
+	under := make([]Stat, 0)
+	for _, s := range arms {
+		if s.Strategy != want && s.Shown < minObserved {
+			under = append(under, s)
+		}
+	}
+	if len(under) > 0 {
+		return under[int(random()*float64(len(under)))%len(under)].Strategy
 	}
 	if random() < exploration {
 		return arms[int(random()*float64(len(arms)))%len(arms)].Strategy
 	}
-	best := arms[0]
-	for _, s := range arms[1:] {
-		if Score(s) > Score(best) {
-			best = s
+	best := *defaultArm
+	bestScore := Score(*defaultArm)
+	for _, s := range arms {
+		if s.Strategy == want || s.Shown < minObserved {
+			continue
+		}
+		if Score(s) > bestScore+0.02 {
+			best, bestScore = s, Score(s)
 		}
 	}
 	return best.Strategy

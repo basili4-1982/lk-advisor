@@ -143,17 +143,19 @@ type Promotion struct {
 
 // Candidate is a product considered for recommendation.
 type Candidate struct {
-	Product     Product    `json:"product"`
-	Type        string     `json:"type"`
-	Relevance   float64    `json:"relevance"`
-	Urgency     float64    `json:"urgency"`
-	Affinity    float64    `json:"affinity"`
-	Margin      float64    `json:"margin"`
-	Confidence  float64    `json:"confidence"`
-	Score       float64    `json:"score"`
-	Promo       *Promotion `json:"promo,omitempty"`
-	Constraints []string   `json:"constraints,omitempty"`
-	Evidence    []Evidence `json:"-"`
+	Product            Product    `json:"product"`
+	Type               string     `json:"type"`
+	Relevance          float64    `json:"relevance"`
+	Urgency            float64    `json:"urgency"`
+	Affinity           float64    `json:"affinity"`
+	Margin             float64    `json:"margin"`
+	Confidence         float64    `json:"confidence"`
+	Score              float64    `json:"score"`
+	FeedbackMultiplier float64    `json:"feedback_multiplier,omitempty"`
+	Exploration        bool       `json:"exploration,omitempty"`
+	Promo              *Promotion `json:"promo,omitempty"`
+	Constraints        []string   `json:"constraints,omitempty"`
+	Evidence           []Evidence `json:"-"`
 }
 
 // Evidence is one fact a reason may cite.
@@ -168,20 +170,32 @@ type Price struct {
 	Currency string `json:"currency"`
 }
 
+// ScoreFactors exposes the five inputs of the scoring formula.
+type ScoreFactors struct {
+	Relevance  float64 `json:"relevance"`
+	Urgency    float64 `json:"urgency"`
+	Affinity   float64 `json:"affinity"`
+	Margin     float64 `json:"margin"`
+	Confidence float64 `json:"confidence"`
+}
+
 // Recommendation is one item of the API response.
 type Recommendation struct {
-	ProductID   string     `json:"product_id"`
-	SKU         string     `json:"sku"`
-	Title       string     `json:"title"`
-	Type        string     `json:"type"`
-	Score       float64    `json:"score"`
-	Rank        int        `json:"rank"`
-	Reason      string     `json:"reason"`
-	Evidence    []Evidence `json:"evidence"`
-	Constraints []string   `json:"constraints"`
-	Price       Price      `json:"price"`
-	Promo       *Promotion `json:"promo,omitempty"`
-	ExpiresAt   time.Time  `json:"expires_at"`
+	ProductID          string        `json:"product_id"`
+	SKU                string        `json:"sku"`
+	Title              string        `json:"title"`
+	Type               string        `json:"type"`
+	Score              float64       `json:"score"`
+	FeedbackMultiplier float64       `json:"feedback_multiplier,omitempty"`
+	Exploration        bool          `json:"exploration,omitempty"`
+	Rank               int           `json:"rank"`
+	Reason             string        `json:"reason"`
+	Factors            *ScoreFactors `json:"factors,omitempty"`
+	Evidence           []Evidence    `json:"evidence"`
+	Constraints        []string      `json:"constraints"`
+	Price              Price         `json:"price"`
+	Promo              *Promotion    `json:"promo,omitempty"`
+	ExpiresAt          time.Time     `json:"expires_at"`
 }
 
 // Rule is a business restriction.

@@ -62,6 +62,7 @@ curl -s -X POST localhost:8080/v1/ask \
 - Агент разметки: пара товаров → тип из шаблонов, уверенность, evidence; запись только после подтверждения.
 - Ручная валидация: очередь `quarantine` / `llm_suggested`, подтверждение и отклонение, заметки и аудит.
 - Агентная аналитика: стратегия и сегмент в событиях, авто-А/Б, веса B2B/B2C, health-очередь для слабых связей.
+- Обратная связь: boost/penalty по товарам, exploration-слот, учёт позиции клика.
 
 ## Тесты и eval
 
@@ -115,6 +116,7 @@ docs/              демо и прогон
 | `docs/lk-adapter.md` | адаптер под `cross_sell/list` и реальный кейс `lk-36612` |
 | `analysis/README.md` | разбор датасета v3, baseline и наш бэктест |
 | `analysis/evaluate.py` | воспроизводимый Precision@3 / Fill Rate |
+| `analysis/bandit_simulation.py` | график бандита: холодный старт → стабильная стратегия |
 | `docs/superpowers/plans/2026-11-26-agentic-analytics.md` | хранение аналитики, авто-А/Б, веса, авто-перестройка |
 | `docs/relation-validation.md` | ручная очередь проверки связей |
 | `docs/demo-run.md` | прогон демо и ожидаемые ответы |

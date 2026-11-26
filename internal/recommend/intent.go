@@ -13,6 +13,17 @@ func Intent(in Input) string {
 			return "renewal"
 		}
 	}
+	for _, l := range in.Profile.Licenses {
+		if l.Status != "expired" {
+			continue
+		}
+		d := daysUntil(l.End, in.Now)
+		if d < 0 && d >= -30 {
+			if p, ok := in.Product(l.ProductID); ok && p.Status != "discontinued" {
+				return "renewal"
+			}
+		}
+	}
 
 	owned := ownedIDs(in.Profile)
 	for _, r := range in.Relations {
