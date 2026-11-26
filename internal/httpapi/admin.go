@@ -102,6 +102,11 @@ table.registry th,table.registry td{padding:4px 6px}
 .pair-text.full{white-space:normal;word-break:break-word;font-weight:600}
 .alias-edit{font-size:12px;color:var(--muted);margin:4px 0}
 .alias-edit b{color:var(--ink)}
+.danger-zone{display:flex;justify-content:flex-end;align-items:center;gap:18px;margin:22px 0 4px;padding-top:14px;border-top:1px solid var(--line)}
+.danger-copy{text-align:right}
+.danger-copy b{color:#7f1d1d;font-size:13px}
+button.danger{background:#7f1d1d;color:#fff;padding:12px 22px;font-size:14px;border-radius:10px;font-weight:800}
+button.danger:hover{background:#991b1b}
 .pair-qual{display:inline-block;font-size:10px;font-weight:600;color:#6b7280;background:#f1f5f9;border-radius:4px;padding:0 4px;vertical-align:1px}
 .pair-delta del{color:#b91c1c;text-decoration:line-through}
 .pair-delta ins{color:#047857;text-decoration:none;font-weight:700}
@@ -283,7 +288,6 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button class="secondary small" data-view="structural">Структурные</button>
             <button id="registry-generate" class="small">Сгенерировать</button>
             <button id="registry-import" class="secondary small">Импорт</button>
-            <button id="registry-reset" class="ghost small">Сбросить каталог</button>
             <button id="registry-sweep" class="secondary small">Проверить TTL</button>
             <span class="hint" id="registry-count"></span>
           </div>
@@ -314,6 +318,13 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button id="registry-defer" class="secondary small">Отложить</button>
           </div>
           <div id="registry-detail" class="formbox" style="margin-top:12px"></div>
+          <div class="danger-zone">
+            <div class="danger-copy">
+              <b>Опасное действие</b>
+              <div class="hint">Удаляет все связи, события, алиасы и импортированные позиции. Остаётся чистый каталог v5.</div>
+            </div>
+            <button id="registry-reset" class="danger">Сбросить каталог</button>
+          </div>
         </div>
 
         <div id="tab-validation" class="hidden">
