@@ -7,16 +7,25 @@
 http://localhost:8080/demo/graph
 ```
 
+Запуск закрытого демо:
+
+```bash
+DEMO_ALLOW_REAL_DATA=1 go run ./cmd/lk-advisor serve
+```
+
+Без флага API графа выключен, чтобы реальные данные нельзя было случайно
+опубликовать.
+
 ## Что видно
 
 | Слой | Значение |
 |---|---:|
-| Публичные товары | 821 |
+| Публичные товары | 817 |
 | Публичные B2B-связи | 412 |
 | Товары в связях | 325 |
-| Публичные solo-товары | 496 |
-| Скрыто по k<3 | 258 |
-| Скрыто B2C k<5 | 33 |
+| Публичные solo-товары | 492 |
+| Скрыто по k<3 | 0 |
+| Скрыто B2C k<5 | 0 |
 
 - узлы — товары, цвет — категория;
 - рёбра — совместные покупки, толщина — сила связи;
@@ -95,15 +104,15 @@ GET /v1/demo/graph?audience=b2b|b2c&period=2026-09&solo_limit=1000
   "audience": "b2b",
   "nodes": [{"id": "...", "title": "...", "category": "security", "degree": 27, "solo": false}],
   "edges": [{"source": "...", "target": "...", "count": 50, "b2b_count": 50}],
-  "coverage": {"public_items": 821, "public_pairs": 412},
+  "coverage": {"public_items": 817, "public_pairs": 412},
   "connected": 325,
-  "public_solo": 496,
-  "shown_solo": 496,
+  "public_solo": 492,
+  "shown_solo": 492,
   "period": "2026-09",
   "period_label": "сентябрь 2026",
-  "period_items": 350,
+  "period_items": 323,
   "period_public_items": 87,
-  "period_hidden_items": 263
+  "period_hidden_items": 236
 }
 ```
 

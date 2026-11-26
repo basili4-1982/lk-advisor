@@ -8,6 +8,7 @@ import (
 )
 
 func TestDemoGraphEndpoints(t *testing.T) {
+	t.Setenv("DEMO_ALLOW_REAL_DATA", "1")
 	h, _ := setupAPI(t)
 	rec := doJSON(t, h, http.MethodGet, "/v1/demo/graph?audience=b2b", "")
 	if rec.Code != http.StatusOK {

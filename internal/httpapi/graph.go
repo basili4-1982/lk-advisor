@@ -3,12 +3,17 @@ package httpapi
 import (
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
 )
 
 func (h *handler) demoGraph(w http.ResponseWriter, r *http.Request) {
+	if os.Getenv("DEMO_ALLOW_REAL_DATA") != "1" {
+		writeError(w, http.StatusForbidden, "real dataset demo is disabled; set DEMO_ALLOW_REAL_DATA=1 for the closed hackathon demo")
+		return
+	}
 	audience := r.URL.Query().Get("audience")
 	soloLimit := 800
 	if raw := r.URL.Query().Get("solo_limit"); raw != "" {
