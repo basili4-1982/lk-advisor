@@ -87,6 +87,10 @@ table.registry td{vertical-align:middle}
 table.registry th,table.registry td{padding:6px 8px}
 .clip{display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .clip-sm{max-width:180px}
+.pair{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pair-delta{margin:0 2px}
+.pair-delta del{color:#b91c1c;text-decoration:line-through}
+.pair-delta ins{color:#047857;text-decoration:none;font-weight:700}
 .rel-pair{display:flex;align-items:center;gap:6px;min-width:0}
 .rel-pair .clip{max-width:48%}
 .rel-pair .arrow{color:#9ca3af;flex:0 0 auto}
@@ -896,6 +900,37 @@ function evidenceText(e){
   if(kind==='llm') return 'LLM: '+(e.summary || 'предложение модели');
   return (EV_KIND[kind]?EV_KIND[kind]+': ':'')+(e.summary || '');
 }
+function commonPair(from, to){
+  var n=Math.min(from.length,to.length), p=0;
+  while(p<n && from[p]===to[p]) p++;
+  var s=0;
+  while(s<n-p && from[from.length-1-s]===to[to.length-1-s]) s++;
+  function boundary(ch){ return ch===' '||ch==='-'||ch==='/'||ch==='('||ch===')'||ch===','; }
+  while(p>0 && !boundary(from[p-1])) p--;
+  while(s>0 && !boundary(from[from.length-s])) s--;
+  return {p:p, s:s};
+}
+function pairCell(from, to){
+  from=String(from||''); to=String(to||'');
+  var full=esc(from)+' → '+esc(to);
+  var c=commonPair(from,to);
+  var prefix=from.slice(0,c.p).trim();
+  var suffix=from.slice(from.length-c.s).trim();
+  var fromMid=from.slice(c.p, from.length-c.s).trim();
+  var toMid=to.slice(c.p, to.length-c.s).trim();
+  var sim=(c.p+c.s)/Math.max(from.length,to.length,1);
+  if (sim>=0.5 && fromMid.length<=60 && toMid.length<=60 && (fromMid || toMid)) {
+    var pre=prefix.length>40?prefix.slice(0,40)+'…':prefix;
+    var suf=suffix.length>30?suffix.slice(0,30)+'…':suffix;
+    var delta='<span class="pair-delta">['+
+      (fromMid?'<del>'+esc(fromMid)+'</del>':'')+
+      (fromMid&&toMid?' → ':'')+
+      (toMid?'<ins>'+esc(toMid)+'</ins>':'')+
+      ']</span>';
+    return '<span class="pair" data-tip="'+full+'">'+esc(pre)+' '+delta+' '+esc(suf)+'</span>';
+  }
+  return '<div class="rel-pair"><span class="clip" data-tip="'+esc(from)+'">'+esc(from)+'</span><span class="arrow">→</span><span class="clip" data-tip="'+esc(to)+'">'+esc(to)+'</span></div>';
+}
 function evidenceCell(ev){
   if(!ev || !ev.length) return '—';
   var first=ev[0], kind=first.kind||'';
@@ -1001,7 +1036,7 @@ function renderRegistry(){
   el('registry-body').innerHTML = rows.map(function(r){
     return '<tr data-reg-id="'+r.id+'">'+
       '<td><input type="checkbox" data-reg-check="'+r.id+'" style="width:auto"'+(REG_SELECTED[r.id]?' checked':'')+'></td>'+
-      '<td><div class="rel-pair"><span class="clip" data-tip="'+esc(r.from_title||r.from_item_id)+'">'+esc(r.from_title||r.from_item_id)+'</span><span class="arrow">→</span><span class="clip" data-tip="'+esc(r.to_title||r.to_item_id)+'">'+esc(r.to_title||r.to_item_id)+'</span></div></td>'+
+      '<td>'+pairCell(r.from_title||r.from_item_id, r.to_title||r.to_item_id)+'</td>'+
       '<td><span class="type-chip" style="--tc:'+typeColor(r.type)+'" data-tip="'+esc(typeDesc(r.type))+'"><i></i>'+esc(typeTitle(r.type))+'</span></td>'+
       '<td><span class="pill '+(r.status==='active'?'on':(r.status==='rejected'?'off':'q'))+'">'+esc(regStatusLabel(r.status))+'</span></td>'+
       '<td><span class="prov-cell">'+esc(regProvLabel(r.provenance_kind))+' '+confMeter(r.confidence)+'</span></td>'+
