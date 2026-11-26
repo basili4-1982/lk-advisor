@@ -495,6 +495,19 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
     </div>
   </div>
 </div>
+<div class="modal hidden" id="registry-import-modal">
+  <div class="modal-box">
+    <div class="form-title">Импорт позиций</div>
+    <div class="hint">CSV: <code>item_id, title, sku, product_group, available, category</code>.<br>
+      Разделитель <code>,</code> или <code>;</code>. Excel: «Сохранить как CSV». Связи и алиасы не удаляются.</div>
+    <input type="file" id="registry-import-file" accept=".csv,text/csv" style="margin:10px 0">
+    <div id="registry-import-result" class="hint"></div>
+    <div class="toolbar" style="margin-top:12px;justify-content:flex-end">
+      <button id="registry-import-no" class="secondary small">Отмена</button>
+      <button id="registry-import-yes" class="small">Загрузить</button>
+    </div>
+  </div>
+</div>
 <script>
 var REL_TYPES = {
   upgrade: 'Апгрейд', adjacent_task: 'Дополнение', substitute: 'Замена',
