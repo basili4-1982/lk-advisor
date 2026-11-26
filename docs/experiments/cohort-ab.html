@@ -1,0 +1,204 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<style>
+@page { size: A4; margin: 18mm 16mm; }
+body { font-family: Arial, sans-serif; color:#111827; line-height:1.45; font-size:11pt; }
+h1 { font-size:22pt; color:#0f172a; border-bottom:3px solid #c8102e; padding-bottom:8px; }
+h2 { font-size:15pt; color:#0f172a; margin-top:22px; page-break-after: avoid; }
+h3 { font-size:12.5pt; }
+table { border-collapse:collapse; width:100%; margin:12px 0; font-size:9.5pt; page-break-inside: avoid; }
+th,td { border:1px solid #d1d5db; padding:6px 8px; text-align:left; }
+th { background:#f3f4f6; }
+img { max-width:100%; margin:12px 0; border:1px solid #e5e7eb; page-break-inside: avoid; }
+code { background:#f3f4f6; padding:1px 4px; border-radius:4px; }
+pre { background:#0f172a; color:#e5e7eb; padding:10px; border-radius:6px; font-size:9pt; }
+blockquote { border-left:4px solid #c8102e; margin:12px 0; padding-left:12px; color:#4b5563; }
+</style></head><body><h1>A/B на когорте агентов: скрытый профиль «офисный работник»</h1>
+<p>Дата: 26.11.2026.<br />
+Данные: обезличенный датасет организаторов + синтетические агенты.<br />
+Профиль не передаётся в рекомендательную систему — она видит только <code>client_id</code>, покупки и события.</p>
+<h2>1. Что проверяли</h2>
+<p>Гипотеза: если у клиента есть типовой профиль, рекомендательная система может подстроиться под него по поведению и выдавать не случайные, а релевантные товары.</p>
+<p>Проверка — не на людях, а на агентах:</p>
+<ul>
+<li>20 синтетических клиентов;</li>
+<li>у всех один скрытый профиль «офисный работник»;</li>
+<li>у каждого своя история и свои события;</li>
+<li>100 сессий на агента;</li>
+<li>A/B: 10 агентов в контроле, 10 в адаптивной группе.</li>
+</ul>
+<h2>2. Скрытый профиль</h2>
+<table>
+<thead>
+<tr>
+<th>Параметр</th>
+<th>Значение</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Роль</td>
+<td>офисный работник / бухгалтер</td>
+</tr>
+<tr>
+<td>Аудитория</td>
+<td>B2B</td>
+</tr>
+<tr>
+<td>Интересы</td>
+<td>Office, PDF, обучение, backup, безопасность</td>
+</tr>
+<tr>
+<td>Избегает</td>
+<td>игры, графику, CAD</td>
+</tr>
+<tr>
+<td>Стартовая история</td>
+<td>Microsoft Office 2024 для дома и учёбы</td>
+</tr>
+<tr>
+<td>Что видит система</td>
+<td>только историю, показы, клики и покупки</td>
+</tr>
+</tbody>
+</table>
+<p>Профиль <strong>не отправляется</strong> в API. Агент использует его только для решения «кликнуть / купить / пропустить».</p>
+<h2>3. Дизайн A/B</h2>
+<table>
+<thead>
+<tr>
+<th>Плечо</th>
+<th>Что внутри</th>
+<th style="text-align: right;">Агентов</th>
+<th style="text-align: right;">Сессий</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Контроль</td>
+<td><code>popular</code>, без адаптации</td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">100</td>
+</tr>
+<tr>
+<td>Тест</td>
+<td><code>hybrid + feedback + exploration</code></td>
+<td style="text-align: right;">10</td>
+<td style="text-align: right;">100</td>
+</tr>
+</tbody>
+</table>
+<p>Метрики:</p>
+<ul>
+<li><strong>match</strong> — среднее совпадение топ-3 со скрытым профилем, 0–1;</li>
+<li><strong>preferred share</strong> — доля карточек в предпочтённых категориях;</li>
+<li><strong>покупки на сессию</strong> — доля сессий, где агент совершил покупку;</li>
+<li><strong>клики</strong> — доля сессий с кликом.</li>
+</ul>
+<h2>4. Результаты</h2>
+<table>
+<thead>
+<tr>
+<th>Метрика</th>
+<th style="text-align: right;">popular</th>
+<th style="text-align: right;">hybrid + feedback</th>
+<th style="text-align: right;">Разница</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Совпадение с профилем</td>
+<td style="text-align: right;"><strong>24%</strong></td>
+<td style="text-align: right;"><strong>82%</strong></td>
+<td style="text-align: right;">×3.4</td>
+</tr>
+<tr>
+<td>Доля нужных категорий</td>
+<td style="text-align: right;"><strong>23%</strong></td>
+<td style="text-align: right;"><strong>100%</strong></td>
+<td style="text-align: right;">×4.3</td>
+</tr>
+<tr>
+<td>Покупки на сессию</td>
+<td style="text-align: right;"><strong>39%</strong></td>
+<td style="text-align: right;"><strong>83%</strong></td>
+<td style="text-align: right;">×2.1</td>
+</tr>
+<tr>
+<td>Клики</td>
+<td style="text-align: right;">67%</td>
+<td style="text-align: right;">90%</td>
+<td style="text-align: right;">+23 п.п.</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="Сводка A/B" src="../../analysis/office_cohort_summary.png" /></p>
+<p><img alt="Кривые по сессиям" src="../../analysis/office_cohort_ab.png" /></p>
+<h2>5. Что это значит</h2>
+<ul>
+<li>Для офисного работника популярность ошибается: в топ попадают devtools/backup/analytics, а не Office/PDF/обучение.</li>
+<li>Адаптивная система после кликов и покупок выходит на <strong>100% предпочтённых категорий</strong>.</li>
+<li>Покупки растут <strong>в 2.1 раза</strong> в симуляции.</li>
+<li>Это не «магия LLM»: работают граф связей, правила, feedback и exploration.</li>
+</ul>
+<h2>6. Офлайн-бэктест на датасете</h2>
+<table>
+<thead>
+<tr>
+<th>Группа</th>
+<th style="text-align: right;">Baseline Precision@3</th>
+<th style="text-align: right;">Наша модель</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>B2B A</td>
+<td style="text-align: right;">3.6%</td>
+<td style="text-align: right;"><strong>9.9%</strong></td>
+</tr>
+<tr>
+<td>B2B B, холодный старт</td>
+<td style="text-align: right;">5.1%</td>
+<td style="text-align: right;"><strong>12.3%</strong></td>
+</tr>
+<tr>
+<td>B2C A</td>
+<td style="text-align: right;">19.4%</td>
+<td style="text-align: right;">19.4%</td>
+</tr>
+<tr>
+<td>B2C B</td>
+<td style="text-align: right;">19.2%</td>
+<td style="text-align: right;">19.2%</td>
+</tr>
+</tbody>
+</table>
+<p>Вывод: на B2B модель примерно в 2.4–2.7 раза лучше baseline; на B2C не теряем. B2C-выборка маленькая, выводы по ней осторожные.</p>
+<h2>7. Ограничения</h2>
+<ul>
+<li>Это <strong>агенты</strong>, не реальные пользователи.</li>
+<li>Профиль и вероятности покупки заданы нами; это проверка механизма, а не доказательство рынка.</li>
+<li>Каталог в демо синтетический; на реальном каталоге цифры изменятся.</li>
+<li>Для продажи заказчику нужен пилот на реальном трафике с контрольной группой.</li>
+</ul>
+<h2>8. Следующий шаг</h2>
+<ol>
+<li>Прогнать 3 профиля: офисный работник, Go-разработчик, дизайнер/студент.</li>
+<li>Показать, где адаптация даёт uplift, а где популярность уже достаточна.</li>
+<li>Запустить пилот на реальном трафике:</li>
+<li>контроль — текущая выдача;</li>
+<li>тест — hybrid + feedback;</li>
+<li>метрики: conversion, attachment rate, выручка на 1000 показов, Fill Rate.</li>
+<li>После 4–6 недель — бизнес-кейс для заказчика.</li>
+</ol>
+<h2>9. Воспроизведение</h2>
+<pre><code class="language-bash">cd /home/basili4/GolandProjects/lk-advisor
+python3 analysis/office_cohort_ab.py
+python3 analysis/make_cohort_summary.py
+</code></pre>
+<p>Скрипт сам сбрасывает тестовых клиентов и пересоздаёт demo-seed после прогона.</p>
+<h2>10. Для презы — три сообщения</h2>
+<ol>
+<li><strong>Профиль скрыт, система учится по поведению.</strong> Это честный тест, а не подгонка.</li>
+<li><strong>На когорте 10+10 адаптация даёт 82% match и 100% нужных категорий против 24% и 23% у популярности.</strong></li>
+<li><strong>Покупки в симуляции растут в 2.1 раза.</strong> Это основа для пилота и бизнес-кейса.</li>
+</ol></body></html>

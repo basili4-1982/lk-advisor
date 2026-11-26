@@ -118,6 +118,7 @@ docs/              демо и прогон
 | `analysis/evaluate.py` | воспроизводимый Precision@3 / Fill Rate |
 | `analysis/bandit_simulation.py` | график бандита: холодный старт → стабильная стратегия |
 | `analysis/hidden_persona_ab.py` | A/B на агентах со скрытым профилем |
+| `docs/experiments/cohort-ab.pdf` | отчёт по когорте агентов для презы |
 | `docs/superpowers/plans/2026-11-26-agentic-analytics.md` | хранение аналитики, авто-А/Б, веса, авто-перестройка |
 | `docs/relation-validation.md` | ручная очередь проверки связей |
 | `docs/demo-run.md` | прогон демо и ожидаемые ответы |
