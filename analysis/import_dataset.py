@@ -33,7 +33,7 @@ def category_for(title: str) -> str:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dataset", default=os.getenv("DATASET", "/home/basili4/Загрузки/Датасет_Рекомендации_ЛК_v3.xlsx"))
+    ap.add_argument("--dataset", default=os.getenv("DATASET", "Датасет_Рекомендации_ЛК_v4.xlsx"))
     ap.add_argument("--dsn", default=os.getenv("DATABASE_URL", "postgres://lk:lk@localhost:55432/lk?sslmode=disable"))
     args = ap.parse_args()
 
@@ -143,7 +143,7 @@ def main() -> None:
     print("  order instances (order_id, order_week)",
           sales[["order_id", "order_week"]].drop_duplicates().shape[0])
     print("  multi-week orders", multi_week)
-    print("  cross-cut orders (excluded from eval)", cross_cut)
+    print("  cross-cut orders (separate weekly purchases)", cross_cut)
     print("  sales rows", len(sales))
     print("  co-purchase pairs", len(pairs))
     print("  pairs count>=2", sum(1 for n in pairs.values() if n >= 2))

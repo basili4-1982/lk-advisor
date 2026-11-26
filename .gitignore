@@ -15,6 +15,10 @@
 # data: raw and generated
 /data/raw/
 /data/generated/
+# competition datasets must never be committed
+Датасет_*
+**/Датасет_*
+**/*Датасет_Рекомендации*
 *.db
 *.sqlite
 *.sqlite3

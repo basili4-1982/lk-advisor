@@ -114,16 +114,17 @@ docs/              демо и прогон
 | `docs/kickoff-2026-11-26.md` | разбор презентации кик-оффа и изменения плана |
 | `docs/lk-test-account.md` | что внутри тестового ЛК: профиль, продукты, API рекомендаций |
 | `docs/lk-adapter.md` | адаптер под `cross_sell/list` и реальный кейс `lk-36612` |
-| `analysis/README.md` | разбор датасета v3, baseline и наш бэктест |
+| `analysis/README.md` | разбор датасета v4, baseline и наш бэктест |
 | `analysis/evaluate.py` | воспроизводимый Precision@3 / Fill Rate |
 | `analysis/bandit_simulation.py` | график бандита: холодный старт → стабильная стратегия |
 | `analysis/hidden_persona_ab.py` | A/B на агентах со скрытым профилем |
 | `docs/experiments/cohort-ab.pdf` | отчёт по когорте агентов для презы |
-| `docs/dataset-relations.md` | импорт v3, co-purchase и очередь кандидатов |
+| `docs/dataset-relations.md` | импорт v4, co-purchase и очередь кандидатов |
 | `docs/relation-bandit.md` | CTR/покупки по конкретной связи и авто-решение |
 | `docs/relation-scopes.md` | скоупы B2B/B2C/отрасль и TTL связей |
 | `docs/live-slices.md` | decayed demand, renewal и evidence-разрезы в живой выдаче |
 | `docs/demo-graph.md` | демо-граф публичного слоя: `/demo/graph` |
+| `docs/data-handling.md` | что можно и нельзя коммитить |
 | `docs/superpowers/plans/2026-11-26-agentic-analytics.md` | хранение аналитики, авто-А/Б, веса, авто-перестройка |
 | `docs/relation-validation.md` | ручная очередь проверки связей |
 | `docs/demo-run.md` | прогон демо и ожидаемые ответы |

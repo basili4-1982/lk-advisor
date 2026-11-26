@@ -1,4 +1,4 @@
-.PHONY: build run test fmt vet check db-up db-down migrate seed eval demo
+.PHONY: build run test fmt vet check db-up db-down migrate seed eval demo data-check
 
 BIN := bin/lk-advisor
 DSN ?= postgres://lk:lk@localhost:55432/lk?sslmode=disable
@@ -37,3 +37,6 @@ eval:
 
 demo:
 	./docs/demo.sh
+
+data-check:
+	./analysis/check_data_hygiene.sh
