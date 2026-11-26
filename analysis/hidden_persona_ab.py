@@ -88,7 +88,8 @@ def run_arm(strategy: str, products: dict[str, dict], rng: random.Random) -> pd.
         best_utility, best = scored[0] if scored else (0, None)
         click_prob = 1 / (1 + math.exp(-1.5 * best_utility)) if best else 0
         clicked = best is not None and rng.random() < click_prob
-        purchased = clicked and rng.random() < 0.4
+        purchase_prob = 1 / (1 + math.exp(-2.0 * (best_utility - 0.4))) if best else 0
+        purchased = clicked and rng.random() < purchase_prob
         if clicked:
             req("POST", "/v1/events", {
                 "trace_id": resp["trace_id"], "client_id": CLIENT,
