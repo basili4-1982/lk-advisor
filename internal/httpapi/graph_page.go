@@ -119,7 +119,7 @@ const CAT_RU={security:'Безопасность',office:'Офис',graphics:'Г
 let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null;
 let audience='b2b',soloOn=false,categoryFilter=null,search='',initialIndustry=new URLSearchParams(location.search).get('industry')||'',initialSegment=new URLSearchParams(location.search).get('segment')||'',initialFamily=new URLSearchParams(location.search).get('family')||'',industryFilter=initialIndustry,segmentFilter=initialSegment,familyFilter=initialFamily;
 let periods=[],currentPeriod='',initialPeriod=new URLSearchParams(location.search).get('period')||'',page=Math.max(1,parseInt(new URLSearchParams(location.search).get('page')||'1',10)||1),pageSize=Math.max(250,Math.min(1000,parseInt(new URLSearchParams(location.search).get('page_size')||'1000',10)||1000)),totalPages=1;
-let graph=null;
+let graph=null,autoFitDone=false,userInteracted=false;
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
 function fmt(n){return Number(n||0).toLocaleString('ru-RU')}
 function sourceID(l){return l.source&&l.source.id?l.source.id:l.source}
@@ -146,7 +146,6 @@ function initGraph(){
     const link=graph.d3Force('link');if(link&&link.distance)link.distance(45);
   }
   if(graph.cooldownTicks)graph.cooldownTicks(220);
-  if(graph.onEngineStop)graph.onEngineStop(()=>{if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))});
   resizeGraph();
 }
 function resizeGraph(){if(graph)graph.width(wrap.clientWidth).height(wrap.clientHeight)}
@@ -218,10 +217,11 @@ async function load(focusId){
   edges=DATA.edges.map(e=>Object.assign({},e));
   if(!graph)initGraph();
   graph.graphData({nodes:nodes,links:edges});
+  autoFitDone=false;userInteracted=false;
   drawStats();drawLegend();updateTimeControl();
   if(focusId&&byId[focusId]){showNode(byId[focusId]);setTimeout(()=>focusNode(byId[focusId]),700)}
   else selectInitial();
-  setTimeout(()=>{if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))},1200);
+  setTimeout(()=>{if(!userInteracted&&!autoFitDone&&graph&&graph.zoomToFit){graph.zoomToFit(700,40,n=>nodeVisible(n));autoFitDone=true}},1200);
   $('status').textContent='';
 }
 function applyPeriod(d){
@@ -239,6 +239,7 @@ async function loadPeriod(value){
 }
 function zoomBy(factor){
   if(!graph)return;
+  userInteracted=true;autoFitDone=true;
   const cam=graph.cameraPosition();
   if(!cam)return;
   let target={x:0,y:0,z:0};
@@ -249,7 +250,7 @@ function zoomBy(factor){
     z: target.z+(cam.z-target.z)*factor
   }, target, 250);
 }
-function resetCamera(){if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))}
+function resetCamera(){userInteracted=true;autoFitDone=true;if(graph&&graph.zoomToFit)graph.zoomToFit(700,40,n=>nodeVisible(n))}
 function updatePager(){
   $('page-label').textContent=page+' / '+totalPages;
   $('prev-page').disabled=page<=1;
@@ -340,6 +341,8 @@ $('solo').addEventListener('change',e=>{soloOn=e.target.checked;refresh()});
 $('legend').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(!b)return;categoryFilter=b.dataset.cat==='all'?null:b.dataset.cat;drawLegend();refresh()});
 document.querySelectorAll('[data-audience]').forEach(b=>b.addEventListener('click',()=>{audience=b.dataset.audience;document.querySelectorAll('[data-audience]').forEach(x=>x.classList.toggle('active',x===b));industryFilter='';segmentFilter='';familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})}));
 window.addEventListener('resize',()=>{resizeGraph()});
+wrap.addEventListener('pointerdown',()=>{userInteracted=true;autoFitDone=true},{passive:true});
+wrap.addEventListener('wheel',()=>{userInteracted=true;autoFitDone=true},{passive:true});
 initGraph();
 load().catch(err=>{$('status').textContent='Ошибка: '+err.message});
 </script>
