@@ -73,9 +73,10 @@ button:disabled{opacity:.5;cursor:not-allowed}
 .formbox{background:#fafafa;border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:12px}
 .form-title{font-weight:800;margin-bottom:10px}
 .toolbar{display:flex;gap:4px;margin-bottom:4px;flex-wrap:wrap;align-items:center}
-.toolbar input{max-width:190px;padding:4px 7px;font-size:12px}
-.toolbar select{max-width:160px;padding:4px 6px;font-size:12px}
-.toolbar-filters{display:flex;gap:6px;flex-wrap:wrap}
+.toolbar input{flex:1 1 200px;max-width:320px;padding:4px 7px;font-size:12px}
+#registry-note{flex:1 1 280px;max-width:none}
+.toolbar select{flex:1 1 130px;padding:4px 6px;font-size:12px}
+.toolbar-filters{display:flex;gap:6px;flex-wrap:wrap;flex:1 1 auto}
 #registry-metrics{display:flex;gap:10px;flex-wrap:wrap;margin:2px 0 4px;font-size:12px;color:var(--muted)}
 #registry-metrics b{color:var(--ink);font-size:13px}
 #registry-metrics .sep{color:#cbd5e1}
@@ -244,7 +245,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
         <div id="tab-registry" class="hidden">
           <div class="stats" id="registry-metrics" style="margin-bottom:12px"></div>
           <div class="toolbar">
-            <input id="registry-search" placeholder="Поиск по товару или id" style="max-width:220px">
+            <input id="registry-search" placeholder="Поиск по товару или id">
             <button id="registry-filters-toggle" class="secondary small">Фильтры</button>
             <div id="registry-filters" class="toolbar-filters hidden">
             <select id="registry-type"><option value="">Все типы</option></select>
@@ -277,9 +278,9 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div id="registry-legend" class="legend"></div>
           <div class="tablewrap"><table class="registry">
             <colgroup>
-              <col style="width:32px"><col>
-              <col style="width:96px"><col style="width:86px">
-              <col style="width:112px"><col style="width:230px">
+              <col style="width:3%"><col style="width:54%">
+              <col style="width:9%"><col style="width:8%">
+              <col style="width:9%"><col style="width:17%">
             </colgroup>
             <thead><tr>
               <th><input type="checkbox" id="registry-all" style="width:auto"></th>
@@ -291,7 +292,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <tbody id="registry-body"></tbody>
           </table></div>
           <div class="toolbar" style="margin-top:10px">
-            <input id="registry-note" placeholder="Причина решения (обязательна для отказа)" style="max-width:360px">
+            <input id="registry-note" placeholder="Причина решения (обязательна для отказа)">
             <button id="registry-confirm" class="small">Подтвердить выбранные</button>
             <button id="registry-reject" class="secondary small">Отклонить</button>
             <button id="registry-defer" class="secondary small">Отложить</button>
@@ -1033,7 +1034,7 @@ function evidenceCell(ev){
   if(!ev || !ev.length) return '—';
   var first=ev[0], kind=first.kind||'';
   var more=ev.length>1 ? '<span class="ev-more">+'+(ev.length-1)+'</span>' : '';
-  return '<span class="ev"><i class="ev-dot ev-'+esc(kind)+'"></i><span class="clip clip-sm">'+esc(evidenceText(first))+'</span>'+more+'</span>';
+  return '<span class="ev" data-tip="'+esc(evidenceText(first))+'" style="cursor:help"><i class="ev-dot ev-'+esc(kind)+'"></i><span class="clip clip-sm">'+esc(evidenceText(first))+'</span>'+more+'</span>';
 }
 function evidenceList(ev){
   if(!ev || !ev.length) return '<div class="hint">Доказательств нет — связь создана вручную.</div>';
