@@ -13,6 +13,7 @@ import (
 
 	"github.com/basili4-1982/lk-advisor/internal/analytics"
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
+	"github.com/basili4-1982/lk-advisor/internal/experiment"
 	"github.com/basili4-1982/lk-advisor/internal/explain"
 	"github.com/basili4-1982/lk-advisor/internal/feedback"
 	"github.com/basili4-1982/lk-advisor/internal/model"
@@ -157,10 +158,31 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var runningExperiment *experiment.Experiment
+	var assignment experiment.Assignment
+	if list, xerr := experiment.LoadRunning(ctx, h.db, audience, industry); xerr == nil && len(list) > 0 {
+		e := list[0]
+		if a, aerr := experiment.Assign(ctx, h.db, e, req.ClientID); aerr == nil {
+			runningExperiment = &e
+			assignment = a
+		} else {
+			h.logger.Warn("experiment assignment", "err", aerr)
+		}
+	}
+
 	in := recommend.Input{
 		Profile: p, Products: products, Relations: relations,
 		Promotions: promotions, Rules: rules, RelationTypes: relationTypes,
 		Weights: weights, Popularity: popularity, Now: h.now(),
+	}
+	if runningExperiment != nil && assignment.Treatment {
+		in.Experiment = &recommend.ExperimentTreatment{
+			ID:              runningExperiment.ID,
+			Variant:         assignment.Variant,
+			TargetProductID: runningExperiment.ToID,
+			FromID:          runningExperiment.FromID,
+			RelationType:    runningExperiment.RelationType,
+		}
 	}
 	intent := recommend.Intent(in)
 
@@ -183,6 +205,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	cands := recommend.Diversify(allowed, limit)
 	cands = recommend.FillPopular(in, cands, limit)
+	cands = recommend.ForceExperiment(in, cands, limit)
 	// Explore only the last cross-sell slot: never replace renewal, upsell,
 	// analog or alternative, which carry the main business explanation.
 	if limit >= 3 && len(cands) >= 3 && cands[limit-1].Type == "cross_sell" {
@@ -301,6 +324,18 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	meta := analytics.Meta{Strategy: strategyName, Audience: audience, Industry: industry, WeightsVersion: weightsVersion}
 	if err := analytics.Log(ctx, h.db, traceID, req.ClientID, intent, meta, fallback, shownItems, skippedItems); err != nil {
 		h.logger.Warn("analytics log", "err", err)
+	}
+	if runningExperiment != nil {
+		exposedTarget := ""
+		for _, c := range cands {
+			if c.Product.ID == runningExperiment.ToID {
+				exposedTarget = runningExperiment.ToID
+				break
+			}
+		}
+		if err := experiment.RecordExposure(ctx, h.db, assignment, traceID, exposedTarget); err != nil {
+			h.logger.Warn("experiment exposure", "err", err)
+		}
 	}
 
 	writeJSON(w, http.StatusOK, recommendationResponse{

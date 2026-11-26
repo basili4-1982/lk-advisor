@@ -125,6 +125,7 @@ docs/              демо и прогон
 | `docs/live-slices.md` | decayed demand, renewal и evidence-разрезы в живой выдаче |
 | `docs/demo-graph.md` | демо-граф публичного слоя: `/demo/graph` |
 | `docs/data-handling.md` | что можно и нельзя коммитить |
+| `docs/hypothesis-platform.md` | вертикальный срез платформы гипотез |
 | `docs/superpowers/plans/2026-11-26-agentic-analytics.md` | хранение аналитики, авто-А/Б, веса, авто-перестройка |
 | `docs/relation-validation.md` | ручная очередь проверки связей |
 | `docs/demo-run.md` | прогон демо и ожидаемые ответы |

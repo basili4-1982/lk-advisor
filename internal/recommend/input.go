@@ -21,6 +21,8 @@ type Input struct {
 	// Popularity is decayed recent demand by product id. It is an optional
 	// supporting slice: nil means the caller did not load it.
 	Popularity map[string]float64
+	// Experiment is set for treatment arms of a running hypothesis test.
+	Experiment *ExperimentTreatment
 	Now        time.Time
 }
 
@@ -50,6 +52,15 @@ func (in Input) RelationBehavior(code string) string {
 func (in Input) Product(id string) (model.Product, bool) {
 	p, ok := in.Products[id]
 	return p, ok
+}
+
+// ExperimentTreatment forces one product into the offer pool for a test arm.
+type ExperimentTreatment struct {
+	ID              string
+	Variant         string
+	TargetProductID string
+	FromID          string
+	RelationType    string
 }
 
 func ownedIDs(p model.Profile) map[string]bool {

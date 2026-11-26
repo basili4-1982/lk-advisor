@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/basili4-1982/lk-advisor/internal/config"
+	"github.com/basili4-1982/lk-advisor/internal/experiment"
 	"github.com/basili4-1982/lk-advisor/internal/profile"
 	"github.com/basili4-1982/lk-advisor/internal/store"
 )
@@ -37,6 +38,9 @@ func runSeed(cfg config.Config) error {
 		return err
 	}
 	if err := store.SeedLKCase(ctx, dbc); err != nil {
+		return err
+	}
+	if err := experiment.SeedDemo(ctx, dbc); err != nil {
 		return err
 	}
 	if err := profile.RefreshAll(ctx, dbc); err != nil {

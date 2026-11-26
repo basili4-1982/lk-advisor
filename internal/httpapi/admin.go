@@ -130,6 +130,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
         <button class="tab" data-tab="rules">Правила</button>
         <button class="tab" data-tab="weights">Веса</button>
         <button class="tab" data-tab="dataset">Данные</button>
+        <button class="tab" data-tab="experiments">Гипотезы</button>
         <button class="tab" data-tab="analytics">Аналитика</button>
         <button class="tab" data-tab="assistant">ИИ-помощник</button>
       </div>
@@ -260,6 +261,15 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <div class="form-title">Сильные совместные покупки</div>
             <div id="dataset-pairs"></div>
           </div>
+        </div>
+
+        <div id="tab-experiments" class="hidden">
+          <div class="toolbar">
+            <button id="experiment-seed" class="secondary">Создать демо-гипотезу</button>
+            <button id="experiment-refresh" class="secondary small">Обновить</button>
+            <span class="hint">Одна гипотеза: назначение → exposure → метрики → решение. Данные пишутся в experiment_events.</span>
+          </div>
+          <div id="experiments-list"></div>
         </div>
 
         <div id="tab-analytics" class="hidden">
@@ -468,6 +478,7 @@ async function loadAnalytics(){
   loadStrategies();
   loadHealth();
   loadRelationPerf();
+  loadExperiments();
   loadRelationScopes();
 }
 async function loadHealth(){
@@ -479,6 +490,38 @@ async function loadHealth(){
     }).join('');
     el('analytics-health').innerHTML = '<div style="margin-bottom:8px">'+types+'</div>' + (low || '<div class="empty">Явных проблем нет</div>');
   } catch(e){ el('analytics-health').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
+}
+async function loadExperiments(){
+  try {
+    var d=await api('GET','/v1/admin/experiments');
+    var rows=d.items||[];
+    if(!rows.length){ el('experiments-list').innerHTML='<div class="empty">Гипотез пока нет — создайте демо-гипотезу.</div>'; return; }
+    el('experiments-list').innerHTML=rows.map(function(x){
+      var res=x.results||[];
+      var c=res.find(function(r){return r.variant==='control'})||{exposures:0,clicks:0,purchases:0,ctr:0,conversion:0};
+      var t=res.find(function(r){return r.variant==='treatment'})||{exposures:0,clicks:0,purchases:0,ctr:0,conversion:0};
+      var uplift=c.conversion>0?(t.conversion-c.conversion)/c.conversion*100:0;
+      var table='<div class="tablewrap"><table><thead><tr><th>Вариант</th><th>Exposure</th><th>Клиенты</th><th>Клики</th><th>Покупки</th><th>CTR</th><th>Conversion</th><th>Target shown</th><th>Target conv</th></tr></thead><tbody>'+
+        [['control',c],['treatment',t]].map(function(pair){
+          var r=pair[1];
+          return '<tr><td><b>'+esc(pair[0])+'</b></td><td>'+r.exposures+'</td><td>'+r.clients+'</td><td>'+r.clicks+'</td><td>'+r.purchases+'</td><td>'+pct(r.ctr)+'</td><td>'+pct(r.conversion)+'</td><td>'+r.target_exposures+'</td><td>'+pct(r.target_conversion)+'</td></tr>';
+        }).join('')+'</tbody></table></div>';
+      var decisions='<div class="toolbar" style="margin-top:8px">'+
+        '<button data-exp-decision="promote" data-exp-id="'+esc(x.id)+'">Подтвердить</button> '+
+        '<button class="ghost" data-exp-decision="reject" data-exp-id="'+esc(x.id)+'">Отклонить</button> '+
+        '<button class="secondary" data-exp-decision="extend" data-exp-id="'+esc(x.id)+'">Продлить</button>'+
+        '<span class="hint">Uplift treatment: '+(uplift>=0?'+':'')+uplift.toFixed(1)+'% · эффект в показе target: '+c.target_exposures+' → '+t.target_exposures+'</span></div>';
+      var decided=x.decision?'<div class="hint" style="margin-top:6px">Решение: <b>'+esc(x.decision)+'</b> '+esc(x.decision_note||'')+'</div>':'';
+      return '<div class="formbox" style="margin-bottom:12px">'+
+        '<div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start">'+
+          '<div><div class="form-title" style="margin:0">'+esc(x.title)+'</div>'+
+          '<div class="hint">'+esc(x.hypothesis)+'</div></div>'+
+          '<span class="pill">'+esc(x.status)+'</span></div>'+
+        '<div class="hint" style="margin:8px 0">Скоуп: '+esc(x.audience||'все')+' / '+esc(x.industry||'все')+' · '+
+          esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id)+' · '+esc(x.metric)+'</div>'+
+        table+decisions+decided+'</div>';
+    }).join('');
+  } catch(e){ el('experiments-list').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 async function loadRelationPerf(){
   try {
@@ -674,7 +717,7 @@ function renderRules(){
       '<div><span class="pill type">'+esc(RULE_TYPES[r.type]||r.type)+'</span> <button class="ghost small" data-rule-del="'+esc(r.id)+'">Удалить</button></div></div>';
   }).join('');
 }
-var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','dataset.co_purchase_suggest':'Связи из co-purchase созданы','relations.auto_review':'Связи проверены бандитом','relation_scope.review':'Скоуп связи обновлён','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
+var AUDIT_ACTIONS = {'relation.upsert':'Связь сохранена','relation.delete':'Связь удалена','relation_type.upsert':'Шаблон связи сохранён','relation_type.delete':'Шаблон связи удалён','relation.review':'Связь проверена','strategy.auto':'Авто-А/Б изменён','relations.auto_flag':'Связи помечены для проверки','dataset.co_purchase_suggest':'Связи из co-purchase созданы','relations.auto_review':'Связи проверены бандитом','relation_scope.review':'Скоуп связи обновлён','experiment.seed_demo':'Демо-гипотеза создана','experiment.decision':'Решение по гипотезе','rule.create':'Правило добавлено','rule.delete':'Правило удалено','weights.update':'Веса изменены','agent.apply':'Применены изменения ИИ'};
 function renderAudit(){
   var list = state.audit || [];
   if (!list.length) { el('audit-list').textContent='Пока нет изменений'; return; }
@@ -723,6 +766,7 @@ document.querySelectorAll('.tab').forEach(function(b){
     b.classList.add('on'); el('tab-'+b.dataset.tab).classList.remove('hidden');
     if (b.dataset.tab === 'analytics') loadAnalytics();
     if (b.dataset.tab === 'dataset') loadDataset();
+    if (b.dataset.tab === 'experiments') loadExperiments();
     if (b.dataset.tab === 'validation') loadReview();
   });
 });
@@ -770,6 +814,18 @@ el('review-list').addEventListener('click', function(ev){
   if (!mode) return;
   var r=reviewItems[Number(ev.target.dataset.reviewIndex)];
   if (r) reviewDecision(mode, [r]);
+});
+el('experiment-seed').addEventListener('click', async function(){
+  try { await api('POST','/v1/admin/experiments/demo',{}); toast('Демо-гипотеза создана'); loadExperiments(); }
+  catch(e){ toast(e.message,true); }
+});
+el('experiment-refresh').addEventListener('click', loadExperiments);
+el('experiments-list').addEventListener('click', async function(ev){
+  var mode=ev.target.dataset.expDecision, id=ev.target.dataset.expId;
+  if(!mode||!id)return;
+  var note = mode==='promote'?'подтверждено на пилоте':(mode==='reject'?'гипотеза не подтверждена':'нужна большая выборка');
+  try { await api('POST','/v1/admin/experiments/'+encodeURIComponent(id)+'/decision',{decision:mode,note:note}); toast('Решение сохранено'); loadExperiments(); }
+  catch(e){ toast(e.message,true); }
 });
 el('relation-auto').addEventListener('click', async function(){
   try { var d=await api('POST','/v1/admin/relations/auto-review',{min_shown:20,min_ctr:0.03}); toast('Продвинуто: '+d.promoted+', отклонено: '+d.rejected); loadRelationPerf(); loadRelationScopes(); }

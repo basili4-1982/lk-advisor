@@ -9,6 +9,7 @@ import (
 
 	"github.com/basili4-1982/lk-advisor/internal/analytics"
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
+	"github.com/basili4-1982/lk-advisor/internal/experiment"
 )
 
 type eventRequest struct {
@@ -54,6 +55,9 @@ func (h *handler) recordEvent(w http.ResponseWriter, r *http.Request) {
 		h.logger.Error("analytics event", "err", err)
 		writeError(w, http.StatusInternalServerError, "event save error")
 		return
+	}
+	if err := experiment.RecordEvent(r.Context(), h.db, req.TraceID, req.ProductID, req.Event); err != nil {
+		h.logger.Warn("experiment event", "err", err)
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"recorded": true})
 }

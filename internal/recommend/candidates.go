@@ -212,6 +212,18 @@ func Candidates(in Input) []model.Candidate {
 		add(toID, "alternative", 0.5*weight, 0, 0.7*weight, 0.8, fromID, "substitute", ev)
 	}
 
+	// Experiment treatment: force the target product into the pool. The
+	// experiment platform measures whether this changes conversion.
+	if in.Experiment != nil && in.Experiment.TargetProductID != "" && !owned[in.Experiment.TargetProductID] {
+		typ := "cross_sell"
+		if in.Experiment.RelationType == "upgrade" {
+			typ = "upsell"
+		}
+		add(in.Experiment.TargetProductID, typ, 0.55, 0, 0.8, 0.85,
+			in.Experiment.FromID, in.Experiment.RelationType,
+			model.Evidence{Source: "experiment", Value: "показ в эксперименте: проверяем гипотезу"})
+	}
+
 	// Demand: decayed recent popularity is a supporting slice, not a
 	// replacement for relations. It only fills gaps when relations are sparse.
 	if len(out) == 0 && len(in.Popularity) > 0 {

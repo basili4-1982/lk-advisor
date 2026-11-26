@@ -91,7 +91,51 @@ func Diversify(cands []model.Candidate, limit int) []model.Candidate {
 // Run executes the pipeline and returns the top-3 portfolio plus rejections.
 func Run(in Input) ([]model.Candidate, []model.Rejection) {
 	allowed, rejected := Rank(in)
-	return FillPopular(in, Diversify(allowed, 3), 3), rejected
+	out := FillPopular(in, Diversify(allowed, 3), 3)
+	return ForceExperiment(in, out, 3), rejected
+}
+
+// ForceExperiment guarantees the treatment product is in the list, so the
+// experiment gets an exposure. Control arms are untouched.
+func ForceExperiment(in Input, picked []model.Candidate, limit int) []model.Candidate {
+	if in.Experiment == nil || in.Experiment.TargetProductID == "" || limit <= 0 {
+		return picked
+	}
+	target := in.Experiment.TargetProductID
+	for _, c := range picked {
+		if c.Product.ID == target {
+			return picked
+		}
+	}
+	if ownedIDs(in.Profile)[target] {
+		return picked
+	}
+	p, ok := in.Product(target)
+	if !ok || p.Status == "discontinued" {
+		return picked
+	}
+	typ := "cross_sell"
+	if in.Experiment.RelationType == "upgrade" {
+		typ = "upsell"
+	}
+	c := model.Candidate{
+		Product:         p,
+		Type:            typ,
+		Relevance:       0.55,
+		Affinity:        0.8,
+		Margin:          normalizeMargin(p.Price),
+		Confidence:      0.85,
+		Evidence:        []model.Evidence{{Source: "experiment", Value: "показ в эксперименте: проверяем гипотезу"}},
+		SourceProductID: in.Experiment.FromID,
+		RelationType:    in.Experiment.RelationType,
+		CandidateID:     in.Experiment.FromID + "|" + in.Experiment.RelationType + "|" + target,
+	}
+	c = ScoreWith(c, in.Now, in.Weights)
+	if len(picked) >= limit {
+		picked[limit-1] = c
+		return picked
+	}
+	return append(picked, c)
 }
 
 // Rank executes candidates, rules and scoring and returns every allowed item

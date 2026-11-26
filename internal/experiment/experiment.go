@@ -1,0 +1,325 @@
+// Package experiment implements the hypothesis-to-decision loop for the demo.
+package experiment
+
+import (
+	"context"
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"hash/fnv"
+	"time"
+)
+
+// Experiment is one testable hypothesis.
+type Experiment struct {
+	ID           string     `json:"id"`
+	Title        string     `json:"title"`
+	Hypothesis   string     `json:"hypothesis"`
+	Status       string     `json:"status"`
+	Audience     string     `json:"audience"`
+	Industry     string     `json:"industry"`
+	Metric       string     `json:"metric"`
+	Guardrails   string     `json:"guardrails"`
+	Variants     []Variant  `json:"variants"`
+	TrafficSplit float64    `json:"traffic_split"`
+	FromID       string     `json:"from_id"`
+	ToID         string     `json:"to_id"`
+	FromTitle    string     `json:"from_title,omitempty"`
+	ToTitle      string     `json:"to_title,omitempty"`
+	RelationType string     `json:"relation_type"`
+	Treatment    string     `json:"treatment"`
+	Owner        string     `json:"owner"`
+	CreatedAt    time.Time  `json:"created_at"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	EndsAt       *time.Time `json:"ends_at,omitempty"`
+	Decision     string     `json:"decision"`
+	DecisionNote string     `json:"decision_note"`
+	DecidedAt    *time.Time `json:"decided_at,omitempty"`
+	Results      []Result   `json:"results,omitempty"`
+}
+
+// Variant is one experiment arm.
+type Variant struct {
+	Name   string  `json:"name"`
+	Weight float64 `json:"weight"`
+}
+
+// Assignment is a client's stable arm in an experiment.
+type Assignment struct {
+	ExperimentID    string
+	ClientID        string
+	Variant         string
+	TargetProductID string
+	FromID          string
+	RelationType    string
+	Treatment       bool
+}
+
+// Result is the aggregate for one variant.
+type Result struct {
+	Variant          string  `json:"variant"`
+	Exposures        int     `json:"exposures"`
+	Clients          int     `json:"clients"`
+	Clicks           int     `json:"clicks"`
+	Purchases        int     `json:"purchases"`
+	TargetExposures  int     `json:"target_exposures"`
+	TargetPurchases  int     `json:"target_purchases"`
+	CTR              float64 `json:"ctr"`
+	Conversion       float64 `json:"conversion"`
+	TargetConversion float64 `json:"target_conversion"`
+}
+
+// LoadRunning returns experiments matching the client's audience/industry.
+func LoadRunning(ctx context.Context, dbc *sql.DB, audience, industry string) ([]Experiment, error) {
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
+		       e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
+		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
+		       e.relation_type, e.treatment, e.owner, e.created_at,
+		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
+		FROM experiments e
+		LEFT JOIN products pf ON pf.id = e.from_id
+		LEFT JOIN products pt ON pt.id = e.to_id
+		WHERE e.status = 'running'
+		  AND (e.audience = '' OR e.audience = $1)
+		  AND (e.industry = '' OR e.industry = $2)
+		ORDER BY e.created_at DESC`, audience, industry)
+	if err != nil {
+		return nil, fmt.Errorf("running experiments: %w", err)
+	}
+	defer rows.Close()
+	var out []Experiment
+	for rows.Next() {
+		e, err := scanExperiment(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	return out, rows.Err()
+}
+
+// List returns all experiments with their results.
+func List(ctx context.Context, dbc *sql.DB) ([]Experiment, error) {
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT e.id, e.title, e.hypothesis, e.status, e.audience, e.industry,
+		       e.metric, e.guardrails, e.variants::text, e.traffic_split::float8,
+		       e.from_id, e.to_id, COALESCE(pf.title, ''), COALESCE(pt.title, ''),
+		       e.relation_type, e.treatment, e.owner, e.created_at,
+		       e.started_at, e.ends_at, e.decision, e.decision_note, e.decided_at
+		FROM experiments e
+		LEFT JOIN products pf ON pf.id = e.from_id
+		LEFT JOIN products pt ON pt.id = e.to_id
+		ORDER BY e.created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("experiments: %w", err)
+	}
+	defer rows.Close()
+	var out []Experiment
+	for rows.Next() {
+		e, err := scanExperiment(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	for i := range out {
+		res, err := Results(ctx, dbc, out[i].ID)
+		if err != nil {
+			return nil, err
+		}
+		out[i].Results = res
+	}
+	return out, nil
+}
+
+func scanExperiment(rows *sql.Rows) (Experiment, error) {
+	var e Experiment
+	var variants string
+	if err := rows.Scan(&e.ID, &e.Title, &e.Hypothesis, &e.Status, &e.Audience, &e.Industry,
+		&e.Metric, &e.Guardrails, &variants, &e.TrafficSplit,
+		&e.FromID, &e.ToID, &e.FromTitle, &e.ToTitle,
+		&e.RelationType, &e.Treatment, &e.Owner, &e.CreatedAt,
+		&e.StartedAt, &e.EndsAt, &e.Decision, &e.DecisionNote, &e.DecidedAt); err != nil {
+		return e, err
+	}
+	_ = json.Unmarshal([]byte(variants), &e.Variants)
+	return e, nil
+}
+
+// Assign returns a stable control/treatment arm for a client.
+func Assign(ctx context.Context, dbc *sql.DB, e Experiment, clientID string) (Assignment, error) {
+	a := Assignment{
+		ExperimentID:    e.ID,
+		ClientID:        clientID,
+		TargetProductID: e.ToID,
+		FromID:          e.FromID,
+		RelationType:    e.RelationType,
+	}
+	var variant string
+	err := dbc.QueryRowContext(ctx, `
+		SELECT variant FROM experiment_assignments
+		WHERE experiment_id = $1 AND client_id = $2`, e.ID, clientID).Scan(&variant)
+	if err == nil {
+		a.Variant = variant
+		a.Treatment = variant == "treatment"
+		return a, nil
+	}
+	if err != sql.ErrNoRows {
+		return a, fmt.Errorf("experiment assignment: %w", err)
+	}
+
+	h := fnv.New32a()
+	_, _ = h.Write([]byte(e.ID + "|" + clientID))
+	bucket := float64(h.Sum32()%1000) / 1000.0
+	variant = "control"
+	if bucket < e.TrafficSplit {
+		variant = "treatment"
+	}
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO experiment_assignments (experiment_id, client_id, variant)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (experiment_id, client_id) DO NOTHING`, e.ID, clientID, variant); err != nil {
+		return a, fmt.Errorf("save experiment assignment: %w", err)
+	}
+	// A concurrent request may have inserted a different arm; always read it back.
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT variant FROM experiment_assignments
+		WHERE experiment_id = $1 AND client_id = $2`, e.ID, clientID).Scan(&variant); err != nil {
+		return a, fmt.Errorf("read experiment assignment: %w", err)
+	}
+	a.Variant = variant
+	a.Treatment = variant == "treatment"
+	return a, nil
+}
+
+// RecordExposure writes one experiment exposure. The target product is set
+// only when it was actually shown.
+func RecordExposure(ctx context.Context, dbc *sql.DB, a Assignment, traceID, productID string) error {
+	if a.ExperimentID == "" {
+		return nil
+	}
+	_, err := dbc.ExecContext(ctx, `
+		INSERT INTO experiment_events
+			(experiment_id, client_id, variant, trace_id, product_id, event)
+		VALUES ($1, $2, $3, $4, $5, 'exposed')`,
+		a.ExperimentID, a.ClientID, a.Variant, traceID, productID)
+	if err != nil {
+		return fmt.Errorf("experiment exposure: %w", err)
+	}
+	return nil
+}
+
+// RecordEvent copies a click/purchase for the experiment target from its exposure.
+func RecordEvent(ctx context.Context, dbc *sql.DB, traceID, productID, event string) error {
+	if traceID == "" || productID == "" || (event != "clicked" && event != "purchased") {
+		return nil
+	}
+	_, err := dbc.ExecContext(ctx, `
+		INSERT INTO experiment_events
+			(experiment_id, client_id, variant, trace_id, product_id, event)
+		SELECT experiment_id, client_id, variant, trace_id, product_id, $3
+		FROM experiment_events
+		WHERE trace_id = $1 AND product_id = $2 AND event = 'exposed'`,
+		traceID, productID, event)
+	if err != nil {
+		return fmt.Errorf("experiment event: %w", err)
+	}
+	return nil
+}
+
+// Results aggregates exposures, clicks and purchases by variant.
+func Results(ctx context.Context, dbc *sql.DB, experimentID string) ([]Result, error) {
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT variant,
+		       count(*) FILTER (WHERE event = 'exposed') AS exposures,
+		       count(DISTINCT client_id) FILTER (WHERE event = 'exposed') AS clients,
+		       count(*) FILTER (WHERE event = 'clicked') AS clicks,
+		       count(*) FILTER (WHERE event = 'purchased') AS purchases,
+		       count(*) FILTER (WHERE event = 'exposed' AND product_id = (SELECT to_id FROM experiments WHERE id = $1)) AS target_exposures,
+		       count(*) FILTER (WHERE event = 'purchased' AND product_id = (SELECT to_id FROM experiments WHERE id = $1)) AS target_purchases
+		FROM experiment_events
+		WHERE experiment_id = $1
+		GROUP BY variant`, experimentID)
+	if err != nil {
+		return nil, fmt.Errorf("experiment results: %w", err)
+	}
+	defer rows.Close()
+	byVariant := map[string]Result{}
+	for rows.Next() {
+		var r Result
+		if err := rows.Scan(&r.Variant, &r.Exposures, &r.Clients, &r.Clicks, &r.Purchases,
+			&r.TargetExposures, &r.TargetPurchases); err != nil {
+			return nil, err
+		}
+		if r.Exposures > 0 {
+			r.CTR = float64(r.Clicks) / float64(r.Exposures)
+			r.Conversion = float64(r.Purchases) / float64(r.Exposures)
+		}
+		if r.TargetExposures > 0 {
+			r.TargetConversion = float64(r.TargetPurchases) / float64(r.TargetExposures)
+		}
+		byVariant[r.Variant] = r
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	out := make([]Result, 0, 2)
+	for _, name := range []string{"control", "treatment"} {
+		if r, ok := byVariant[name]; ok {
+			out = append(out, r)
+		} else {
+			out = append(out, Result{Variant: name})
+		}
+	}
+	return out, nil
+}
+
+// Decide closes an experiment with a human decision.
+func Decide(ctx context.Context, dbc *sql.DB, experimentID, decision, note string) (bool, error) {
+	switch decision {
+	case "promote", "reject", "extend":
+	default:
+		return false, fmt.Errorf("decision must be promote, reject or extend")
+	}
+	status := "completed"
+	if decision == "extend" {
+		status = "running"
+	}
+	res, err := dbc.ExecContext(ctx, `
+		UPDATE experiments
+		SET status = $2, decision = $3, decision_note = $4, decided_at = now()
+		WHERE id = $1`, experimentID, status, decision, note)
+	if err != nil {
+		return false, fmt.Errorf("experiment decision: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
+// SeedDemo creates/resets the vertical-slice experiment.
+func SeedDemo(ctx context.Context, dbc *sql.DB) error {
+	const id = "exp-pdf-b2b"
+	if _, err := dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id = $1`, id); err != nil {
+		return fmt.Errorf("reset demo experiment: %w", err)
+	}
+	_, err := dbc.ExecContext(ctx, `
+		INSERT INTO experiments
+			(id, title, hypothesis, status, audience, industry, metric, guardrails,
+			 variants, traffic_split, from_id, to_id, relation_type, treatment, owner, started_at)
+		VALUES ($1, $2, $3, 'running', 'b2b', '', 'conversion',
+		        'не терять renewal и upsell; следить за fallback',
+		        $4::jsonb, 0.5, 'prod-office-suite', 'prod-pdf', 'adjacent_task',
+		        'force_relation', 'demo', now())`,
+		id,
+		"PDF Toolkit как следующий шаг после Office",
+		"Показ PDF Toolkit в слоте 3 повышает конверсию в B2B",
+		`[{"name":"control","weight":0.5},{"name":"treatment","weight":0.5}]`)
+	if err != nil {
+		return fmt.Errorf("seed demo experiment: %w", err)
+	}
+	return nil
+}

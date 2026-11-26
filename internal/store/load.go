@@ -147,7 +147,8 @@ func Clear(ctx context.Context, dbc *sql.DB) error {
 	_, err := dbc.ExecContext(ctx, `TRUNCATE clients, products, client_environment, product_relations,
 		relation_scopes, purchases, licenses, orders, documents, events, rules, promotions,
 		ground_truth, agent_sessions, profile_refresh_queue, demo_audit, agent_calls,
-		recommendation_requests, recommendation_events RESTART IDENTITY CASCADE`)
+		recommendation_requests, recommendation_events, experiment_events,
+		experiment_assignments, experiments RESTART IDENTITY CASCADE`)
 	if err != nil {
 		return fmt.Errorf("clear: %w", err)
 	}
