@@ -82,11 +82,27 @@ button:disabled{opacity:.5;cursor:not-allowed}
 #registry-metrics .stat span{font-size:11px}
 .tablewrap{border:1px solid var(--line);border-radius:0;overflow:auto;max-height:calc(100vh - 190px);min-height:220px}
 table{border-collapse:collapse;width:100%;font-size:13px}
-table.registry{table-layout:auto}
+table.registry{table-layout:fixed}
 table.registry td{vertical-align:middle}
 table.registry th,table.registry td{padding:6px 8px}
 .clip{display:inline-block;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:bottom}
 .clip-sm{max-width:180px}
+.rel-pair{display:flex;align-items:center;gap:6px;min-width:0}
+.rel-pair .clip{max-width:48%}
+.rel-pair .arrow{color:#9ca3af;flex:0 0 auto}
+.prov-cell{white-space:nowrap;font-size:12px;color:#374151}
+.conf-meter{display:inline-flex;align-items:flex-end;gap:2px;height:11px;cursor:help;vertical-align:middle}
+.conf-meter i{width:3px;border-radius:1px;background:#e5e7eb}
+.conf-meter i:nth-child(1){height:4px}
+.conf-meter i:nth-child(2){height:7px}
+.conf-meter i:nth-child(3){height:10px}
+.conf-meter.hi i{background:#047857}
+.conf-meter.mid i:nth-child(-n+2){background:#b45309}
+.conf-meter.lo i:nth-child(1){background:#b91c1c}
+.type-chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#374151;white-space:nowrap;cursor:help}
+.type-chip i{width:8px;height:8px;border-radius:2px;background:var(--tc,#94a3b8);flex:0 0 auto}
+.legend{display:flex;gap:14px;flex-wrap:wrap;margin:0 0 6px;font-size:11px;color:var(--muted)}
+.legend .type-chip{font-size:11px;font-weight:600;color:var(--muted)}
 .ev{display:inline-flex;align-items:center;gap:6px;max-width:100%}
 .ev-dot{width:7px;height:7px;border-radius:50%;background:#94a3b8;flex:0 0 auto}
 .ev-attribute{background:#6d28d9}
@@ -139,9 +155,6 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 .toast.err{background:#991b1b}
 .hidden{display:none!important}
 @media(max-width:1350px){
-  table.registry th:nth-child(9),table.registry td:nth-child(9),
-  table.registry th:nth-child(10),table.registry td:nth-child(10),
-  table.registry th:nth-child(11),table.registry td:nth-child(11){display:none}
   .clip{max-width:200px}
 }
 @media(max-width:980px){.layout{grid-template-columns:1fr}.stats{grid-template-columns:1fr 1fr}.g4{grid-template-columns:1fr 1fr}.top .wrap{align-items:flex-start}}
@@ -151,7 +164,6 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
   h1{font-size:19px}
   .tabbody{padding:9px}
   .toolbar input,.toolbar select{max-width:none;flex:1 1 140px}
-  table.registry th:nth-child(6),table.registry td:nth-child(6){display:none}
   .clip{max-width:150px}
   #registry-metrics .stat{flex:1 1 45%}
 }
@@ -254,12 +266,19 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <button id="registry-sweep" class="secondary small">Проверить TTL</button>
             <span class="hint" id="registry-count"></span>
           </div>
+          <div id="registry-legend" class="legend"></div>
           <div class="tablewrap"><table class="registry">
+            <colgroup>
+              <col style="width:32px"><col>
+              <col style="width:96px"><col style="width:86px">
+              <col style="width:112px"><col style="width:230px">
+            </colgroup>
             <thead><tr>
               <th><input type="checkbox" id="registry-all" style="width:auto"></th>
-              <th>Источник</th><th>Цель</th><th>Тип</th><th>Статус</th>
-              <th>Провенанс</th><th>Уверенность</th><th>Доказательство</th>
-              <th>Семейство</th><th>Действует до</th><th>Версия</th>
+              <th>Связь</th>
+              <th title="Что это за связь и как её использовать">Тип</th><th>Статус</th>
+              <th title="Кто создал связь: человек, алгоритм совместных покупок, LLM или правило атрибутов">Откуда</th>
+              <th title="Почему связь считается верной: совместные заказы, общая продуктовая группа, документ вендора">Доказательство</th>
             </tr></thead>
             <tbody id="registry-body"></tbody>
           </table></div>
@@ -459,7 +478,21 @@ var WEIGHT_ROWS = [
 var state = {products: [], relations: [], rules: [], weights: {}, clients: []};
 var lastOps = [];
 var REG_STATUS = {candidate: 'Кандидат', active: 'Активна', rejected: 'Отклонена', stale: 'Устарела', expired: 'Истекла', superseded: 'Заменена'};
-var REG_PROV = {manual: 'Ручная', co_purchase: 'Co-purchase', llm: 'LLM', attribute: 'Атрибуты', rule: 'Правило', import: 'Импорт'};
+var REG_TYPE_LABEL = {
+  variant_of: 'Вариант продукта', upgrade: 'Апгрейд', adjacent_task: 'Дополняет по задаче',
+  accessory: 'Аксессуар', alternative: 'Альтернатива', bundle: 'Комплект',
+  compatibility: 'Совместимость', renewal: 'Продление', substitute: 'Замена',
+  same_task: 'Та же задача', analog: 'Аналог снятого', excludes: 'Несовместимость',
+  workflow_next_step: 'Следующий шаг', info: 'Справка'
+};
+var REG_TYPE_COLOR = {
+  variant_of: '#6366f1', adjacent_task: '#2563eb', upgrade: '#059669',
+  accessory: '#0891b2', alternative: '#d97706', bundle: '#7c3aed',
+  compatibility: '#64748b', renewal: '#16a34a', substitute: '#dc2626',
+  same_task: '#db2777', analog: '#78716c', excludes: '#991b1b'
+};
+function typeColor(code){ return REG_TYPE_COLOR[code] || '#94a3b8'; }
+var REG_PROV = {manual: 'Вручную', co_purchase: 'Co-purchase', llm: 'LLM', attribute: 'Атрибуты', rule: 'Правило', import: 'Импорт'};
 var REG_SELECTED = {};
 var REG_PAGE = {items: [], total: 0, familyLabels: {}, familyCounts: {}};
 var REG_VIEW = '';
@@ -467,6 +500,15 @@ var REG_VIEW = '';
 function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function el(id){ return document.getElementById(id); }
 function title(id){ for (var i=0;i<state.products.length;i++) if (state.products[i].id===id) return state.products[i].title; return id; }
+function regTypeLabel(code){
+  if (REG_TYPE_LABEL[code]) return REG_TYPE_LABEL[code];
+  return typeTitle(code);
+}
+function typeDesc(code){
+  var list = state.relation_types || [];
+  for (var i=0;i<list.length;i++) if (list[i].code===code) return list[i].description || '';
+  return '';
+}
 function typeTitle(code){
   var list = state.relation_types || [];
   for (var i=0;i<list.length;i++) if (list[i].code===code) return list[i].title;
@@ -801,6 +843,21 @@ el('dataset-candidates').addEventListener('click', async function(ev){
 function regStatusLabel(s){ return REG_STATUS[s] || s || '—'; }
 function familyLabel(id){ return REG_PAGE.familyLabels[id] || id || '—'; }
 function familyCount(id){ return REG_PAGE.familyCounts[id] || 0; }
+function confBand(c){
+  c = Number(c) || 0;
+  if (c >= 0.85) return {label:'высокая', cls:'hi'};
+  if (c >= 0.65) return {label:'средняя', cls:'mid'};
+  return {label:'низкая', cls:'lo'};
+}
+function confMeter(c){
+  var b=confBand(c);
+  return '<span class="conf-meter '+b.cls+'" title="уверенность: '+b.label+', '+Number(c||0).toFixed(2)+'">'+
+    '<i></i><i></i><i></i></span>';
+}
+function confText(c){
+  var b=confBand(c);
+  return b.label+' ('+Number(c||0).toFixed(2)+')';
+}
 function positionRegistryTip(t, x, y){
   var w=t.offsetWidth, h=t.offsetHeight;
   var left=Math.min(x+14, window.innerWidth-w-8);
@@ -925,26 +982,29 @@ function renderRegistryMetrics(m){
     return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>';
   }).join('');
 }
+function renderRegistryLegend(){
+  var seen={}, order=[];
+  REG_PAGE.items.forEach(function(r){ if(!seen[r.type]){ seen[r.type]=1; order.push(r.type); } });
+  el('registry-legend').innerHTML = order.map(function(t){
+    return '<span class="type-chip"><i style="background:'+typeColor(t)+'"></i>'+esc(typeTitle(t))+'</span>';
+  }).join('');
+}
 function renderRegistry(){
+  renderRegistryLegend();
   var rows=REG_PAGE.items;
   el('registry-count').textContent = rows.length + ' из ' + REG_PAGE.total;
   if (!rows.length) {
-    el('registry-body').innerHTML = '<tr><td colspan="11" class="empty">Связей нет. Нажмите «Сгенерировать».</td></tr>';
+    el('registry-body').innerHTML = '<tr><td colspan="6" class="empty">Связей нет. Нажмите «Сгенерировать».</td></tr>';
     return;
   }
   el('registry-body').innerHTML = rows.map(function(r){
     return '<tr data-reg-id="'+r.id+'">'+
       '<td><input type="checkbox" data-reg-check="'+r.id+'" style="width:auto"'+(REG_SELECTED[r.id]?' checked':'')+'></td>'+
-      '<td><span class="clip" data-tip="'+esc(r.from_title||r.from_item_id)+'">'+esc(r.from_title||r.from_item_id)+'</span></td>'+
-      '<td><span class="clip" data-tip="'+esc(r.to_title||r.to_item_id)+'">'+esc(r.to_title||r.to_item_id)+'</span></td>'+
-      '<td><span class="pill type">'+esc(typeTitle(r.type))+'</span></td>'+
+      '<td><div class="rel-pair"><span class="clip" data-tip="'+esc(r.from_title||r.from_item_id)+'">'+esc(r.from_title||r.from_item_id)+'</span><span class="arrow">→</span><span class="clip" data-tip="'+esc(r.to_title||r.to_item_id)+'">'+esc(r.to_title||r.to_item_id)+'</span></div></td>'+
+      '<td><span class="type-chip" style="--tc:'+typeColor(r.type)+'" data-tip="'+esc(typeDesc(r.type))+'"><i></i>'+esc(typeTitle(r.type))+'</span></td>'+
       '<td><span class="pill '+(r.status==='active'?'on':(r.status==='rejected'?'off':'q'))+'">'+esc(regStatusLabel(r.status))+'</span></td>'+
-      '<td>'+esc(regProvLabel(r.provenance_kind))+'</td>'+
-      '<td>'+Math.round((r.confidence||0)*100)+'%</td>'+
+      '<td><span class="prov-cell">'+esc(regProvLabel(r.provenance_kind))+' '+confMeter(r.confidence)+'</span></td>'+
       '<td>'+evidenceCell(r.evidence)+'</td>'+
-      '<td><span class="clip clip-sm">'+esc(familyLabel(r.from_family))+'</span></td>'+
-      '<td>'+regWhen(r.valid_until)+'</td>'+
-      '<td>v'+esc(r.version||1)+'</td>'+
     '</tr>';
   }).join('');
 }
@@ -956,9 +1016,10 @@ function renderRegistryDetail(id){
   var r=registryItem(id); if (!r) return;
   el('registry-detail').innerHTML =
     '<div class="form-title">'+esc(r.from_title||r.from_item_id)+' → '+esc(r.to_title||r.to_item_id)+'</div>'+
-    '<div class="hint">'+esc(typeTitle(r.type))+' · '+esc(regStatusLabel(r.status))+' · '+esc(regProvLabel(r.provenance_kind))+' · '+Math.round((r.confidence||0)*100)+'%</div>'+
+    '<div class="hint">'+esc(regTypeLabel(r.type))+' · '+esc(regStatusLabel(r.status))+' · '+esc(regProvLabel(r.provenance_kind))+' · уверенность: '+confMeter(r.confidence)+' '+esc(confText(r.confidence))+'</div>'+
     evidenceList(r.evidence)+'<div class="ev-note">'+esc(evidenceNote(r))+'</div>'+
-    '<div class="hint">Семейство: '+esc(familyLabel(r.from_family))+' → '+esc(familyLabel(r.to_family))+' · версия '+esc(r.version||1)+
+    '<div class="hint">Семейство: '+esc(familyLabel(r.from_family))+' → '+esc(familyLabel(r.to_family))+
+      (r.valid_until?' · до '+esc(regWhen(r.valid_until)):'')+
       (r.rejection_reason?' · причина отказа: '+esc(r.rejection_reason):'')+'</div>'+
     '<div class="toolbar" style="margin-top:8px">'+
       '<button class="small" data-reg-review="confirm" data-reg-review-id="'+r.id+'">Подтвердить</button>'+
@@ -1014,7 +1075,7 @@ function renderRelations(){
     return '<tr>'+
       '<td>'+esc(title(r.from_id))+'<div class="hint">'+esc(r.from_id)+'</div></td>'+
       '<td>'+esc(title(r.to_id))+'<div class="hint">'+esc(r.to_id)+'</div></td>'+
-      '<td><span class="pill type">'+esc(typeTitle(r.type))+'</span></td>'+
+      '<td><span class="type-chip" style="--tc:'+typeColor(r.type)+'" data-tip="'+esc(typeDesc(r.type))+'"><i></i>'+esc(typeTitle(r.type))+'</span></td>'+
       '<td>'+Math.round((r.confidence||0)*100)+'%</td>'+
       '<td>'+relationPill(r.status)+'</td>'+
       '<td style="white-space:nowrap"><button class="ghost small" data-edit="'+idx+'">Изменить</button><button class="ghost small" data-del="'+idx+'">Удалить</button></td>'+
