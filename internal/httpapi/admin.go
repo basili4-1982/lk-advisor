@@ -342,7 +342,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="danger-zone">
             <div class="danger-copy">
               <b>Опасное действие</b>
-              <div class="hint">Удаляет все связи, события, алиасы и импортированные позиции. Остаётся чистый каталог v5.</div>
+              <div class="hint">Удаляет все связи, события, алиасы и импортированные позиции. Остаётся исходный каталог.</div>
             </div>
             <button id="registry-reset" class="danger">Сбросить каталог</button>
           </div>
@@ -422,7 +422,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 
         <div id="tab-dataset">
           <div class="formbox">
-            <div class="form-title">Качество рекомендаций · офлайн-бэктест v5</div>
+            <div class="form-title">Качество рекомендаций · офлайн-бэктест</div>
             <p class="hint">Официальный протокол: basket = (order_id, order_week), train до 31.08.2026, test с 07.09.2026, Precision@3 по всем 817 item_id.</p>
             <div class="stats">
               <div class="stat"><b>11.37%</b><span>A · наша P@3</span></div>
@@ -491,7 +491,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="formbox">
             <div class="form-title">Источник данных</div>
             <div class="stats" id="dataset-cards"></div>
-            <div class="hint" style="margin-top:8px">Источник: v5, 817 товаров и 419 product_group; загруженные позиции не входят в офлайн-оценку.</div>
+            <div class="hint" style="margin-top:8px">Источник: исходный каталог, 817 товаров и 419 product_group; загруженные позиции не входят в офлайн-оценку.</div>
           </div>
         </div>
 
@@ -586,7 +586,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
   <div class="modal-box">
     <div class="form-title">Сбросить каталог?</div>
     <div class="hint">Будут удалены все связи, события, алиасы и импортированные позиции.
-      Останется только чистый каталог v5 — 817 позиций. Затем кандидаты будут собраны заново.
+      Останется только исходный каталог — 817 позиций. Затем кандидаты будут собраны заново.
       Действие необратимо.</div>
     <div class="toolbar" style="margin-top:14px;justify-content:flex-end">
       <button id="registry-reset-no" class="secondary small">Отмена</button>
