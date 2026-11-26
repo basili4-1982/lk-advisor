@@ -116,7 +116,7 @@ const $=id=>document.getElementById(id);
 const wrap=$('graph-wrap');
 const COLORS={security:'#f87171',office:'#60a5fa',graphics:'#c084fc',backup:'#4ade80',devtools:'#fbbf24',training:'#2dd4bf',other:'#94a3b8'};
 const CAT_RU={security:'Безопасность',office:'Офис',graphics:'Графика',backup:'Бэкап',devtools:'Разработка',training:'Обучение',other:'Другое'};
-let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null;
+let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null,focusMode=false,selectedNeighbors=new Set();
 let audience='b2b',soloOn=false,categoryFilter=null,search='',initialIndustry=new URLSearchParams(location.search).get('industry')||'',initialSegment=new URLSearchParams(location.search).get('segment')||'',initialFamily=new URLSearchParams(location.search).get('family')||'',industryFilter=initialIndustry,segmentFilter=initialSegment,familyFilter=initialFamily;
 let periods=[],currentPeriod='',initialPeriod=new URLSearchParams(location.search).get('period')||'',page=Math.max(1,parseInt(new URLSearchParams(location.search).get('page')||'1',10)||1),pageSize=Math.max(250,Math.min(1000,parseInt(new URLSearchParams(location.search).get('page_size')||'1000',10)||1000)),totalPages=1;
 let graph=null,autoFitDone=false,userInteracted=false;
@@ -140,7 +140,8 @@ function initGraph(){
     .linkVisibility(linkVisible)
     .nodeVisibility(nodeVisible)
     .onNodeClick(n=>{showNode(n);focusNode(n)})
-    .onNodeHover(n=>{hover=n;refresh()});
+    .onNodeHover(n=>{hover=n;refresh()})
+    .onBackgroundClick(()=>{showNode(null);focusMode=false;refresh()});
   if(graph.d3Force){
     const charge=graph.d3Force('charge');if(charge&&charge.strength)charge.strength(-35);
     const link=graph.d3Force('link');if(link&&link.distance)link.distance(45);
@@ -153,11 +154,14 @@ function nodeVisible(n){
   if(n.solo&&!soloOn)return false;
   if(categoryFilter&&n.category!==categoryFilter)return false;
   if(familyFilter&&n.family!==familyFilter)return false;
+  if(focusMode&&selected){return n.id===selected.id||selectedNeighbors.has(n.id)}
   return true;
 }
 function linkVisible(l){
   const a=byId[sourceID(l)],b=byId[targetID(l)];
-  return !!(a&&b&&nodeVisible(a)&&nodeVisible(b));
+  if(!(a&&b&&nodeVisible(a)&&nodeVisible(b)))return false;
+  if(focusMode&&selected)return sourceID(l)===selected.id||targetID(l)===selected.id;
+  return true;
 }
 function nodeVal(n){
   if(DATA&&DATA.period){
@@ -278,7 +282,13 @@ function drawLegend(){
   $('legend').innerHTML=h;
 }
 function showNode(n){
-  selected=n||null;refresh();
+  selected=n||null;
+  focusMode=!!n;
+  selectedNeighbors=new Set();
+  if(n){
+    edges.forEach(e=>{if(sourceID(e)===n.id)selectedNeighbors.add(targetID(e));if(targetID(e)===n.id)selectedNeighbors.add(sourceID(e))});
+  }
+  refresh();
   if(!n){$('panel').innerHTML='<div class="empty">Выберите товар на графе. Панель покажет покупателей, число связей и что покупают вместе с ним.</div>';return}
   const nb=edges.filter(e=>sourceID(e)===n.id||targetID(e)===n.id).map(e=>{
     const other=byId[sourceID(e)===n.id?targetID(e):sourceID(e)];
@@ -294,20 +304,20 @@ function showNode(n){
   if(!n.renewal_hidden){h+='<h3>Продление</h3><div class="metrics"><div><b>'+Math.round(n.renewal_share*100)+'%</b><span>повторов</span></div><div><b>'+n.renewal_days+'</b><span>дней медиана</span></div></div>'}
   if(n.solo){h+='<div class="note">Публичных связей нет. Кандидат на достройку: co-client, семейство товаров, атрибуты или сервис.</div>'}
   else{h+='<h3>С этим покупают</h3><div>';nb.slice(0,14).forEach(x=>{h+='<button class="nb" data-id="'+esc(x.node.id)+'"><span>'+esc(x.node.title)+'</span><b>'+x.count+'</b></button>'});h+='</div>'}
-  if(n.family){h+='<div class="actions" style="margin-top:10px"><button class="secondary" id="show-family">Показать семейство «'+esc(n.family)+'»</button></div>'}
+  h+='<div class="actions" style="margin-top:10px"><button class="secondary" id="show-all">Показать всех</button>'+(n.family?'<button class="secondary" id="show-family">Семейство «'+esc(n.family)+'»</button>':'')+'</div>';
   const ext=(DATA.external_edges||[]).filter(e=>e.from===n.id);
   if(ext.length){h+='<h3>За пределами страницы</h3><div>';ext.slice(0,12).forEach(e=>{h+='<button class="nb" data-ext-id="'+esc(e.to)+'" data-ext-page="'+e.target_page+'"><span>'+esc(e.title)+'</span><b>стр. '+e.target_page+'</b></button>'});h+='</div>'}
   h+='<div class="foot">Показаны только публичные связи: у товара ≥3 покупателя, у B2B-пары ≥3 совместных покупки. B2C-счётчики меньше 5 скрыты.</div>';
   $('panel').innerHTML=h;
   $('panel').querySelectorAll('.nb').forEach(b=>b.onclick=()=>{const x=byId[b.dataset.id];if(x){showNode(x);focusNode(x)}});
+  const sa=$('show-all');if(sa)sa.onclick=()=>{focusMode=false;showNode(null);resetCamera()};
   const sf=$('show-family');if(sf)sf.onclick=()=>{familyFilter=n.family||'';fillFilter('family-filter',DATA.families,'Все семейства',familyFilter);drawStats();refresh()};
   $('panel').querySelectorAll('[data-ext-id]').forEach(b=>b.onclick=()=>{page=Number(b.dataset.extPage)||1;load(b.dataset.extId)});
 }
 function focusNode(n){
   if(!graph||!n)return;
   userInteracted=true;autoFitDone=true;
-  const d=180,dist=Math.hypot(n.x||0,n.y||0,n.z||0)||1,ratio=1+d/dist;
-  graph.cameraPosition({x:(n.x||0)*ratio,y:(n.y||0)*ratio,z:(n.z||0)*ratio},n,900);
+  if(graph.zoomToFit)graph.zoomToFit(700,140,x=>x.id===n.id||selectedNeighbors.has(x.id));
 }
 function updateTimeControl(){
   const t=$('time');
@@ -331,16 +341,16 @@ $('zoom-reset').addEventListener('click',resetCamera);
 $('prev-page').addEventListener('click',()=>{if(page>1){page--;load()}});
 $('next-page').addEventListener('click',()=>{if(page<totalPages){page++;load()}});
 $('page-size').addEventListener('change',e=>{pageSize=Number(e.target.value)||1000;page=1;load()});
-$('family-filter').addEventListener('change',e=>{familyFilter=e.target.value;drawStats();refresh();if(selected)showNode(selected)});
-$('industry-filter').addEventListener('change',e=>{industryFilter=e.target.value;familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})});
-$('segment-filter').addEventListener('change',e=>{segmentFilter=e.target.value;familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})});
+$('family-filter').addEventListener('change',e=>{familyFilter=e.target.value;focusMode=false;showNode(null);drawStats();refresh()});
+$('industry-filter').addEventListener('change',e=>{industryFilter=e.target.value;familyFilter='';focusMode=false;initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})});
+$('segment-filter').addEventListener('change',e=>{segmentFilter=e.target.value;familyFilter='';focusMode=false;initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})});
 $('time').addEventListener('input',e=>{const p=periods[Number(e.target.value)];if(p)$('period-label').textContent=p.label});
 $('time').addEventListener('change',e=>{const p=periods[Number(e.target.value)];if(!p)return;loadPeriod(p.value).catch(err=>{$('status').textContent='Ошибка: '+err.message})});
 $('search').addEventListener('input',e=>{search=e.target.value;refresh()});
 $('search').addEventListener('keydown',e=>{if(e.key!=='Enter')return;const q=search.trim().toLowerCase();if(!q)return;const n=nodes.find(x=>x.title.toLowerCase().indexOf(q)>=0);if(n){showNode(n);focusNode(n)}});
 $('solo').addEventListener('change',e=>{soloOn=e.target.checked;refresh()});
 $('legend').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(!b)return;categoryFilter=b.dataset.cat==='all'?null:b.dataset.cat;drawLegend();refresh()});
-document.querySelectorAll('[data-audience]').forEach(b=>b.addEventListener('click',()=>{audience=b.dataset.audience;document.querySelectorAll('[data-audience]').forEach(x=>x.classList.toggle('active',x===b));industryFilter='';segmentFilter='';familyFilter='';initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})}));
+document.querySelectorAll('[data-audience]').forEach(b=>b.addEventListener('click',()=>{audience=b.dataset.audience;document.querySelectorAll('[data-audience]').forEach(x=>x.classList.toggle('active',x===b));industryFilter='';segmentFilter='';familyFilter='';focusMode=false;initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})}));
 window.addEventListener('resize',()=>{resizeGraph()});
 wrap.addEventListener('pointerdown',()=>{userInteracted=true;autoFitDone=true},{passive:true});
 wrap.addEventListener('wheel',()=>{userInteracted=true;autoFitDone=true},{passive:true});
