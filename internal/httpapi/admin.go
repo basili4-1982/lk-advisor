@@ -163,6 +163,8 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 .type-head{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px}
 .type-card{border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
 .type-card .hint{margin-top:6px}
+.modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:60}
+.modal-box{background:#fff;border-radius:12px;padding:18px;max-width:480px;width:calc(100% - 32px);box-shadow:0 24px 64px rgba(0,0,0,.3)}
 .tip{position:fixed;z-index:50;max-width:380px;background:#111827;color:#fff;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.35;box-shadow:0 12px 32px rgba(0,0,0,.28);pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .12s}
 .tip.on{opacity:1;transform:none}
 .toast{position:fixed;right:20px;bottom:20px;background:#111827;color:#fff;padding:11px 15px;border-radius:10px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:9}
@@ -246,6 +248,14 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="stats" id="registry-metrics" style="margin-bottom:12px"></div>
           <div class="toolbar">
             <input id="registry-search" placeholder="Поиск по товару или id">
+            <select id="registry-confidence" title="Фильтр по уверенности">
+              <option value="">Любая уверенность</option>
+              <option value="0.95">Уверенность ≥ 95%</option>
+              <option value="0.85">Уверенность ≥ 85%</option>
+              <option value="0.65">Уверенность ≥ 65%</option>
+              <option value="low">Уверенность &lt; 65%</option>
+            </select>
+            <button id="registry-confirm-filter" class="small" title="Подтвердить всех кандидатов по текущему фильтру">Подтвердить все</button>
             <button id="registry-filters-toggle" class="secondary small">Фильтры</button>
             <div id="registry-filters" class="toolbar-filters hidden">
             <select id="registry-type"><option value="">Все типы</option></select>
@@ -266,12 +276,6 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="attribute">Атрибуты</option>
             </select>
             <select id="registry-family"><option value="">Все семейства</option></select>
-            <select id="registry-confidence">
-              <option value="">Любая уверенность</option>
-              <option value="high">Высокая ≥ 85%</option>
-              <option value="mid">Средняя 65–85%</option>
-              <option value="low">Низкая &lt; 65%</option>
-            </select>
             </div>
             <button class="secondary small" data-view="all">Смысловые</button>
             <button class="secondary small" data-view="high">Высокая</button>
@@ -301,7 +305,6 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="toolbar" style="margin-top:10px">
             <input id="registry-note" placeholder="Причина решения (обязательна для отказа)">
             <button id="registry-confirm" class="small">Подтвердить выбранные</button>
-            <button id="registry-confirm-filter" class="secondary small">Подтвердить по фильтру</button>
             <button id="registry-reject" class="secondary small">Отклонить</button>
             <button id="registry-defer" class="secondary small">Отложить</button>
           </div>
@@ -478,6 +481,16 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 </main>
 <div class="toast" id="toast"></div>
 <div class="tip" id="registry-tip" role="tooltip"></div>
+<div class="modal hidden" id="registry-confirm-modal">
+  <div class="modal-box">
+    <div class="form-title">Подтвердить связи?</div>
+    <div id="registry-confirm-text"></div>
+    <div class="toolbar" style="margin-top:14px;justify-content:flex-end">
+      <button id="registry-confirm-no" class="secondary small">Отмена</button>
+      <button id="registry-confirm-yes" class="small">Подтвердить</button>
+    </div>
+  </div>
+</div>
 <script>
 var REL_TYPES = {
   upgrade: 'Апгрейд', adjacent_task: 'Дополнение', substitute: 'Замена',
@@ -1115,10 +1128,9 @@ function registryQuery(){
   add('family', el('registry-family').value);
   if (REG_VIEW==='disputed') { add('min_conf','0.5'); add('max_conf','0.75'); }
   else {
-    var conf=el('registry-confidence').value || (REG_VIEW==='high' ? 'high' : '');
-    if (conf==='high') add('min_conf','0.85');
-    else if (conf==='mid') { add('min_conf','0.65'); add('max_conf','0.85'); }
-    else if (conf==='low') add('max_conf','0.65');
+    var conf=el('registry-confidence').value || (REG_VIEW==='high' ? '0.85' : '');
+    if (conf==='low') add('max_conf','0.65');
+    else if (conf) add('min_conf', conf);
   }
   if (REG_VIEW==='expiring') { add('expiring','30'); }
   add('limit','200');
@@ -1246,25 +1258,47 @@ function registryFilter(){
   if (el('registry-type').value !== 'variant_of') f.exclude_variants=true;
   if (REG_VIEW==='disputed') { f.min_confidence=0.5; f.max_confidence=0.75; }
   else {
-    var conf=el('registry-confidence').value || (REG_VIEW==='high' ? 'high' : '');
-    if (conf==='high') f.min_confidence=0.85;
-    else if (conf==='mid') { f.min_confidence=0.65; f.max_confidence=0.85; }
-    else if (conf==='low') f.max_confidence=0.65;
+    var conf=el('registry-confidence').value || (REG_VIEW==='high' ? '0.85' : '');
+    if (conf==='low') f.max_confidence=0.65;
+    else if (conf) f.min_confidence=Number(conf);
   }
   if (REG_VIEW==='expiring') f.expiring_days=30;
   return f;
 }
-async function registryBulkFilter(){
+var REG_PENDING_FILTER = null;
+function filterSummary(f){
+  var parts=[];
+  if (f.min_confidence) parts.push('уверенность ≥ '+Math.round(f.min_confidence*100)+'%');
+  if (f.max_confidence) parts.push('уверенность < '+Math.round(f.max_confidence*100)+'%');
+  if (f.provenance && f.provenance.length) parts.push('источник: '+f.provenance.join(', '));
+  if (f.types && f.types.length) parts.push('тип: '+f.types.join(', '));
+  if (f.family) parts.push('семейство: '+f.family);
+  if (f.query) parts.push('поиск: '+f.query);
+  return parts.length ? '<div class="hint" style="margin-top:8px">'+esc(parts.join(' · '))+'</div>' : '';
+}
+function registryBulkFilter(){
   var f=registryFilter();
   if (!(f.min_confidence>0) && !(f.types && f.types.length)) {
     toast('Выберите уверенность или тип', true); return;
   }
-  if (!confirm('Подтвердить все кандидаты по текущему фильтру?')) return;
+  if (!REG_PAGE.total) { toast('По фильтру ничего не найдено', true); return; }
+  REG_PENDING_FILTER=f;
+  var limitNote = REG_PAGE.total > 500 ? ' За один раз будет обработано до 500.' : '';
+  el('registry-confirm-text').innerHTML =
+    'Будет подтверждено <b>'+REG_PAGE.total+'</b> кандидатов по текущему фильтру.'+limitNote+
+    filterSummary(f);
+  el('registry-confirm-modal').classList.remove('hidden');
+}
+async function registryConfirmAll(){
+  var f=REG_PENDING_FILTER;
+  el('registry-confirm-modal').classList.add('hidden');
+  if (!f) return;
   var note=el('registry-note').value.trim();
   try {
     var out=await api('POST','/v1/admin/registry/relations/bulk-review',
       {filter:f, decision:'confirm', note:note});
     toast('Подтверждено: '+(out.reviewed||0));
+    REG_PENDING_FILTER=null;
     await loadRegistry();
   } catch(e){ toast(e.message,true); }
 }
@@ -1428,7 +1462,7 @@ document.querySelectorAll('#tab-registry [data-view]').forEach(function(b){
     el('registry-family').value='';
     if (REG_VIEW==='disputed') el('registry-status').value='candidate';
     if (REG_VIEW==='structural') el('registry-type').value='variant_of';
-    el('registry-confidence').value = (REG_VIEW==='high') ? 'high' : '';
+    el('registry-confidence').value = (REG_VIEW==='high') ? '0.85' : '';
     loadRegistry();
   });
 });
@@ -1488,6 +1522,9 @@ el('registry-detail').addEventListener('click', async function(ev){
 });
 el('registry-confirm').addEventListener('click', function(){ registryBulk('confirm'); });
 el('registry-confirm-filter').addEventListener('click', registryBulkFilter);
+el('registry-confirm-yes').addEventListener('click', registryConfirmAll);
+el('registry-confirm-no').addEventListener('click', function(){ REG_PENDING_FILTER=null; el('registry-confirm-modal').classList.add('hidden'); });
+el('registry-confirm-modal').addEventListener('click', function(ev){ if (ev.target === this){ REG_PENDING_FILTER=null; this.classList.add('hidden'); } });
 el('registry-reject').addEventListener('click', function(){ registryBulk('reject'); });
 el('registry-defer').addEventListener('click', function(){ registryBulk('defer'); });
 el('registry-generate').addEventListener('click', registryGenerate);
