@@ -40,6 +40,17 @@ type Experiment struct {
 	DecidedAt    *time.Time      `json:"decided_at,omitempty"`
 	Results      []Result        `json:"results,omitempty"`
 	Guardrail    *GuardrailCheck `json:"guardrail,omitempty"`
+	Emulation    *EmulationInfo  `json:"emulation,omitempty"`
+}
+
+// EmulationInfo is the latest profile run attached to an experiment.
+type EmulationInfo struct {
+	ID          string    `json:"id"`
+	ProfileID   string    `json:"profile_id"`
+	ProfileName string    `json:"profile_name"`
+	Impressions int       `json:"impressions"`
+	Fit         float64   `json:"fit"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // Variant is one experiment arm.
@@ -238,6 +249,19 @@ func List(ctx context.Context, dbc *sql.DB) ([]Experiment, error) {
 		out[i].Results = res
 		check := CheckGuardrails(res)
 		out[i].Guardrail = &check
+		var em EmulationInfo
+		err = dbc.QueryRowContext(ctx, `
+			SELECT r.id, r.profile_id, p.name, r.impressions, r.fit::float8, r.created_at
+			FROM emulation_runs r
+			JOIN client_profiles p ON p.id = r.profile_id
+			WHERE r.experiment_id = $1
+			ORDER BY r.created_at DESC LIMIT 1`, out[i].ID).Scan(
+			&em.ID, &em.ProfileID, &em.ProfileName, &em.Impressions, &em.Fit, &em.CreatedAt)
+		if err == nil {
+			out[i].Emulation = &em
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
 	}
 	return out, nil
 }
@@ -523,6 +547,19 @@ func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) (
 		out[i].Results = res
 		check := CheckGuardrails(res)
 		out[i].Guardrail = &check
+		var em EmulationInfo
+		err = dbc.QueryRowContext(ctx, `
+			SELECT r.id, r.profile_id, p.name, r.impressions, r.fit::float8, r.created_at
+			FROM emulation_runs r
+			JOIN client_profiles p ON p.id = r.profile_id
+			WHERE r.experiment_id = $1
+			ORDER BY r.created_at DESC LIMIT 1`, out[i].ID).Scan(
+			&em.ID, &em.ProfileID, &em.ProfileName, &em.Impressions, &em.Fit, &em.CreatedAt)
+		if err == nil {
+			out[i].Emulation = &em
+		} else if !errors.Is(err, sql.ErrNoRows) {
+			return nil, err
+		}
 	}
 	return out, nil
 }
