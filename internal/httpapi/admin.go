@@ -480,7 +480,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="formbox">
             <div class="form-title">P@3: baseline против нашей модели</div>
             <div class="method">
-              <div><b>P@3</b> = среднее по клиентам <code>hits / 3</code>. Рекомендуем ровно 3 новых item_id; если товаров меньше трёх — недостающие позиции считаются промахом.</div>
+              <div><b>P@3</b> = среднее по клиентам <code>hits / 3</code>. Рекомендуем ровно 3 новых item_id; если товаров меньше трёх — недостающие позиции считаются промахом. Считается по всем клиентам групп A и B; LLM-объяснения в метрике не участвуют.</div>
               <div><b>Срез:</b> train — заказы до 31.08.2026, test — с 07.09.2026; корзина = <code>(order_id, order_week)</code>.</div>
               <div><b>Группы:</b> A — есть покупки в train и хотя бы один новый товар в test (337 клиентов); B — подмножество A с ровно одним товаром в истории (172).</div>
               <div><b>Baseline:</b> popularity — число уникальных клиентов в train; co-purchase — пары из одной корзины, тай-брейк по популярности и item_id.</div>
@@ -534,7 +534,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <div class="form-title">Источник данных</div>
             <div class="stats" id="dataset-cards"></div>
             <div class="hint" id="dataset-feed" style="margin-top:8px"></div>
-            <div class="hint" style="margin-top:8px">Источник: исходный каталог, 817 товаров и 419 product_group; загруженные позиции не входят в офлайн-оценку.</div>
+            <div class="hint" style="margin-top:8px">Источник: текущий каталог, 817 товаров и 419 product_group. Исторического снимка фида нет — оцениваем товары текущего фида. Загруженные позиции не входят в офлайн-оценку.</div>
           </div>
         </div>
 
