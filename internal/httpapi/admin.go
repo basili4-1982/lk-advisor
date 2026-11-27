@@ -66,6 +66,8 @@ input[type=range]{padding:0}
 textarea{min-height:92px;resize:vertical}
 button{border:0;border-radius:9px;padding:10px 14px;font-weight:700;cursor:pointer;background:var(--red);color:#fff}
 button.secondary{background:#eef2ff;color:var(--blue)}
+button.success{background:#047857;color:#fff}
+button.success:hover{background:#065f46}
 button.ghost{background:transparent;color:var(--red);padding:5px 8px}
 button.small{padding:4px 8px;font-size:12px}
 button:disabled{opacity:.5;cursor:not-allowed}
@@ -521,7 +523,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 
         <div id="tab-experiments" class="hidden">
           <div class="toolbar">
-            <button id="experiment-seed">Добавить гипотезу</button>
+            <button id="experiment-seed" class="success">Добавить гипотезу</button>
             <button id="experiment-bad" class="secondary small">Смоделировать провал</button>
             <button id="experiment-refresh" class="secondary small">Обновить</button>
             <input id="experiment-search" type="search" placeholder="Поиск по базе знаний…" style="max-width:220px">
