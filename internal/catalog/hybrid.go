@@ -185,7 +185,12 @@ func ServeHybrid(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeRes
 	if opts.CertifiedOnly {
 		ranked = filterCertified(ranked)
 	}
-	sort.SliceStable(ranked, func(i, j int) bool { return ranked[i].Score > ranked[j].Score })
+	sort.SliceStable(ranked, func(i, j int) bool {
+		if math.Abs(ranked[i].Score-ranked[j].Score) < 0.02 && ranked[i].Certified != ranked[j].Certified {
+			return ranked[i].Certified
+		}
+		return ranked[i].Score > ranked[j].Score
+	})
 	if len(ranked) > opts.Limit {
 		ranked = ranked[:opts.Limit]
 	}
@@ -224,7 +229,12 @@ func precomputedForClient(ctx context.Context, dbc *sql.DB, clientID string, own
 	if opts.CertifiedOnly {
 		out = filterCertified(out)
 	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].Score > out[j].Score })
+	sort.SliceStable(out, func(i, j int) bool {
+		if math.Abs(out[i].Score-out[j].Score) < 0.02 && out[i].Certified != out[j].Certified {
+			return out[i].Certified
+		}
+		return out[i].Score > out[j].Score
+	})
 	if len(out) > opts.Limit {
 		out = out[:opts.Limit]
 	}
