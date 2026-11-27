@@ -30,8 +30,14 @@ func (h *handler) adminVendorProducts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "external sources error")
 		return
 	}
+	fstec, err := catalog.FstecKnowledgeStats(r.Context(), h.db)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "fstec stats error")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"items": items, "stats": stats, "classes": classes, "sources": sources,
+		"items": items, "stats": stats, "classes": classes,
+		"sources": sources, "fstec": fstec,
 	})
 }
 

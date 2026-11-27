@@ -84,6 +84,35 @@ func ListExternalSources(ctx context.Context, dbc *sql.DB) ([]ExternalSource, er
 	return out, rows.Err()
 }
 
+// FstecStats summarises the certified security tools registry.
+type FstecStats struct {
+	Certificates int `json:"certificates"`
+	Matched      int `json:"matched_certificates"`
+	Items        int `json:"covered_items"`
+	Expired      int `json:"expired"`
+}
+
+// FstecKnowledgeStats returns FSTEC coverage.
+func FstecKnowledgeStats(ctx context.Context, dbc *sql.DB) (FstecStats, error) {
+	var s FstecStats
+	if err := dbc.QueryRowContext(ctx, `SELECT count(*) FROM fstec_certificates`).Scan(&s.Certificates); err != nil {
+		return s, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(*) FROM fstec_certificates WHERE valid_until < current_date`).Scan(&s.Expired); err != nil {
+		return s, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(DISTINCT certificate_id) FROM fstec_certificate_items`).Scan(&s.Matched); err != nil {
+		return s, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(DISTINCT item_id) FROM fstec_certificate_items`).Scan(&s.Items); err != nil {
+		return s, err
+	}
+	return s, nil
+}
+
 // VendorClass is one registry product class with coverage.
 type VendorClass struct {
 	Code     string `json:"code"`
