@@ -335,6 +335,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="attribute">Атрибуты</option>
             </select>
             <select id="registry-family"><option value="">Все семейства</option></select>
+            <label class="toggle" style="display:flex;align-items:center;gap:6px;white-space:nowrap"><input type="checkbox" id="registry-certified" style="width:auto"> с сертификатом ФСТЭК</label>
             <button id="registry-apply" class="small">Применить</button>
             </div>
             <button class="secondary small" data-view="all">Смысловые</button>
@@ -1498,6 +1499,7 @@ function registryQuery(offset){
     if (minConf > 0) add('min_conf', minConf.toFixed(2));
   }
   if (REG_VIEW==='expiring') { add('expiring','30'); }
+  if (el('registry-certified') && el('registry-certified').checked) add('certified','true');
   add('limit', String(REG_PAGE.limit));
   if (offset > 0) add('offset', String(offset));
   return p.length ? '?'+p.join('&') : '';
@@ -1597,6 +1599,13 @@ function registryItem(id){
   for (var i=0;i<REG_PAGE.items.length;i++) if (String(REG_PAGE.items[i].id)===String(id)) return REG_PAGE.items[i];
   return null;
 }
+function certSummary(label, certs){
+  if (!certs || !certs.length) return '<div class="hint">'+esc(label)+': ФСТЭК — нет</div>';
+  return certs.map(function(c){
+    var tail = c.expired ? ' · <span style="color:#b91c1c">просрочен</span>' : ' · до '+esc(String(c.valid_until||'').slice(0,10));
+    return '<div class="hint">'+esc(label)+': ФСТЭК №'+esc(c.number)+tail+'</div>';
+  }).join('');
+}
 function renderRegistryDetail(id){
   var r=registryItem(id); if (!r) return;
   el('registry-detail').innerHTML =
@@ -1605,6 +1614,7 @@ function renderRegistryDetail(id){
     evidenceList(r.evidence)+'<div class="ev-note">'+esc(evidenceNote(r))+'</div>'+
     '<div class="alias-edit">Источник: <b>'+esc(r.from_short||'—')+'</b> <button class="secondary small" data-alias-side="from" data-alias-id="'+r.id+'">Алиас</button></div>'+
     '<div class="alias-edit">Цель: <b>'+esc(r.to_short||'—')+'</b> <button class="secondary small" data-alias-side="to" data-alias-id="'+r.id+'">Алиас</button></div>'+
+    certSummary('Источник', r.from_certs)+certSummary('Цель', r.to_certs)+
     '<div class="hint">Семейство: '+esc(familyLabel(r.from_family))+' → '+esc(familyLabel(r.to_family))+
       (r.valid_until?' · до '+esc(regWhen(r.valid_until)):'')+
       (r.rejection_reason?' · причина отказа: '+esc(r.rejection_reason):'')+'</div>'+
@@ -1640,6 +1650,7 @@ function registryFilter(){
     if (minConf > 0) f.min_confidence=minConf;
   }
   if (REG_VIEW==='expiring') f.expiring_days=30;
+  if (el('registry-certified').checked) f.certified=true;
   return f;
 }
 var REG_PENDING_FILTER = null;
@@ -1651,6 +1662,7 @@ function filterSummary(f){
   if (f.types && f.types.length) parts.push('тип: '+f.types.join(', '));
   if (f.family) parts.push('семейство: '+f.family);
   if (f.query) parts.push('поиск: '+f.query);
+  if (f.certified) parts.push('с сертификатом ФСТЭК');
   return parts.length ? '<div class="hint" style="margin-top:8px">'+esc(parts.join(' · '))+'</div>' : '';
 }
 function registryBulkFilter(){

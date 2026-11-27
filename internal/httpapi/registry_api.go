@@ -25,6 +25,7 @@ func registryFilterFromRequest(r *http.Request) catalog.RelationFilter {
 		OwnerID:         strings.TrimSpace(q.Get("owner")),
 		Sort:            strings.TrimSpace(q.Get("sort")),
 		ExcludeVariants: q.Get("exclude_variants") == "1" || q.Get("exclude") == "variants",
+		Certified:       q.Get("certified") == "true" || q.Get("certified") == "1",
 	}
 	if v, err := strconv.Atoi(q.Get("limit")); err == nil {
 		f.Limit = v

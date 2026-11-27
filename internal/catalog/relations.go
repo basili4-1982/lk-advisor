@@ -28,6 +28,7 @@ type RelationFilter struct {
 	MinConfidence   float64  `json:"min_confidence"`
 	MaxConfidence   float64  `json:"max_confidence"`
 	ExpiringDays    int      `json:"expiring_days"`
+	Certified       bool     `json:"certified"`
 	Limit           int      `json:"limit"`
 	Offset          int      `json:"offset"`
 	Sort            string   `json:"sort"`
@@ -74,7 +75,16 @@ type RegistryRelation struct {
 	ToCategory      string             `json:"to_category"`
 	FromShort       string             `json:"from_short"`
 	ToShort         string             `json:"to_short"`
+	FromCerts       []ItemCert         `json:"from_certs,omitempty"`
+	ToCerts         []ItemCert         `json:"to_certs,omitempty"`
 	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
+// ItemCert is one FSTEC certificate of a catalog item.
+type ItemCert struct {
+	Number     string     `json:"number"`
+	ValidUntil *time.Time `json:"valid_until,omitempty"`
+	Expired    bool       `json:"expired"`
 }
 
 // RegistryPage is one page of the registry listing.
@@ -249,6 +259,16 @@ func buildRelationWhere(f RelationFilter) (string, []any) {
 		conds = append(conds, fmt.Sprintf(
 			`r.valid_until IS NOT NULL AND r.valid_until <= now() + ($%d || ' days')::interval`, n))
 	}
+	if f.Certified {
+		conds = append(conds, `(
+			EXISTS (SELECT 1 FROM fstec_certificate_items mc
+			        JOIN fstec_certificates cc ON cc.id = mc.certificate_id
+			        WHERE mc.item_id = r.from_item_id AND cc.valid_until >= current_date)
+			OR EXISTS (SELECT 1 FROM fstec_certificate_items mt
+			        JOIN fstec_certificates ct ON ct.id = mt.certificate_id
+			        WHERE mt.item_id = r.to_item_id AND ct.valid_until >= current_date)
+		)`)
+	}
 	if len(conds) == 0 {
 		return "", args
 	}
@@ -324,7 +344,56 @@ func ListRegistryRelations(ctx context.Context, dbc *sql.DB, f RelationFilter) (
 			return RegistryPage{}, fmt.Errorf("registry relations count: %w", err)
 		}
 	}
+	attachRegistryCertificates(ctx, dbc, page.Items)
 	return page, nil
+}
+
+// attachRegistryCertificates loads FSTEC certificates for both sides of each
+// relation on the page.
+func attachRegistryCertificates(ctx context.Context, dbc *sql.DB, items []RegistryRelation) {
+	if len(items) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(items)*2)
+	seen := map[string]bool{}
+	for _, r := range items {
+		for _, id := range []string{r.FromID, r.ToID} {
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT m.item_id, c.certificate_number, c.valid_until
+		FROM fstec_certificate_items m
+		JOIN fstec_certificates c ON c.id = m.certificate_id
+		WHERE m.item_id = ANY($1)
+		ORDER BY c.valid_until DESC NULLS LAST`, pq.Array(ids))
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	now := time.Now()
+	byItem := map[string][]ItemCert{}
+	for rows.Next() {
+		var itemID, number string
+		var valid sql.NullTime
+		if err := rows.Scan(&itemID, &number, &valid); err != nil {
+			continue
+		}
+		cert := ItemCert{Number: number}
+		if valid.Valid {
+			v := valid.Time
+			cert.ValidUntil = &v
+			cert.Expired = v.Before(now)
+		}
+		byItem[itemID] = append(byItem[itemID], cert)
+	}
+	for i := range items {
+		items[i].FromCerts = byItem[items[i].FromID]
+		items[i].ToCerts = byItem[items[i].ToID]
+	}
 }
 
 // RegistryMetrics summarises the v5 registry for the workbench header.
