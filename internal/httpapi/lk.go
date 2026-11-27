@@ -60,7 +60,8 @@ func (h *handler) lkClients(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// lkPage is a client-facing recommendation block: opening it is a real view.
+// lkPage renders the client block. The technical context (variant, ids,
+// relation internals) is hidden until the operator turns on system info.
 func (h *handler) lkPage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	_, _ = w.Write([]byte(lkHTML))
@@ -94,49 +95,63 @@ button{font:inherit;font-weight:700;border:0;border-radius:9px;padding:9px 14px;
 button.secondary{background:#eef2ff;color:var(--blue)}
 button.green{background:var(--green)}
 button:disabled{opacity:.5;cursor:default}
-.badge{display:inline-block;padding:4px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2ff;color:var(--blue)}
-.badge.green{background:#dcfce7;color:#166534}
-.badge.amber{background:#fef3c7;color:#92400e}
-.badge.gray{background:#f1f5f9;color:#475569}
 .cards{display:grid;gap:14px;margin-top:16px}
 .card{border:1px solid var(--line);border-radius:14px;padding:16px}
-.card.forced{border-color:#86efac;background:#f0fdf4}
 .card-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
 .rank{font-size:13px;color:var(--muted);font-weight:700}
 .card h2{font-size:18px;margin:6px 0 8px;line-height:1.3}
 .reason{color:#334155;margin:0 0 12px}
-.meta{color:var(--muted);font-size:13px;margin-bottom:12px}
 .actions{display:flex;gap:8px}
 .empty{padding:24px;text-align:center;color:var(--muted)}
-.trace{color:#94a3b8;font-size:12px;margin-top:12px;word-break:break-all}
 .hint{color:var(--muted);font-size:13px}
+
+/* Всё системное скрыто, пока оператор не включил режим. */
+.sys-panel{display:none;background:#0f172a;color:#e5e7eb;border-radius:12px;padding:14px;margin:0 0 16px;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
+body.sys-on .sys-panel{display:block}
+.sys-panel b{color:#93c5fd;font-weight:700}
+.sys-line{margin:2px 0}
+.sys{display:none}
+body.sys-on .sys{display:block}
+.sys-card{margin-top:12px;padding-top:10px;border-top:1px dashed #cbd5e1;color:#475569;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
+.sys-card div{margin:2px 0}
+body.sys-on .card.forced{background:#f8fafc;border-color:#cbd5e1}
 </style>
 </head>
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><div class="logo">LK</div><div><b>Мои рекомендации</b><small>личный кабинет клиента</small></div></div>
-  <a href="/admin" style="color:#cbd5e1;text-decoration:none">Админка</a>
+  <span class="hint" style="color:#94a3b8">подобрано по вашим покупкам</span>
 </div></header>
 <main class="wrap">
   <h1>Что ещё может пригодиться</h1>
-  <p class="lead">Блок собран по вашим покупкам и подтверждённым связям каталога. Каждое открытие страницы — настоящий показ.</p>
+  <p class="lead">Подборка по вашим покупкам и задачам.</p>
   <div class="panel">
-    <div class="toolbar">
-      <label class="hint" for="client">Клиент</label>
-      <select id="client" style="min-width:340px"></select>
-      <button id="reload" class="secondary">Показать блок</button>
-      <span id="experiment" class="badge gray">—</span>
-      <span id="cold" class="badge gray hidden">—</span>
+    <div class="toolbar" style="justify-content:flex-end;margin-bottom:0">
+      <button id="sys-toggle" class="secondary">Системная информация</button>
+    </div>
+    <div id="system" class="sys-panel">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+        <label for="client" style="color:#94a3b8">клиент</label>
+        <select id="client" style="min-width:340px;background:#1e293b;color:#e5e7eb;border-color:#334155"></select>
+        <button id="reload" class="secondary">Показать блок</button>
+      </div>
+      <div id="sys-meta"></div>
     </div>
     <div id="cards" class="cards"><div class="empty">Выберите клиента и нажмите «Показать блок»</div></div>
-    <div id="trace" class="trace"></div>
   </div>
 </main>
 <script>
-var trace = '', clientID = '';
+var trace = '', clientID = '', lastData = null, sysOn = false;
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function typeLabel(t){
   return {upsell:'Апгрейд', cross_sell:'Дополнение', popular:'Популярное', alternative:'Альтернатива'}[t] || t;
+}
+function clientReason(r){
+  if (r.type === 'upsell') return 'Более широкая редакция вместо текущей';
+  if (r.type === 'cross_sell') return 'Дополняет то, что вы уже купили';
+  if (r.type === 'popular') return 'Часто выбирают клиенты с похожими задачами';
+  if (r.type === 'alternative') return 'Альтернатива вашей текущей покупке';
+  return 'Может пригодиться вместе с вашей покупкой';
 }
 async function api(method, path, body){
   var opt = {method:method, headers:{}};
@@ -154,6 +169,18 @@ async function loadClients(){
     return '<option value="'+esc(c.client_id)+'">'+esc(c.client_id)+' · '+esc(c.client_type)+' · '+esc(c.industry||'без отрасли')+' · покупок '+c.orders+'</option>';
   }).join('');
 }
+function renderSystem(d){
+  var rows = [];
+  rows.push('<div class="sys-line"><b>client_id:</b> '+esc(d.client_id)+'</div>');
+  rows.push('<div class="sys-line"><b>strategy:</b> '+esc(d.strategy || '—')+'</div>');
+  rows.push('<div class="sys-line"><b>cold_start:</b> '+(d.cold_start?'true':'false')+'</div>');
+  rows.push('<div class="sys-line"><b>experiment_id:</b> '+esc(d.experiment_id || '—')+'</div>');
+  rows.push('<div class="sys-line"><b>variant:</b> '+esc(d.variant || '—')+'</div>');
+  rows.push('<div class="sys-line"><b>trace_id:</b> '+esc(d.trace_id || '—')+'</div>');
+  rows.push('<div class="sys-line" style="margin-top:8px;color:#94a3b8">Каждое открытие страницы — один настоящий показ</div>');
+  rows.push('<div class="sys-line"><a href="/admin" style="color:#93c5fd">Перейти в админку</a></div>');
+  document.getElementById('sys-meta').innerHTML = rows.join('');
+}
 async function loadBlock(){
   var sel = document.getElementById('client');
   clientID = sel.value;
@@ -161,32 +188,29 @@ async function loadBlock(){
   box.innerHTML = '<div class="empty">Считаю…</div>';
   try {
     var d = await api('POST','/v1/recommendations',{client_id:clientID, limit:3});
+    lastData = d;
     trace = d.trace_id;
-    var exp = document.getElementById('experiment');
-    if (d.experiment_id){
-      exp.textContent = 'Гипотеза: ' + (d.variant || '—');
-      exp.className = 'badge ' + (d.variant==='treatment'?'green':'gray');
-    } else {
-      exp.textContent = 'Без эксперимента'; exp.className = 'badge gray';
-    }
-    var cold = document.getElementById('cold');
-    cold.className = 'badge ' + (d.cold_start?'amber':'gray');
-    cold.textContent = d.cold_start ? 'Холодный старт' : 'Есть история';
+    renderSystem(d);
     var recs = d.recommendations || [];
     if (!recs.length){ box.innerHTML = '<div class="empty">Пока нечего предложить</div>'; return; }
     box.innerHTML = recs.map(function(r){
       var forced = (r.reason||'').indexOf('Гипотеза') === 0;
       return '<div class="card'+(forced?' forced':'')+'" data-product="'+esc(r.product_id)+'">'+
-        '<div class="card-head"><div class="rank">#'+r.rank+' · '+esc(typeLabel(r.type))+'</div>'+
-        (forced?'<span class="badge green">гипотеза</span>':'')+'</div>'+
+        '<div class="card-head"><div class="rank">#'+r.rank+' · '+esc(typeLabel(r.type))+'</div></div>'+
         '<h2>'+esc(r.title)+'</h2>'+
-        '<p class="reason">'+esc(r.reason)+'</p>'+
-        '<div class="meta">product_id: '+esc(r.product_id)+'</div>'+
+        '<p class="reason">'+esc(clientReason(r))+'</p>'+
         '<div class="actions"><button data-act="clicked" class="secondary">Клик</button>'+
         '<button data-act="purchased" class="green">Купить</button></div>'+
+        '<div class="sys sys-card">'+
+          '<div><b>product_id:</b> '+esc(r.product_id)+'</div>'+
+          '<div><b>relation_type:</b> '+esc(r.relation_type || '—')+'</div>'+
+          '<div><b>forced_by_experiment:</b> '+(forced?'true':'false')+'</div>'+
+          '<div><b>source_product_id:</b> '+esc(r.source_product_id || '—')+'</div>'+
+          '<div><b>score:</b> '+Number(r.score||0).toFixed(3)+'</div>'+
+          '<div><b>system_reason:</b> '+esc(r.reason || '—')+'</div>'+
+        '</div>'+
       '</div>';
     }).join('');
-    document.getElementById('trace').textContent = 'trace_id: ' + trace;
     box.querySelectorAll('button[data-act]').forEach(function(b){
       b.addEventListener('click', function(){ sendEvent(b); });
     });
@@ -206,6 +230,11 @@ async function sendEvent(btn){
     card.appendChild(mark);
   } catch(e){ alert(e.message); }
 }
+document.getElementById('sys-toggle').addEventListener('click', function(){
+  sysOn = !sysOn;
+  document.body.classList.toggle('sys-on', sysOn);
+  this.textContent = sysOn ? 'Скрыть системную информацию' : 'Системная информация';
+});
 document.getElementById('reload').addEventListener('click', loadBlock);
 document.getElementById('client').addEventListener('change', loadBlock);
 loadClients().then(loadBlock).catch(function(e){ document.getElementById('cards').innerHTML = '<div class="empty">'+esc(e.message)+'</div>'; });
