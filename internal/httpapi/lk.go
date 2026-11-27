@@ -273,6 +273,9 @@ button:disabled{opacity:.5;cursor:default}
 .actions{display:flex;gap:8px}
 .empty{padding:24px;text-align:center;color:var(--muted)}
 .hint{color:var(--muted);font-size:13px}
+.hidden{display:none!important}
+.badge{display:inline-block;padding:3px 9px;border-radius:999px;font-size:12px;font-weight:700;background:#eef2ff;color:var(--blue)}
+.badge.green{background:#dcfce7;color:#166534}
 
 /* Всё системное скрыто, пока оператор не включил режим. */
 .sys-panel{display:none;background:#0f172a;color:#e5e7eb;border-radius:12px;padding:14px;margin:0 0 16px;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace}
@@ -414,8 +417,14 @@ async function loadBlock(){
     if (!recs.length){ box.innerHTML = '<div class="empty">Пока нечего предложить</div>'; return; }
     box.innerHTML = recs.map(function(r){
       var forced = (r.reason||'').indexOf('Гипотеза') === 0;
+      var certs = r.fstec || [];
+      var validCert = certs.some(function(c){ return !c.expired; });
+      var certSys = certs.length ? certs.map(function(c){
+        return '<div><b>fstec:</b> №'+esc(c.number)+' · '+(c.expired?'<span style="color:#fbbf24">просрочен</span>':'до '+esc(c.valid_until||'—'))+'</div>';
+      }).join('') : '<div><b>fstec:</b> нет</div>';
       return '<div class="card'+(forced?' forced':'')+'" data-product="'+esc(r.product_id)+'">'+
-        '<div class="card-head"><div class="rank">#'+r.rank+' · '+esc(typeLabel(r.type))+'</div></div>'+
+        '<div class="card-head"><div class="rank">#'+r.rank+' · '+esc(typeLabel(r.type))+'</div>'+
+          (validCert?'<span class="badge green">Сертифицировано ФСТЭК</span>':'')+'</div>'+
         '<h2>'+esc(r.title)+'</h2>'+
         '<p class="reason">'+esc(clientReason(r))+'</p>'+
         '<div class="actions"><button data-act="clicked" class="secondary">Клик</button>'+
@@ -427,6 +436,7 @@ async function loadBlock(){
           '<div><b>source_product_id:</b> '+esc(r.source_product_id || '—')+'</div>'+
           '<div><b>score:</b> '+Number(r.score||0).toFixed(3)+'</div>'+
           '<div><b>compatibility:</b> '+esc(r.compatibility || '—')+'</div>'+
+          certSys+
           '<div><b>system_reason:</b> '+esc(r.reason || '—')+'</div>'+
         '</div>'+
       '</div>';

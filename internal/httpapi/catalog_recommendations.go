@@ -1,12 +1,16 @@
 package httpapi
 
 import (
+	"context"
+	"database/sql"
 	"net/http"
 
 	"github.com/basili4-1982/lk-advisor/internal/analytics"
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
 	"github.com/basili4-1982/lk-advisor/internal/experiment"
 	"github.com/basili4-1982/lk-advisor/internal/model"
+
+	"github.com/lib/pq"
 )
 
 // recommendCatalog serves recommendations for a real catalog client (lk_clients).
@@ -45,6 +49,7 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 	}
 
 	traceID := newTraceID()
+	certs := h.fstecForItems(ctx, res.Items)
 	recs := make([]model.Recommendation, 0, len(res.Items))
 	shown := make([]analytics.Item, 0, len(res.Items))
 	for i, it := range res.Items {
@@ -58,6 +63,7 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 			Rank:            i + 1,
 			Reason:          it.Reason,
 			Compatibility:   it.Compatibility,
+			Fstec:           certs[it.ItemID],
 			Evidence:        []model.Evidence{},
 			Constraints:     []string{},
 		})
@@ -109,6 +115,47 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 		resp.Variant = assignment.Variant
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// fstecForItems loads up to three FSTEC certificates per recommended item.
+func (h *handler) fstecForItems(ctx context.Context, items []catalog.ServeItem) map[string][]model.FstecCert {
+	out := map[string][]model.FstecCert{}
+	if len(items) == 0 {
+		return out
+	}
+	ids := make([]string, 0, len(items))
+	for _, it := range items {
+		ids = append(ids, it.ItemID)
+	}
+	rows, err := h.db.QueryContext(ctx, `
+		SELECT m.item_id, c.certificate_number, c.valid_until
+		FROM fstec_certificate_items m
+		JOIN fstec_certificates c ON c.id = m.certificate_id
+		WHERE m.item_id = ANY($1)
+		ORDER BY c.valid_until DESC NULLS LAST`, pq.Array(ids))
+	if err != nil {
+		return out
+	}
+	defer rows.Close()
+	now := h.now()
+	for rows.Next() {
+		var itemID, number string
+		var valid sql.NullTime
+		if err := rows.Scan(&itemID, &number, &valid); err != nil {
+			continue
+		}
+		list := out[itemID]
+		if len(list) >= 3 {
+			continue
+		}
+		cert := model.FstecCert{Number: number}
+		if valid.Valid {
+			cert.ValidUntil = valid.Time.Format("2006-01-02")
+			cert.Expired = valid.Time.Before(now)
+		}
+		out[itemID] = append(list, cert)
+	}
+	return out
 }
 
 // isCatalogClient reports whether the id belongs to the real catalog dataset.

@@ -209,6 +209,13 @@ type ScoreFactors struct {
 }
 
 // Recommendation is one item of the API response.
+// FstecCert is one FSTEC certificate attached to a catalog item.
+type FstecCert struct {
+	Number     string `json:"number"`
+	ValidUntil string `json:"valid_until,omitempty"`
+	Expired    bool   `json:"expired"`
+}
+
 type Recommendation struct {
 	ProductID          string        `json:"product_id"`
 	SKU                string        `json:"sku"`
@@ -223,6 +230,7 @@ type Recommendation struct {
 	Rank               int           `json:"rank"`
 	Reason             string        `json:"reason"`
 	Compatibility      string        `json:"compatibility,omitempty"`
+	Fstec              []FstecCert   `json:"fstec,omitempty"`
 	Factors            *ScoreFactors `json:"factors,omitempty"`
 	Evidence           []Evidence    `json:"evidence"`
 	Constraints        []string      `json:"constraints"`
