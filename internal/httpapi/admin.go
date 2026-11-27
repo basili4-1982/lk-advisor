@@ -269,6 +269,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
         <button class="tab" data-tab="registry">Каталог</button>
         <button class="tab" data-tab="types">Типы связей</button>
         <button class="tab" data-tab="experiments">Гипотезы</button>
+        <button class="tab" data-tab="analytics">Аналитика</button>
       </div>
       <div class="tabbody">
         <div id="tab-relations" class="hidden">

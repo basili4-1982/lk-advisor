@@ -50,3 +50,6 @@ analysis/cert_signal_evaluation.json
 
 # Generated voiceover for the demo video
 docs/demo/voice/*.mp3
+
+# Demo video artifacts
+docs/demo/video/*.mp4
