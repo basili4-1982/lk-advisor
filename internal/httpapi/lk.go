@@ -250,6 +250,9 @@ body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,
 .top{background:linear-gradient(135deg,#070b14 0%,#111827 60%,#1f2937 100%);color:#fff;padding:18px 0}
 .wrap{max-width:1080px;margin:0 auto;padding:0 20px}
 .top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.top nav{display:flex;align-items:center;gap:18px}
+.top nav a{color:#cbd5e1;text-decoration:none;font-size:14px}
+.top nav a:hover{color:#fff}
 .brand{display:flex;align-items:center;gap:12px}
 .logo{background:linear-gradient(135deg,#e11d48,#991b1b);color:#fff;font-weight:800;border-radius:11px;width:42px;height:42px;display:grid;place-items:center}
 .brand b{display:block;font-size:18px}
@@ -299,7 +302,7 @@ body.sys-on .card.forced{background:#f8fafc;border-color:#cbd5e1}
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><div class="logo">LK</div><div><b>Мои рекомендации</b><small>личный кабинет клиента</small></div></div>
-  <span class="hint" style="color:#94a3b8">подобрано по вашим покупкам</span>
+  <nav><a href="/">Главная</a><a href="/admin">Админка</a><a href="/demo/graph">Граф</a><a href="/api">API</a></nav>
 </div></header>
 <main class="wrap">
   <h1>Что ещё может пригодиться</h1>
