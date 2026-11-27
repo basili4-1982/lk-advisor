@@ -66,6 +66,11 @@ h1{font-size:26px;margin:0 0 6px}
       <span>Сигналы из открытых источников, выбор типа связи и холодный старт.</span>
       <span class="badge">/agent</span>
     </a>
+    <a class="card" href="/materials/">
+      <b>Материалы</b>
+      <span>One-pager, архитектура, метрики, API, инструкция и безопасность.</span>
+      <span class="badge">/materials/</span>
+    </a>
   </div>
   <div class="foot">Сырые данные датасета не публикуются. Демо доступно только на закрытом стенде.</div>
 </main>
