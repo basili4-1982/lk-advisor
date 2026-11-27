@@ -713,7 +713,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
     <div class="hint" id="live-hypothesis"></div>
     <div class="exp-form">
       <div class="row2">
-        <label>Демо-клиентов<select id="live-clients">
+        <label>Клиентов каталога<select id="live-clients">
           <option value="10">10</option>
           <option value="25">25</option>
           <option value="50" selected>50</option>
@@ -725,12 +725,12 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <option value="10">10</option>
         </select></label>
       </div>
-      <label>Поведение демо-клиентов<select id="live-behavior">
+      <label>Поведение клиентов (модель)<select id="live-behavior">
         <option value="fit" selected>по модели попадания</option>
         <option value="neutral">нейтральное</option>
       </select></label>
       <label style="display:flex;align-items:center;gap:8px;flex-direction:row"><input type="checkbox" id="live-reset" checked style="width:auto"> Начать с чистого листа — очистить предыдущие события эксперимента</label>
-      <div class="hint">Клиенты и показы настоящие: берутся из <code>lk_clients</code> и <code>/v1/recommendations</code>. Клики и покупки разыгрывает демо-модель: в режиме «по модели попадания» целевой товар кликают чаще, в нейтральном — все варианты одинаково. Это не реальные клики.</div>
+      <div class="hint">Клиенты — реальные записи датасета <code>lk_clients</code>, показы — настоящие вызовы <code>/v1/recommendations</code>. Клики и покупки моделируются: в режиме «по модели попадания» целевой товар выбирают чаще, в нейтральном — все варианты одинаково. Это модель поведения, а не действия этих клиентов.</div>
       <div class="hint" id="live-progress"></div>
     </div>
     <div class="toolbar" style="justify-content:flex-end;margin-top:14px">
