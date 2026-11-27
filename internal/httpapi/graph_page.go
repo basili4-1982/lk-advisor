@@ -94,7 +94,7 @@ main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
 <header class="top">
   <div class="brand">
     <div class="logo">LK</div>
-    <div><h1>Граф связей <span class="demo-pill">демо-витрина</span></h1><p>Публичный слой датасета v3 · только просмотр</p></div>
+    <div><h1>Граф связей <span class="demo-pill">демо-витрина</span></h1><p>Публичный слой каталога · только просмотр</p></div>
   </div>
   <div class="controls">
     <input id="search" type="search" placeholder="Найти товар…">
