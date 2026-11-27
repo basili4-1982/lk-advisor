@@ -309,8 +309,11 @@ http://localhost:8080/lk
 
 Системная информация скрыта за кнопкой **«Системная информация»**: там
 `client_id`, `strategy`, `cold_start`, `experiment_id`, `variant`, `trace_id`,
-выбор клиента и по каждой карточке `product_id`, `relation_type`,
-`forced_by_experiment`, `source_product_id`, `score`, `system_reason`.
+выбор клиента, профиль (тип, отрасль, сегмент, группа, источник), история
+покупок (заказы, товары, даты) и по каждой карточке `product_id`,
+`relation_type`, `forced_by_experiment`, `source_product_id`, `score`,
+`system_reason`. Товары из истории, которые стали источником рекомендации,
+помечаются в таблице.
 
 В админке кнопка **«Витрина клиента»** открывает эту страницу.
 

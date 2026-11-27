@@ -1,6 +1,8 @@
 package httpapi
 
 import (
+	"database/sql"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -82,6 +84,86 @@ func appendClients(r *http.Request, h *handler, query string, args []any, out *[
 	return rows.Err()
 }
 
+// lkClientDetail returns the client profile and purchase history behind the
+// storefront block, so the operator can verify why recommendations appeared.
+func (h *handler) lkClientDetail(w http.ResponseWriter, r *http.Request) {
+	clientID := r.PathValue("id")
+	var c struct {
+		ClientID    string `json:"client_id"`
+		ClientType  string `json:"client_type"`
+		Industry    string `json:"industry"`
+		Segment     string `json:"segment"`
+		ClientGroup string `json:"client_group"`
+		Source      string `json:"source"`
+		Orders      int    `json:"orders"`
+		Items       []struct {
+			ItemID       string `json:"item_id"`
+			Title        string `json:"title"`
+			Category     string `json:"category"`
+			ProductGroup string `json:"product_group"`
+			Purchases    int    `json:"purchases"`
+			LastOrder    string `json:"last_order"`
+		} `json:"items"`
+	}
+	err := h.db.QueryRowContext(r.Context(), `
+		SELECT client_id, client_type, COALESCE(industry, ''), COALESCE(segment, ''),
+		       COALESCE(client_group, ''), COALESCE(source, '')
+		FROM lk_clients WHERE client_id = $1`, clientID).Scan(
+		&c.ClientID, &c.ClientType, &c.Industry, &c.Segment, &c.ClientGroup, &c.Source)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "client not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "client profile error")
+		return
+	}
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT count(*) FROM lk_orders WHERE client_id = $1`, clientID).Scan(&c.Orders); err != nil {
+		writeError(w, http.StatusInternalServerError, "client orders error")
+		return
+	}
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT i.item_id, i.title, i.category, COALESCE(i.product_group, ''),
+		       count(*) AS purchases, to_char(max(o.order_week), 'YYYY-MM-DD')
+		FROM lk_orders o
+		JOIN lk_items i ON i.item_id = o.item_id
+		WHERE o.client_id = $1
+		GROUP BY 1, 2, 3, 4
+		ORDER BY max(o.order_week) DESC, i.title
+		LIMIT 60`, clientID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "client history error")
+		return
+	}
+	defer rows.Close()
+	c.Items = []struct {
+		ItemID       string `json:"item_id"`
+		Title        string `json:"title"`
+		Category     string `json:"category"`
+		ProductGroup string `json:"product_group"`
+		Purchases    int    `json:"purchases"`
+		LastOrder    string `json:"last_order"`
+	}{}
+	for rows.Next() {
+		var it struct {
+			ItemID       string `json:"item_id"`
+			Title        string `json:"title"`
+			Category     string `json:"category"`
+			ProductGroup string `json:"product_group"`
+			Purchases    int    `json:"purchases"`
+			LastOrder    string `json:"last_order"`
+		}
+		if err := rows.Scan(&it.ItemID, &it.Title, &it.Category, &it.ProductGroup,
+			&it.Purchases, &it.LastOrder); err != nil {
+			writeError(w, http.StatusInternalServerError, "client history scan error")
+			return
+		}
+		c.Items = append(c.Items, it)
+	}
+	writeJSON(w, http.StatusOK, c)
+}
+
 // lkPage renders the client block. The technical context (variant, ids,
 // relation internals) is hidden until the operator turns on system info.
 func (h *handler) lkPage(w http.ResponseWriter, r *http.Request) {
@@ -136,6 +218,9 @@ body.sys-on .sys-panel{display:block}
 body.sys-on .sys{display:block}
 .sys-card{margin-top:12px;padding-top:10px;border-top:1px dashed #cbd5e1;color:#475569;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace}
 .sys-card div{margin:2px 0}
+.sys-table{width:100%;border-collapse:collapse;margin-top:8px;font:12px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#cbd5e1}
+.sys-table th{text-align:left;color:#93c5fd;border-bottom:1px solid #334155;padding:4px 6px;font-weight:700}
+.sys-table td{padding:4px 6px;border-bottom:1px solid #1e293b;vertical-align:top}
 body.sys-on .card.forced{background:#f8fafc;border-color:#cbd5e1}
 </style>
 </head>
@@ -158,6 +243,7 @@ body.sys-on .card.forced{background:#f8fafc;border-color:#cbd5e1}
         <button id="reload" class="secondary">Показать блок</button>
       </div>
       <div id="sys-meta"></div>
+      <div id="sys-client"></div>
     </div>
     <div id="cards" class="cards"><div class="empty">Выберите клиента и нажмите «Показать блок»</div></div>
   </div>
@@ -206,10 +292,27 @@ function renderSystem(d){
   rows.push('<div class="sys-line"><a href="/admin" style="color:#93c5fd">Перейти в админку</a></div>');
   document.getElementById('sys-meta').innerHTML = rows.join('');
 }
+async function loadClientContext(d){
+  var host = document.getElementById('sys-client');
+  host.innerHTML = '<div class="sys-line" style="color:#94a3b8">История загружается…</div>';
+  try {
+    var c = await api('GET','/v1/lk/clients/'+encodeURIComponent(clientID));
+    var sources = {};
+    (d.recommendations||[]).forEach(function(r){ if (r.source_product_id) sources[r.source_product_id] = true; });
+    var rows = (c.items||[]).map(function(it){
+      return '<tr><td>'+esc(it.title)+'</td><td>'+esc(it.category||'—')+'</td><td>'+esc(it.last_order||'—')+'</td><td>'+it.purchases+'</td><td>'+(sources[it.item_id]?'источник блока':'')+'</td></tr>';
+    }).join('');
+    host.innerHTML =
+      '<div class="sys-line" style="margin-top:12px"><b>Профиль:</b> '+esc(c.client_type||'—')+' · '+esc(c.industry||'без отрасли')+' · сегмент '+esc(c.segment||'—')+' · группа '+esc(c.client_group||'—')+' · источник '+esc(c.source||'—')+'</div>'+
+      '<div class="sys-line"><b>История:</b> '+c.orders+' заказов, '+(c.items||[]).length+' товаров</div>'+
+      (rows ? '<table class="sys-table"><thead><tr><th>Купленный товар</th><th>Категория</th><th>Последний заказ</th><th>Раз</th><th></th></tr></thead><tbody>'+rows+'</tbody></table>' : '<div class="sys-line">Покупок нет — холодный старт</div>');
+  } catch(e){ host.innerHTML = '<div class="sys-line" style="color:#fbbf24">'+esc(e.message)+'</div>'; }
+}
 async function loadBlock(){
   var sel = document.getElementById('client');
   clientID = sel.value;
   var box = document.getElementById('cards');
+  document.getElementById('sys-client').innerHTML = '';
   box.innerHTML = '<div class="empty">Считаю…</div>';
   try {
     var d = await api('POST','/v1/recommendations',{client_id:clientID, limit:3});
@@ -239,6 +342,7 @@ async function loadBlock(){
     box.querySelectorAll('button[data-act]').forEach(function(b){
       b.addEventListener('click', function(){ sendEvent(b); });
     });
+    loadClientContext(d);
   } catch(e){ box.innerHTML = '<div class="empty">'+esc(e.message)+'</div>'; }
 }
 async function sendEvent(btn){

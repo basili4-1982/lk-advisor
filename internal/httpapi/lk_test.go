@@ -77,3 +77,63 @@ func TestStorefrontShowsColdStartClients(t *testing.T) {
 		t.Fatalf("cold-start block = %+v", block)
 	}
 }
+
+func TestStorefrontClientProfileAndHistory(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	cleanup := func() {
+		dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE order_id LIKE 'lk-prof-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'lk-prof-%'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_clients WHERE client_id LIKE 'lk-prof-%'`)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO lk_clients (client_id, client_type, industry, segment, client_group, source)
+		VALUES ('lk-prof-1', 'ЮЛ', 'Медицинские организации', 'medium', 'G-1', 'dataset_v3')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO lk_items (item_id, title, category, product_group)
+		VALUES ('lk-prof-item', 'Купленный товар', 'office', 'G-1')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO lk_orders (order_id, client_id, order_week, item_id)
+		VALUES ('lk-prof-o1', 'lk-prof-1', '2026-02-01', 'lk-prof-item')`); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := doJSON(t, h, http.MethodGet, "/v1/lk/clients/lk-prof-1", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("profile: %d %s", rec.Code, rec.Body.String())
+	}
+	var detail struct {
+		ClientID   string `json:"client_id"`
+		ClientType string `json:"client_type"`
+		Industry   string `json:"industry"`
+		Segment    string `json:"segment"`
+		Orders     int    `json:"orders"`
+		Items      []struct {
+			ItemID    string `json:"item_id"`
+			Title     string `json:"title"`
+			Purchases int    `json:"purchases"`
+			LastOrder string `json:"last_order"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.ClientID != "lk-prof-1" || detail.ClientType != "ЮЛ" || detail.Industry == "" {
+		t.Fatalf("profile = %+v", detail)
+	}
+	if detail.Orders != 1 || len(detail.Items) != 1 || detail.Items[0].Purchases != 1 {
+		t.Fatalf("history = %+v", detail)
+	}
+
+	rec = doJSON(t, h, http.MethodGet, "/v1/lk/clients/unknown", "")
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("unknown status = %d", rec.Code)
+	}
+}
