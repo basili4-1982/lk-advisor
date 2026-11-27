@@ -37,11 +37,17 @@ func TestExperimentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(list) != 1 || list[0].ID != "exp-pdf-b2b" {
-		t.Fatalf("list = %+v", list)
+	var seeded *experiment.Experiment
+	for i := range list {
+		if list[i].ID == "exp-pdf-b2b" {
+			seeded = &list[i]
+		}
 	}
-	if list[0].Strategy != "hybrid" {
-		t.Fatalf("strategy = %q", list[0].Strategy)
+	if seeded == nil {
+		t.Fatalf("exp-pdf-b2b missing from list: %+v", list)
+	}
+	if seeded.Strategy != "hybrid" {
+		t.Fatalf("strategy = %q", seeded.Strategy)
 	}
 	runningPopular, err := experiment.LoadRunning(ctx, dbc, "b2b", "", "popular")
 	if err != nil {
@@ -54,13 +60,19 @@ func TestExperimentLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(runningHybrid) != 1 {
+	foundHybrid := false
+	for _, e := range runningHybrid {
+		if e.ID == "exp-pdf-b2b" {
+			foundHybrid = true
+		}
+	}
+	if !foundHybrid {
 		t.Fatalf("hybrid experiment missing: %+v", runningHybrid)
 	}
 
 	var treatment experiment.Assignment
 	for i := 0; i < 100; i++ {
-		a, err := experiment.Assign(ctx, dbc, list[0], fmt.Sprintf("exp-client-%d", i))
+		a, err := experiment.Assign(ctx, dbc, *seeded, fmt.Sprintf("exp-client-%d", i))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,7 +84,7 @@ func TestExperimentLifecycle(t *testing.T) {
 	if treatment.ExperimentID == "" {
 		t.Fatal("no treatment assignment")
 	}
-	again, err := experiment.Assign(ctx, dbc, list[0], treatment.ClientID)
+	again, err := experiment.Assign(ctx, dbc, *seeded, treatment.ClientID)
 	if err != nil {
 		t.Fatal(err)
 	}

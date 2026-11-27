@@ -199,6 +199,9 @@ function renderSystem(d){
   rows.push('<div class="sys-line"><b>experiment_id:</b> '+esc(d.experiment_id || '—')+'</div>');
   rows.push('<div class="sys-line"><b>variant:</b> '+esc(d.variant || '—')+'</div>');
   rows.push('<div class="sys-line"><b>trace_id:</b> '+esc(d.trace_id || '—')+'</div>');
+  if (String(d.client_id||'').indexOf('COLD-') === 0) {
+    rows.push('<div class="sys-line" style="color:#fbbf24">COLD-* — тестовый профиль без истории для холодного старта</div>');
+  }
   rows.push('<div class="sys-line" style="margin-top:8px;color:#94a3b8">Каждое открытие страницы — один настоящий показ</div>');
   rows.push('<div class="sys-line"><a href="/admin" style="color:#93c5fd">Перейти в админку</a></div>');
   document.getElementById('sys-meta').innerHTML = rows.join('');

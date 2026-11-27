@@ -1189,7 +1189,7 @@ function showRegistryTip(text, x, y){
 function hideRegistryTip(){ el('registry-tip').classList.remove('on'); }
 function regProvLabel(p){ return REG_PROV[p] || p || '—'; }
 function regWhen(v){ if(!v) return '—'; var d=new Date(v); return isNaN(d.getTime()) ? '—' : d.toLocaleDateString('ru-RU'); }
-var EV_KIND = {attribute: 'Атрибут', co_purchase: 'Co-purchase', llm: 'LLM', manual: 'Ручная', rule: 'Правило', spec: 'Спецификация'};
+var EV_KIND = {attribute: 'Атрибут', co_purchase: 'Co-purchase', llm: 'LLM', manual: 'Ручная', rule: 'Правило', spec: 'Спецификация', vendor_doc: 'Документация вендора', product_page: 'Страница товара'};
 function evidenceText(e){
   if(!e) return '';
   var kind=e.kind||'', d=e.details||{};
@@ -1390,7 +1390,10 @@ function evidenceCell(ev){
 function evidenceList(ev){
   if(!ev || !ev.length) return '<div class="hint">Доказательств нет — связь создана вручную.</div>';
   return '<div class="ev-list">'+ev.map(function(e){
-    return '<div class="ev-row"><i class="ev-dot ev-'+esc(e.kind||'')+'"></i><span class="ev-kind">'+esc(EV_KIND[e.kind]||e.kind||'—')+'</span><span>'+esc(evidenceText(e))+'</span></div>';
+    var text=esc(evidenceText(e));
+    var url=e.details&&e.details.url;
+    var body=url?'<a href="'+esc(url)+'" target="_blank" rel="noopener">'+text+'</a>':text;
+    return '<div class="ev-row"><i class="ev-dot ev-'+esc(e.kind||'')+'"></i><span class="ev-kind">'+esc(EV_KIND[e.kind]||e.kind||'—')+'</span><span>'+body+'</span></div>';
   }).join('')+'</div>';
 }
 function evidenceNote(r){
