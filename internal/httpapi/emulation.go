@@ -3,6 +3,7 @@ package httpapi
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -90,6 +91,74 @@ func (h *handler) adminCreateClientProfile(w http.ResponseWriter, r *http.Reques
 		ID: id, Name: req.Name, Audience: req.Audience,
 		Industry: req.Industry, Description: req.Description,
 	})
+}
+
+// adminCatalogClients lists real catalog clients with purchase history for a
+// live demo run.
+func (h *handler) adminCatalogClients(w http.ResponseWriter, r *http.Request) {
+	audience := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("audience")))
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 500 {
+			limit = v
+		}
+	}
+	query := `
+		SELECT c.client_id, c.client_type, COALESCE(c.industry, ''), count(o.item_id) AS orders
+		FROM lk_clients c
+		JOIN lk_orders o ON o.client_id = c.client_id
+		WHERE 1 = 1`
+	args := []any{}
+	if audience == "b2b" {
+		query += " AND c.client_type IN ('ЮЛ', 'ИП')"
+	} else if audience == "b2c" {
+		query += " AND c.client_type = 'ФЛ'"
+	}
+	if exclude := strings.TrimSpace(r.URL.Query().Get("exclude_item")); exclude != "" {
+		query += ` AND NOT EXISTS (
+			SELECT 1 FROM lk_orders x
+			WHERE x.client_id = c.client_id AND x.item_id = $1)`
+		args = append(args, exclude)
+	}
+	query += fmt.Sprintf(" GROUP BY 1, 2, 3 ORDER BY orders DESC, c.client_id LIMIT $%d", len(args)+1)
+	args = append(args, limit)
+	rows, err := h.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "catalog clients error")
+		return
+	}
+	defer rows.Close()
+	type client struct {
+		ClientID   string `json:"client_id"`
+		ClientType string `json:"client_type"`
+		Industry   string `json:"industry"`
+		Orders     int    `json:"orders"`
+	}
+	out := []client{}
+	for rows.Next() {
+		var c client
+		if err := rows.Scan(&c.ClientID, &c.ClientType, &c.Industry, &c.Orders); err != nil {
+			writeError(w, http.StatusInternalServerError, "catalog clients scan error")
+			return
+		}
+		out = append(out, c)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+// adminResetExperimentEvents clears simulated and live events of an experiment.
+func (h *handler) adminResetExperimentEvents(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	res, err := h.db.ExecContext(r.Context(), `
+		DELETE FROM experiment_events WHERE experiment_id = $1`, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "reset events error")
+		return
+	}
+	deleted, _ := res.RowsAffected()
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "experiment.events_reset",
+		map[string]string{"experiment_id": id})
+	writeJSON(w, http.StatusOK, map[string]any{"deleted": deleted})
 }
 
 // adminEmulateExperiment replays a hypothesis for one client profile.

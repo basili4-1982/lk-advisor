@@ -10,9 +10,9 @@ import (
 func TestExperimentEndpoints(t *testing.T) {
 	h, dbc := setupAPI(t)
 	t.Cleanup(func() {
-		dbc.Exec(`DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad') OR id LIKE 'exp-catalog-%'`)
+		dbc.Exec(`DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad') OR from_id LIKE 'exp-cat-%'`)
 	})
-	dbc.Exec(`DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad') OR id LIKE 'exp-catalog-%'`)
+	dbc.Exec(`DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad') OR from_id LIKE 'exp-cat-%'`)
 
 	rec := doJSON(t, h, http.MethodPost, "/v1/admin/experiments/demo", `{}`)
 	if rec.Code != http.StatusOK {

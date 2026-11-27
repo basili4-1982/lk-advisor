@@ -195,7 +195,7 @@ func LoadRunning(ctx context.Context, dbc *sql.DB, audience, industry, strategy 
 		WHERE e.status = 'running'
 		  AND (e.audience = '' OR e.audience = $1)
 		  AND (e.industry = '' OR e.industry = $2)
-		  AND (e.strategy = '' OR e.strategy = $3)
+		  AND ($3 = '' OR e.strategy = $3)
 		ORDER BY e.created_at DESC`, audience, industry, strategy)
 	if err != nil {
 		return nil, fmt.Errorf("running experiments: %w", err)
@@ -356,11 +356,11 @@ func RecordEvent(ctx context.Context, dbc *sql.DB, traceID, productID, event str
 			(experiment_id, client_id, variant, trace_id, product_id, event,
 			 amount, margin, margin_available)
 		SELECT e.experiment_id, e.client_id, e.variant, e.trace_id, $2, $3,
-		       p.price,
+		       COALESCE(p.price, 0),
 		       CASE WHEN p.cost > 0 THEN p.price - p.cost ELSE 0 END,
 		       (p.cost > 0)
 		FROM experiment_events e
-		JOIN products p ON p.id = $2
+		LEFT JOIN products p ON p.id = $2
 		WHERE e.trace_id = $1 AND e.event = 'exposed'
 		LIMIT 1`,
 		traceID, productID, event)
@@ -652,10 +652,37 @@ func CreateFromRelation(ctx context.Context, dbc *sql.DB, opts CreateFromRelatio
 			return "", false, err
 		}
 	}
+	if err := mirrorProducts(ctx, tx, opts.FromID, opts.ToID); err != nil {
+		return "", false, err
+	}
 	if err := tx.Commit(); err != nil {
 		return "", false, fmt.Errorf("create experiment: commit: %w", err)
 	}
 	return id, true, nil
+}
+
+// mirrorProducts copies catalog items into the legacy products table so the
+// recommendation engine can force them during treatment.
+func mirrorProducts(ctx context.Context, tx *sql.Tx, itemIDs ...string) error {
+	for _, itemID := range itemIDs {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO products (id, sku, title, category, subcategory, type, price, status, audience)
+			SELECT i.item_id,
+			       'lk-' || i.item_id,
+			       i.title,
+			       i.category,
+			       COALESCE(i.subcategory, ''),
+			       'license',
+			       0,
+			       CASE WHEN i.available THEN 'active' ELSE 'discontinued' END,
+			       'any'
+			FROM lk_items i
+			WHERE i.item_id = $1
+			ON CONFLICT DO NOTHING`, itemID); err != nil {
+			return fmt.Errorf("mirror catalog item %s: %w", itemID, err)
+		}
+	}
+	return nil
 }
 
 func SeedBadDemo(ctx context.Context, dbc *sql.DB) error {
@@ -713,6 +740,9 @@ func seedCatalogExperiment(ctx context.Context, dbc *sql.DB, id string, bad bool
 		`[{"name":"control","weight":0.5},{"name":"treatment","weight":0.5}]`,
 		fromID, toID, relationType, decision, note); err != nil {
 		return fmt.Errorf("seed experiment: insert: %w", err)
+	}
+	if err := mirrorProducts(ctx, tx, fromID, toID); err != nil {
+		return err
 	}
 	if bad {
 		if err := seedVariantEvents(ctx, tx, id, fromID, toID, "control", 150, 8, 86, 47, 108, 23); err != nil {

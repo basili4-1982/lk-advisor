@@ -22,7 +22,7 @@ func TestExperimentLifecycle(t *testing.T) {
 		ON CONFLICT (id) DO NOTHING`); err != nil {
 		t.Fatal(err)
 	}
-	dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad') OR id LIKE 'exp-catalog-%'`)
+	dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad') OR from_id LIKE 'exp-cat-%'`)
 	if err := experiment.SeedDemo(ctx, dbc); err != nil {
 		t.Fatal(err)
 	}
@@ -31,7 +31,7 @@ func TestExperimentLifecycle(t *testing.T) {
 	if _, err := dbc.ExecContext(ctx, `DELETE FROM experiment_events WHERE experiment_id = 'exp-pdf-b2b'`); err != nil {
 		t.Fatal(err)
 	}
-	defer dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad') OR id LIKE 'exp-catalog-%'`)
+	defer dbc.ExecContext(ctx, `DELETE FROM experiments WHERE id IN ('exp-pdf-b2b','exp-coreldraw-bad') OR from_id LIKE 'exp-cat-%'`)
 
 	list, err := experiment.List(ctx, dbc)
 	if err != nil {

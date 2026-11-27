@@ -44,6 +44,7 @@ type recommendationResponse struct {
 	Weights         model.Weights          `json:"weights"`
 	Recommendations []model.Recommendation `json:"recommendations"`
 	Fallback        bool                   `json:"fallback"`
+	ColdStart       bool                   `json:"cold_start,omitempty"`
 	GeneratedAt     time.Time              `json:"generated_at"`
 }
 
@@ -71,6 +72,10 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.db == nil {
 		writeError(w, http.StatusInternalServerError, "database is not configured")
+		return
+	}
+	if h.isCatalogClient(r, req.ClientID) {
+		h.recommendCatalog(w, r, req.ClientID, limit)
 		return
 	}
 
