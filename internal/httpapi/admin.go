@@ -1620,11 +1620,17 @@ function syncRuleFields(){
   el('rule-hint').textContent = hints[t]||'';
 }
 
+function tabForHash(hash){
+  var v=String(hash||'').replace(/^#/,'');
+  if (v==='hypotheses' || v==='hypothesis' || v==='гипотезы') v='experiments';
+  return document.querySelector('.tab[data-tab="'+v+'"]');
+}
 document.querySelectorAll('.tab').forEach(function(b){
   b.addEventListener('click', function(){
     document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('on');});
     document.querySelectorAll('.tabbody > div').forEach(function(x){x.classList.add('hidden');});
     b.classList.add('on'); el('tab-'+b.dataset.tab).classList.remove('hidden');
+    if (location.hash !== '#'+b.dataset.tab) history.replaceState(null, '', '#'+b.dataset.tab);
     document.querySelector('.layout').classList.toggle('registry-mode', b.dataset.tab === 'registry');
     document.body.classList.toggle('registry-mode', b.dataset.tab === 'registry');
     if (b.dataset.tab === 'analytics') loadAnalytics();
@@ -1981,7 +1987,7 @@ async function applyAssistant(){
   } catch(e){ toast(e.message,true); }
 }
 load().then(function(){
-  var target = location.hash ? document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]') : null;
+  var target = location.hash ? tabForHash(location.hash) : null;
   if (target) {
     target.click();
   } else {
@@ -1996,7 +2002,7 @@ load().then(function(){
   }
 }).catch(function(e){ toast('Не удалось загрузить состояние: '+e.message, true); });
 window.addEventListener('hashchange', function(){
-  var target = document.querySelector('.tab[data-tab="' + location.hash.slice(1) + '"]');
+  var target = tabForHash(location.hash);
   if (target) target.click();
 });
 </script>
