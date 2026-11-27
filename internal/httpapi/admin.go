@@ -421,12 +421,6 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <p class="hint" id="type-edit-hint"></p>
           </div>
           <div id="type-list"></div>
-          <div class="formbox">
-            <div class="form-title">Промпт для разметки связей</div>
-            <p class="hint">Этот блок добавляется в промпт LLM. В нём только активные шаблоны.</p>
-            <pre class="prompt" id="type-prompt">Загружаю…</pre>
-            <div class="row" style="margin-top:10px"><button id="type-prompt-refresh" class="secondary small">Обновить промпт</button><button id="type-prompt-copy" class="secondary small">Скопировать</button></div>
-          </div>
         </div>
 
         <div id="tab-rules" class="hidden">
@@ -1773,10 +1767,6 @@ function editType(code){
   el('type-edit-hint').textContent = t.builtin ? 'Встроенный шаблон: код, поведение и направление зафиксированы. Описание, примеры и статус можно менять.' : 'Пользовательский шаблон можно менять полностью.';
   el('type-title').focus();
 }
-async function loadTypePrompt(){
-  try { var p=await api('GET','/v1/admin/relation-types/prompt'); el('type-prompt').textContent=p.prompt; }
-  catch(e){ el('type-prompt').textContent='Не удалось загрузить промпт: '+e.message; }
-}
 function renderRules(){
   if (!state.rules.length) { el('rule-list').innerHTML='<div class="empty">Правил пока нет</div>'; return; }
   el('rule-list').innerHTML = state.rules.map(function(r){
@@ -2278,11 +2268,6 @@ el('health-flag').addEventListener('click', async function(){
 el('auto-strategy').addEventListener('change', async function(){
   try { await api('PUT','/v1/admin/strategies/auto', {enabled: el('auto-strategy').checked}); toast(el('auto-strategy').checked?'Авто-А/Б включён':'Авто-А/Б выключен'); }
   catch(e){ toast(e.message,true); loadStrategies(); }
-});
-el('type-prompt-refresh').addEventListener('click', loadTypePrompt);
-el('type-prompt-copy').addEventListener('click', async function(){
-  try { await navigator.clipboard.writeText(el('type-prompt').textContent); toast('Промпт скопирован'); }
-  catch(e){ toast('Не удалось скопировать', true); }
 });
 
 el('agent-run').addEventListener('click', runRelationAgent);

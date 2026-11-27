@@ -168,20 +168,6 @@ func TestRelationTypeCRUDAndPrompt(t *testing.T) {
 	if !found {
 		t.Fatal("custom type not in state")
 	}
-
-	rec = doJSON(t, h, http.MethodGet, "/v1/admin/relation-types/prompt", "")
-	if rec.Code != http.StatusOK {
-		t.Fatalf("prompt: %d %s", rec.Code, rec.Body.String())
-	}
-	var prompt struct {
-		Prompt string `json:"prompt"`
-	}
-	if err := json.Unmarshal(rec.Body.Bytes(), &prompt); err != nil {
-		t.Fatal(err)
-	}
-	if !contains(prompt.Prompt, "industry_addon") || !contains(prompt.Prompt, "Отраслевой модуль") {
-		t.Fatalf("prompt = %s", prompt.Prompt)
-	}
 }
 
 func TestBuiltinRelationTypeCannotBeDeleted(t *testing.T) {

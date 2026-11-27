@@ -124,7 +124,6 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("PUT /v1/admin/strategies/auto", h.adminSetAutoStrategy)
 	mux.HandleFunc("POST /v1/admin/relation-types", h.adminUpsertRelationType)
 	mux.HandleFunc("DELETE /v1/admin/relation-types/{code}", h.adminDeleteRelationType)
-	mux.HandleFunc("GET /v1/admin/relation-types/prompt", h.adminRelationPrompt)
 	mux.HandleFunc("POST /v1/admin/relations/agent/propose", h.adminProposeRelation)
 	mux.HandleFunc("POST /v1/admin/agent/propose", h.adminPropose)
 	mux.HandleFunc("POST /v1/admin/agent/apply", h.adminApply)

@@ -528,18 +528,6 @@ func (h *handler) adminDeleteRelationType(w http.ResponseWriter, r *http.Request
 	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
-func (h *handler) adminRelationPrompt(w http.ResponseWriter, r *http.Request) {
-	types, err := catalog.RelationTypes(r.Context(), h.db)
-	if err != nil {
-		h.logger.Error("relation types", "err", err)
-		writeError(w, http.StatusInternalServerError, "relation types error")
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{
-		"prompt": relationtype.Prompt(types),
-	})
-}
-
 type reviewItem struct {
 	model.Relation
 	FromTitle string `json:"from_title"`
