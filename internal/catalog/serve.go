@@ -314,11 +314,9 @@ func annotateCertificates(ctx context.Context, dbc *sql.DB, items []ServeItem) [
 	for i := range items {
 		items[i].Certified = valid[items[i].ItemID]
 		items[i].CertExpired = expired[items[i].ItemID] && !items[i].Certified
-		if items[i].Certified {
-			items[i].Score = clampNum(items[i].Score+0.06, 0, 1.0)
-		} else if items[i].CertExpired {
-			items[i].Score = clampNum(items[i].Score*0.95, 0, 1)
-		}
+		// A certificate is a guardrail and a trust badge, not a general
+		// ranking boost: the offline test showed +0.06 slightly lowers P@3.
+		// The certified-only mode filters by it explicitly.
 	}
 	return items
 }

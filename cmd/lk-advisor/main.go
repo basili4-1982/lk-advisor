@@ -10,11 +10,14 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	_ "github.com/lib/pq"
 
+	"github.com/basili4-1982/lk-advisor/internal/catalog"
 	"github.com/basili4-1982/lk-advisor/internal/config"
 	"github.com/basili4-1982/lk-advisor/internal/httpapi"
 	"github.com/basili4-1982/lk-advisor/internal/llm"
@@ -54,8 +57,13 @@ func main() {
 			logger.Error("eval", "err", err)
 			os.Exit(1)
 		}
+	case "recompute":
+		if err := runRecompute(logger, cfg); err != nil {
+			logger.Error("recompute", "err", err)
+			os.Exit(1)
+		}
 	default:
-		fmt.Fprintf(os.Stderr, "usage: %s [serve|migrate|seed|eval]\n", os.Args[0])
+		fmt.Fprintf(os.Stderr, "usage: %s [serve|migrate|seed|eval|recompute]\n", os.Args[0])
 		os.Exit(2)
 	}
 }
@@ -74,6 +82,60 @@ func openDB(cfg config.Config) (*sql.DB, error) {
 	return dbc, nil
 }
 
+func runRecompute(logger *slog.Logger, cfg config.Config) error {
+	dbc, err := openDB(cfg)
+	if err != nil {
+		return err
+	}
+	defer dbc.Close()
+	top := 10
+	if raw := os.Getenv("RECOMPUTE_TOP"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 36 {
+			top = v
+		}
+	}
+	res, err := catalog.RebuildClientRecommendations(context.Background(), dbc, top)
+	if err != nil {
+		return err
+	}
+	logger.Info("recommendations recomputed", "clients", res.Clients, "rows", res.Rows, "took", res.Took.String())
+	return nil
+}
+
+func startRecomputeScheduler(logger *slog.Logger, dbc *sql.DB) {
+	raw := os.Getenv("RECOMPUTE_INTERVAL")
+	if raw == "" {
+		raw = "24h"
+	}
+	if raw == "0" || strings.EqualFold(raw, "off") {
+		return
+	}
+	interval, err := time.ParseDuration(raw)
+	if err != nil || interval <= 0 {
+		logger.Warn("recompute scheduler disabled", "interval", raw, "err", err)
+		return
+	}
+	run := func() {
+		res, err := catalog.RebuildClientRecommendations(context.Background(), dbc, 10)
+		if err != nil {
+			logger.Error("recompute", "err", err)
+			return
+		}
+		logger.Info("recommendations recomputed", "clients", res.Clients, "rows", res.Rows, "took", res.Took.String())
+	}
+	if os.Getenv("RECOMPUTE_ON_START") == "1" {
+		go run()
+	}
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for range ticker.C {
+			run()
+		}
+	}()
+	logger.Info("recompute scheduler started", "interval", interval.String())
+}
+
 func migrate(cfg config.Config) error {
 	dbc, err := openDB(cfg)
 	if err != nil {
@@ -90,6 +152,8 @@ func serve(logger *slog.Logger, cfg config.Config) {
 		os.Exit(1)
 	}
 	defer dbc.Close()
+
+	startRecomputeScheduler(logger, dbc)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,

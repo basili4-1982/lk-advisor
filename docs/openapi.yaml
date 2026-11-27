@@ -1,0 +1,479 @@
+openapi: 3.0.3
+info:
+  title: LK Advisor Recommendation API
+  version: 1.0.0
+  description: |
+    Публичный API рекомендаций и событий для личного кабинета.
+    Админские ручки (/v1/admin/*) в эту спеку не входят: это внутренний контур.
+
+    Основной поток:
+    1. POST /v1/recommendations — получить top-3 для клиента.
+    2. POST /v1/events — прислать клик или покупку по trace_id.
+servers:
+  - url: http://localhost:8080
+    description: Демо-стенд
+tags:
+  - name: recommendations
+  - name: events
+  - name: agent
+  - name: directory
+  - name: demo
+paths:
+  /healthz:
+    get:
+      tags: [directory]
+      summary: Проверка живости
+      responses:
+        "200":
+          description: Сервис работает
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /v1/recommendations:
+    post:
+      tags: [recommendations]
+      summary: Top-3 рекомендации для клиента
+      description: |
+        Для клиента каталога работает офлайн-модель (co-purchase + популярность +
+        совпадение названий). Для регулируемых отраслей по умолчанию включается
+        certified_only; отключить можно явным `certified_only: false`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecommendationRequest"
+            examples:
+              b2b:
+                value:
+                  client_id: C05445
+                  limit: 3
+              certified:
+                value:
+                  client_id: C11191
+                  limit: 3
+                  certified_only: true
+      responses:
+        "200":
+          description: Блок рекомендаций
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RecommendationResponse"
+        "400":
+          description: Неверный запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Клиент не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/events:
+    post:
+      tags: [events]
+      summary: Клик или покупка по показу
+      description: |
+        Событие привязывается к показу через trace_id. Используется для метрик
+        эксперимента и аналитики.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EventRequest"
+      responses:
+        "200":
+          description: Событие записано
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recorded:
+                    type: boolean
+                    example: true
+        "400":
+          description: Не хватает полей
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: trace_id не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/ask:
+    post:
+      tags: [agent]
+      summary: Вопрос по рекомендациям клиента
+      description: |
+        Агент вызывает инструменты (рекомендации, профиль, связи, evidence)
+        и отвечает по фактам. Без LLM-ключа работает шаблонный fallback.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AskRequest"
+      responses:
+        "200":
+          description: Ответ агента с trace инструментов
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AskResponse"
+        "400":
+          description: Неверный запрос
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/clients/{id}/profile:
+    get:
+      tags: [directory]
+      summary: Профиль клиента
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            example: C05445
+      responses:
+        "200":
+          description: Профиль клиента
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "404":
+          description: Клиент не найден
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/products:
+    get:
+      tags: [directory]
+      summary: Каталог товаров
+      responses:
+        "200":
+          description: Список товаров
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+
+  /v1/agent/demo:
+    get:
+      tags: [agent]
+      summary: Демо объяснения связи и холодного старта
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Доказательства, кандидат и холодный старт
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+        "404":
+          description: Связь не найдена
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /v1/lk/clients:
+    get:
+      tags: [demo]
+      summary: Клиенты для витрины
+      description: Демо-ручка для выбора клиента на странице /lk.
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          description: Клиенты и отрасли
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/LkClient"
+                  industries:
+                    type: array
+                    items:
+                      type: string
+                  experiment_target:
+                    type: string
+
+components:
+  schemas:
+    RecommendationRequest:
+      type: object
+      required: [client_id]
+      properties:
+        client_id:
+          type: string
+          example: C05445
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 36
+          default: 3
+        audience:
+          type: string
+          enum: [b2b, b2c]
+          description: Переопределить аудиторию клиента
+        industry:
+          type: string
+          description: Переопределить отрасль клиента
+        strategy:
+          type: string
+          enum: [hybrid, popular]
+          description: Используется legacy-движком
+        certified_only:
+          type: boolean
+          nullable: true
+          description: |
+            true — только действующий сертификат ФСТЭК.
+            false — явно отключить отраслевую политику.
+            null/omit — применить политику по отрасли.
+
+    RecommendationResponse:
+      type: object
+      properties:
+        trace_id:
+          type: string
+          example: tr-6da453e02b3c0806
+        client_id:
+          type: string
+        strategy:
+          type: string
+          example: catalog
+        intent:
+          type: string
+          example: catalog
+        weights:
+          $ref: "#/components/schemas/Weights"
+        recommendations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Recommendation"
+        fallback:
+          type: boolean
+        cold_start:
+          type: boolean
+        experiment_id:
+          type: string
+        variant:
+          type: string
+          enum: [control, treatment]
+        certified_only:
+          type: boolean
+        certified_policy:
+          type: boolean
+          description: true, если certified_only включён политикой отрасли
+        generated_at:
+          type: string
+          format: date-time
+
+    Recommendation:
+      type: object
+      properties:
+        product_id:
+          type: string
+        sku:
+          type: string
+        title:
+          type: string
+        type:
+          type: string
+          example: cross_sell
+        score:
+          type: number
+          format: double
+        source_product_id:
+          type: string
+        relation_type:
+          type: string
+          example: upgrade
+        rank:
+          type: integer
+        reason:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/Evidence"
+        constraints:
+          type: array
+          items:
+            type: string
+        price:
+          $ref: "#/components/schemas/Price"
+        expires_at:
+          type: string
+          format: date-time
+        compatibility:
+          type: string
+          enum: [ok, unverified]
+        certified:
+          type: boolean
+          description: Есть действующий сертификат ФСТЭК
+        cert_expired:
+          type: boolean
+          description: Есть только просроченный сертификат
+        fstec:
+          type: array
+          items:
+            $ref: "#/components/schemas/FstecCert"
+
+    FstecCert:
+      type: object
+      properties:
+        number:
+          type: string
+          example: "5111"
+        valid_until:
+          type: string
+          format: date
+        expired:
+          type: boolean
+
+    Evidence:
+      type: object
+      properties:
+        source:
+          type: string
+        value:
+          type: string
+
+    Price:
+      type: object
+      properties:
+        amount:
+          type: integer
+          format: int64
+        currency:
+          type: string
+          example: RUB
+
+    Weights:
+      type: object
+      properties:
+        relevance:
+          type: number
+        urgency:
+          type: number
+        affinity:
+          type: number
+        margin:
+          type: number
+        confidence:
+          type: number
+
+    EventRequest:
+      type: object
+      required: [trace_id, client_id, product_id, event]
+      properties:
+        trace_id:
+          type: string
+          example: tr-6da453e02b3c0806
+        client_id:
+          type: string
+          example: C05445
+        product_id:
+          type: string
+          example: GAPPS-STARTER-1USER-1MO-First-Year
+        event:
+          type: string
+          enum: [clicked, purchased]
+
+    AskRequest:
+      type: object
+      required: [client_id, question]
+      properties:
+        client_id:
+          type: string
+          example: C05445
+        session_id:
+          type: string
+          description: Для продолжения диалога
+        question:
+          type: string
+          example: Почему этот товар?
+
+    AskResponse:
+      type: object
+      properties:
+        session_id:
+          type: string
+        intent:
+          type: string
+        answer:
+          type: string
+        tool_calls:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/Evidence"
+        fallback:
+          type: boolean
+
+    LkClient:
+      type: object
+      properties:
+        client_id:
+          type: string
+        client_type:
+          type: string
+        industry:
+          type: string
+        orders:
+          type: integer
+        cold_start:
+          type: boolean
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
