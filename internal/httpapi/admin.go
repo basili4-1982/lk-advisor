@@ -832,7 +832,6 @@ async function load(){
   renderRules();
   renderWeights();
   renderAudit();
-  loadTypePrompt();
   el('preview-client').innerHTML = state.clients.map(function(c){ return '<option value="'+esc(c.id)+'">'+esc(c.id+' · '+c.name)+'</option>'; }).join('');
 }
 function fillStaticSelects(){
