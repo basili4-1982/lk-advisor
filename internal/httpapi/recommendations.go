@@ -34,7 +34,7 @@ type recommendationRequest struct {
 	Audience      string `json:"audience"`
 	Industry      string `json:"industry"`
 	Strategy      string `json:"strategy"`
-	CertifiedOnly bool   `json:"certified_only"`
+	CertifiedOnly *bool  `json:"certified_only"`
 }
 
 type recommendationResponse struct {
@@ -48,6 +48,8 @@ type recommendationResponse struct {
 	ColdStart       bool                   `json:"cold_start,omitempty"`
 	ExperimentID    string                 `json:"experiment_id,omitempty"`
 	Variant         string                 `json:"variant,omitempty"`
+	CertifiedOnly   bool                   `json:"certified_only"`
+	CertifiedPolicy bool                   `json:"certified_policy"`
 	GeneratedAt     time.Time              `json:"generated_at"`
 }
 

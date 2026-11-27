@@ -315,6 +315,7 @@ body.sys-on .card.forced{background:#f8fafc;border-color:#cbd5e1}
         <select id="client" style="min-width:340px"></select>
         <button id="reload" class="secondary">Показать блок</button>
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;white-space:nowrap"><input type="checkbox" id="certified-only" style="width:auto"> только сертифицированные</label>
+        <span id="certified-policy-hint" class="hint" style="color:#fbbf24"></span>
         <button id="new-client-toggle" class="secondary">＋ Создать клиента</button>
       </div>
       <div id="new-client" class="hidden" style="display:grid;gap:8px;margin-bottom:12px;padding:12px;border:1px solid #334155;border-radius:10px">
@@ -341,7 +342,20 @@ body.sys-on .card.forced{background:#f8fafc;border-color:#cbd5e1}
   </div>
 </main>
 <script>
-var trace = '', clientID = '', lastData = null, sysOn = false, LK_INDUSTRIES = [];
+var trace = '', clientID = '', lastData = null, sysOn = false, LK_INDUSTRIES = [], LK_CLIENTS = {}, certifiedTouched = false;
+var REGULATED_INDUSTRIES = {
+  'Медицинские организации': true, 'Образование и наука': true,
+  'Органы власти': true, 'Финансы (банки, страхование)': true
+};
+function applyCertifiedPolicy(){
+  var cid = document.getElementById('client').value;
+  var industry = (LK_CLIENTS[cid] || {}).industry || '';
+  var regulated = !!REGULATED_INDUSTRIES[industry];
+  if (!certifiedTouched) document.getElementById('certified-only').checked = regulated;
+  document.getElementById('certified-policy-hint').textContent = regulated
+    ? 'Для отрасли «'+industry+'» по умолчанию только сертифицированные'
+    : '';
+}
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function typeLabel(t){
   return {upsell:'Апгрейд', cross_sell:'Дополнение', popular:'Популярное', alternative:'Альтернатива'}[t] || t;
@@ -366,6 +380,8 @@ async function loadClients(){
   var d = await api('GET','/v1/lk/clients?limit=50');
   LK_INDUSTRIES = d.industries || [];
   var sel = document.getElementById('client');
+  LK_CLIENTS = {};
+  (d.items||[]).forEach(function(c){ LK_CLIENTS[c.client_id] = c; });
   sel.innerHTML = (d.items||[]).map(function(c){
     return '<option value="'+esc(c.client_id)+'">'+esc(c.client_id)+' · '+esc(c.client_type)+' · '+esc(c.industry||'без отрасли')+' · '+(c.cold_start?'без покупок':'покупок '+c.orders)+'</option>';
   }).join('');
@@ -420,12 +436,15 @@ async function loadBlock(){
       var forced = (r.reason||'').indexOf('Гипотеза') === 0;
       var certs = r.fstec || [];
       var validCert = certs.some(function(c){ return !c.expired; });
+      var certClaim = /сертифицирован|ФСТЭК/i.test(r.title || '');
+      var certBadge = validCert ? '<span class="badge green">Сертифицировано ФСТЭК</span>'
+        : (certClaim && r.cert_expired ? '<span class="badge" style="background:#fef3c7;color:#92400e">Сертификат истёк</span>' : '');
       var certSys = certs.length ? certs.map(function(c){
         return '<div><b>fstec:</b> №'+esc(c.number)+' · '+(c.expired?'<span style="color:#fbbf24">просрочен</span>':'до '+esc(c.valid_until||'—'))+'</div>';
       }).join('') : '<div><b>fstec:</b> нет</div>';
       return '<div class="card'+(forced?' forced':'')+'" data-product="'+esc(r.product_id)+'">'+
         '<div class="card-head"><div class="rank">#'+r.rank+' · '+esc(typeLabel(r.type))+'</div>'+
-          (validCert?'<span class="badge green">Сертифицировано ФСТЭК</span>':'')+'</div>'+
+          certBadge+'</div>'+
         '<h2>'+esc(r.title)+'</h2>'+
         '<p class="reason">'+esc(clientReason(r))+'</p>'+
         '<div class="actions"><button data-act="clicked" class="secondary">Клик</button>'+
@@ -502,8 +521,9 @@ document.getElementById('sys-toggle').addEventListener('click', function(){
   this.textContent = sysOn ? 'Скрыть системную информацию' : 'Системная информация';
 });
 document.getElementById('reload').addEventListener('click', loadBlock);
-document.getElementById('client').addEventListener('change', loadBlock);
-loadClients().then(loadBlock).catch(function(e){ document.getElementById('cards').innerHTML = '<div class="empty">'+esc(e.message)+'</div>'; });
+document.getElementById('certified-only').addEventListener('change', function(){ certifiedTouched = true; loadBlock(); });
+document.getElementById('client').addEventListener('change', function(){ certifiedTouched = false; applyCertifiedPolicy(); loadBlock(); });
+loadClients().then(function(){ applyCertifiedPolicy(); return loadBlock(); }).catch(function(e){ document.getElementById('cards').innerHTML = '<div class="empty">'+esc(e.message)+'</div>'; });
 </script>
 </body>
 </html>

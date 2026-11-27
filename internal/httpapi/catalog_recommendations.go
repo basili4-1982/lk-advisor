@@ -15,12 +15,21 @@ import (
 
 // recommendCatalog serves recommendations for a real catalog client (lk_clients).
 // It uses the reviewed relations and applies a running hypothesis to treatment.
-func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clientID string, limit int, certifiedOnly bool) {
+func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clientID string, limit int, certifiedOnly *bool) {
 	ctx := r.Context()
 	audience, industry, ok, err := catalog.ClientAudience(ctx, h.db, clientID)
 	if err != nil || !ok {
 		writeError(w, http.StatusInternalServerError, "client lookup error")
 		return
+	}
+
+	certOnly := false
+	policy := false
+	if certifiedOnly != nil {
+		certOnly = *certifiedOnly
+	} else if catalog.IsRegulatedIndustry(industry) {
+		certOnly = true
+		policy = true
 	}
 
 	var running *experiment.Experiment
@@ -38,10 +47,10 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 		forceID = running.ToID
 		forceType = running.RelationType
 	}
-	res, err := catalog.Serve(ctx, h.db, catalog.ServeOptions{
+	res, err := catalog.ServeHybrid(ctx, h.db, catalog.ServeOptions{
 		ClientID: clientID, Limit: limit,
 		ForceItemID: forceID, ForceType: forceType,
-		CertifiedOnly: certifiedOnly,
+		CertifiedOnly: certOnly,
 	})
 	if err != nil {
 		h.logger.Error("catalog recommendations", "err", err)
@@ -111,6 +120,8 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 		Recommendations: recs,
 		Fallback:        false,
 		ColdStart:       res.ColdStart,
+		CertifiedOnly:   certOnly,
+		CertifiedPolicy: policy,
 		GeneratedAt:     h.now(),
 	}
 	if running != nil {
