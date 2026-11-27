@@ -21,6 +21,7 @@ type VendorProduct struct {
 	Platforms      []string `json:"platforms"`
 	RegistryNumber string   `json:"registry_number"`
 	SourceURL      string   `json:"source_url"`
+	Category       string   `json:"category"`
 	Aliases        []string `json:"aliases"`
 	MappedItems    int      `json:"mapped_items"`
 }
@@ -41,10 +42,21 @@ type VendorLinkResult struct {
 
 // VendorStats is the external knowledge summary.
 type VendorStats struct {
-	Products     int `json:"products"`
-	Mapped       int `json:"mapped_products"`
-	CoveredItems int `json:"covered_items"`
-	SoloCovered  int `json:"solo_covered"`
+	Products           int `json:"products"`
+	Mapped             int `json:"mapped_products"`
+	CoveredItems       int `json:"covered_items"`
+	SoloCovered        int `json:"solo_covered"`
+	ClassifiedProducts int `json:"classified_products"`
+	Classes            int `json:"classes"`
+	ClassifiedItems    int `json:"classified_items"`
+}
+
+// VendorClass is one registry product class with coverage.
+type VendorClass struct {
+	Code     string `json:"code"`
+	Title    string `json:"title"`
+	Products int    `json:"products"`
+	Items    int    `json:"items"`
 }
 
 // ImportVendorProductsCSV upserts external products.
@@ -470,7 +482,7 @@ func GenerateVendorCandidates(ctx context.Context, dbc *sql.DB, limit int) (Vend
 func ListVendorProducts(ctx context.Context, dbc *sql.DB) ([]VendorProduct, error) {
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT v.id, v.vendor, v.product, v.family, v.edition,
-		       v.platforms::text, v.registry_number, v.source_url, v.aliases::text,
+		       v.platforms::text, v.registry_number, v.source_url, v.category, v.aliases::text,
 		       count(m.item_id)
 		FROM vendor_products v
 		LEFT JOIN vendor_product_items m ON m.vendor_product_id = v.id
@@ -485,7 +497,7 @@ func ListVendorProducts(ctx context.Context, dbc *sql.DB) ([]VendorProduct, erro
 		var v VendorProduct
 		var platforms, aliases string
 		if err := rows.Scan(&v.ID, &v.Vendor, &v.Product, &v.Family, &v.Edition,
-			&platforms, &v.RegistryNumber, &v.SourceURL, &aliases, &v.MappedItems); err != nil {
+			&platforms, &v.RegistryNumber, &v.SourceURL, &v.Category, &aliases, &v.MappedItems); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(platforms), &v.Platforms)
@@ -518,5 +530,53 @@ func VendorKnowledgeStats(ctx context.Context, dbc *sql.DB) (VendorStats, error)
 		)`).Scan(&s.SoloCovered); err != nil {
 		return s, err
 	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(*) FROM vendor_products WHERE category <> ''`).Scan(&s.ClassifiedProducts); err != nil {
+		return s, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(DISTINCT split_part(category, ' - ', 1))
+		FROM vendor_products WHERE category <> ''`).Scan(&s.Classes); err != nil {
+		return s, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(DISTINCT m.item_id)
+		FROM vendor_product_items m
+		JOIN vendor_products v ON v.id = m.vendor_product_id
+		WHERE v.category <> ''`).Scan(&s.ClassifiedItems); err != nil {
+		return s, err
+	}
 	return s, nil
+}
+
+// ListVendorClasses returns top registry classes with product and catalog
+// coverage.
+func ListVendorClasses(ctx context.Context, dbc *sql.DB, limit int) ([]VendorClass, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT split_part(v.category, ' - ', 1) AS code,
+		       min(v.category) AS title,
+		       count(DISTINCT v.id) AS products,
+		       count(DISTINCT m.item_id) AS items
+		FROM vendor_products v
+		LEFT JOIN vendor_product_items m ON m.vendor_product_id = v.id
+		WHERE v.category <> ''
+		GROUP BY 1
+		ORDER BY items DESC, products DESC, code
+		LIMIT $1`, limit)
+	if err != nil {
+		return nil, fmt.Errorf("vendor classes: %w", err)
+	}
+	defer rows.Close()
+	var out []VendorClass
+	for rows.Next() {
+		var c VendorClass
+		if err := rows.Scan(&c.Code, &c.Title, &c.Products, &c.Items); err != nil {
+			return nil, err
+		}
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }

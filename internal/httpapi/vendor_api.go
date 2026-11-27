@@ -20,7 +20,14 @@ func (h *handler) adminVendorProducts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "vendor stats error")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"items": items, "stats": stats})
+	classes, err := catalog.ListVendorClasses(r.Context(), h.db, 20)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "vendor classes error")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"items": items, "stats": stats, "classes": classes,
+	})
 }
 
 // adminVendorImport upserts a CSV of external products.

@@ -543,6 +543,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             </div>
             <div class="hint">CSV: vendor, product, family, edition, platforms, registry_number, source_url, aliases. Списки — через <code>|</code>.</div>
             <div class="hint" id="vendor-result"></div>
+            <div id="vendor-classes"></div>
           </div>
 
           <div class="formbox">
@@ -1132,8 +1133,12 @@ async function loadVendorKnowledge(){
     var s=d.stats||{};
     el('vendor-stats').innerHTML=[
       ['Внешних продуктов', s.products||0], ['Сопоставлено', s.mapped_products||0],
-      ['Покрыто SKU', s.covered_items||0], ['Из них без связей', s.solo_covered||0]
+      ['Покрыто SKU', s.covered_items||0], ['Из них без связей', s.solo_covered||0],
+      ['Классов ПО', s.classes||0], ['Товаров с классом', s.classified_items||0]
     ].map(function(x){ return '<div class="stat"><b>'+x[1]+'</b><span>'+x[0]+'</span></div>'; }).join('');
+    var classes=d.classes||[];
+    el('vendor-classes').innerHTML = classes.length ? '<div class="tablewrap" style="margin-top:10px;min-height:0"><table><thead><tr><th>Код</th><th>Класс ПО</th><th>Продуктов</th><th>Товаров</th></tr></thead><tbody>'+
+      classes.map(function(c){ return '<tr><td><b>'+esc(c.code)+'</b></td><td>'+esc(String(c.title||'').replace(/^[^-]+ - /,''))+'</td><td>'+c.products+'</td><td>'+c.items+'</td></tr>'; }).join('')+'</tbody></table></div>' : '';
   } catch(e){ el('vendor-stats').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 async function loadDataset(){
