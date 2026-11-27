@@ -9,6 +9,8 @@ import (
 )
 
 func TestRelationAgentLLM(t *testing.T) {
+	t.Setenv("RELATION_AUTO_CONFIRM", "true")
+	t.Setenv("RELATION_AUTO_CONFIRM_THRESHOLD", "0.85")
 	_, dbc := setupAPI(t)
 	srv := fakeLLM(t, `{"type":"adjacent_task","confidence":0.86,"reason":"Оба продукта закрывают соседние задачи.","evidence":["категории различаются, но задачи рядом"]}`)
 	h := handlerWithLLM(dbc, llm.New(srv.URL, "test-key", "test-model"))
@@ -22,11 +24,32 @@ func TestRelationAgentLLM(t *testing.T) {
 	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
 		t.Fatal(err)
 	}
-	if p.Type != "adjacent_task" || p.Source != "llm" || p.Status != "llm_suggested" {
+	if p.Type != "adjacent_task" || p.Source != "llm" || p.Status != "confirmed" {
 		t.Fatalf("proposal = %+v", p)
 	}
 	if len(p.Evidence) == 0 {
 		t.Fatal("no evidence")
+	}
+}
+
+func TestRelationAgentLLMBelowAutoConfirmGoesToReview(t *testing.T) {
+	t.Setenv("RELATION_AUTO_CONFIRM", "true")
+	t.Setenv("RELATION_AUTO_CONFIRM_THRESHOLD", "0.85")
+	_, dbc := setupAPI(t)
+	srv := fakeLLM(t, `{"type":"adjacent_task","confidence":0.80,"reason":"Соседние задачи.","evidence":["категория"]}`)
+	h := handlerWithLLM(dbc, llm.New(srv.URL, "test-key", "test-model"))
+
+	rec := doJSON(t, h, http.MethodPost, "/v1/admin/relations/agent/propose",
+		`{"from_id":"prod-pdf","to_id":"prod-backup"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	var p relationAgentProposal
+	if err := json.Unmarshal(rec.Body.Bytes(), &p); err != nil {
+		t.Fatal(err)
+	}
+	if p.Status != "llm_suggested" {
+		t.Fatalf("proposal = %+v", p)
 	}
 }
 

@@ -12,10 +12,11 @@ import (
 )
 
 type handler struct {
-	logger *slog.Logger
-	db     *sql.DB
-	now    func() time.Time
-	llm    *llm.Client
+	logger    *slog.Logger
+	db        *sql.DB
+	now       func() time.Time
+	llm       *llm.Client
+	relPolicy *RelationPolicy
 }
 
 // New returns the service router with the real clock.
@@ -34,7 +35,8 @@ func NewWithLLM(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 }
 
 func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *llm.Client) http.Handler {
-	h := &handler{logger: logger, db: dbc, now: now, llm: client}
+	policy := relationPolicyFromEnv()
+	h := &handler{logger: logger, db: dbc, now: now, llm: client, relPolicy: &policy}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {

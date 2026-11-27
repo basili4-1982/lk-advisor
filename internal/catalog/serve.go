@@ -201,9 +201,21 @@ func ownedItems(ctx context.Context, dbc *sql.DB, clientID string) ([]string, er
 func relationCandidates(ctx context.Context, dbc *sql.DB, owned []string, audience, industry string) ([]ServeItem, error) {
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT r.from_item_id, r.to_item_id, r.type, r.confidence::float8, i.title,
-		       COALESCE(i.system_requirements::text, '{}')
+		       COALESCE(i.system_requirements::text, '{}'),
+		       COALESCE(p.shown, 0), COALESCE(p.clicks, 0), COALESCE(p.purchases, 0)
 		FROM relations r
 		JOIN lk_items i ON i.item_id = r.to_item_id AND i.available
+		LEFT JOIN (
+			SELECT source_product_id, product_id, relation_type,
+			       count(*) FILTER (WHERE event = 'shown') AS shown,
+			       count(*) FILTER (WHERE event = 'clicked') AS clicks,
+			       count(*) FILTER (WHERE event = 'purchased') AS purchases
+			FROM recommendation_events
+			WHERE candidate_id <> ''
+			GROUP BY source_product_id, product_id, relation_type
+		) p ON p.source_product_id = r.from_item_id
+		   AND p.product_id = r.to_item_id
+		   AND p.relation_type = r.type
 		WHERE r.from_item_id = ANY($1)
 		  AND r.status IN ('active', 'confirmed')
 		  AND r.type <> 'variant_of'
@@ -219,7 +231,9 @@ func relationCandidates(ctx context.Context, dbc *sql.DB, owned []string, audien
 		var it ServeItem
 		var confidence float64
 		var requirements string
-		if err := rows.Scan(&it.SourceItemID, &it.ItemID, &it.RelationType, &confidence, &it.Title, &requirements); err != nil {
+		var shown, clicks, purchases int
+		if err := rows.Scan(&it.SourceItemID, &it.ItemID, &it.RelationType, &confidence, &it.Title, &requirements,
+			&shown, &clicks, &purchases); err != nil {
 			return nil, err
 		}
 		it.Compatibility = compatibility(requirements)
@@ -227,7 +241,8 @@ func relationCandidates(ctx context.Context, dbc *sql.DB, owned []string, audien
 		if it.RelationType == "upgrade" {
 			it.Type = "upsell"
 		}
-		it.Score = clampNum(confidence*relationWeight(it.RelationType), 0, 1)
+		weight := RelationPerformanceMultiplier(shown, clicks, purchases)
+		it.Score = clampNum(confidence*relationWeight(it.RelationType)*weight, 0, 1)
 		it.Reason = fmt.Sprintf("Связь «%s» с купленным товаром, уверенность %.0f%%",
 			typeLabel(it.RelationType), confidence*100)
 		out = append(out, it)

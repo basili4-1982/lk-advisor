@@ -47,3 +47,6 @@ analysis/official_serving_evaluation.json
 analysis/hybrid_evaluation.json
 
 analysis/cert_signal_evaluation.json
+
+# Generated voiceover for the demo video
+docs/demo/voice/*.mp3

@@ -358,13 +358,14 @@ function applyCertifiedPolicy(){
 }
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
 function typeLabel(t){
-  return {upsell:'Апгрейд', cross_sell:'Дополнение', popular:'Популярное', alternative:'Альтернатива'}[t] || t;
+  return {upsell:'Апгрейд', cross_sell:'Дополнение', popular:'Популярное', alternative:'Альтернатива', personal:'Подборка'}[t] || t;
 }
 function clientReason(r){
   if (r.type === 'upsell') return 'Более широкая редакция вместо текущей';
   if (r.type === 'cross_sell') return 'Дополняет то, что вы уже купили';
   if (r.type === 'popular') return 'Часто выбирают клиенты с похожими задачами';
   if (r.type === 'alternative') return 'Альтернатива вашей текущей покупке';
+  if (r.type === 'personal') return 'На основе ваших покупок';
   return 'Может пригодиться вместе с вашей покупкой';
 }
 async function api(method, path, body){
@@ -387,6 +388,8 @@ async function loadClients(){
   }).join('');
   var ind = document.getElementById('new-client-industry');
   ind.innerHTML = '<option value="">— не указана —</option>'+LK_INDUSTRIES.map(function(x){ return '<option>'+esc(x)+'</option>'; }).join('');
+  var wanted = new URLSearchParams(location.search).get('client');
+  if (wanted && LK_CLIENTS[wanted]) sel.value = wanted;
 }
 function renderSystem(d){
   var rows = [];

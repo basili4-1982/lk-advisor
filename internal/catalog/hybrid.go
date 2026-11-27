@@ -165,7 +165,8 @@ func ServeHybrid(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeRes
 			if ownedSet[r.toID] || !items[r.toID].available {
 				continue
 			}
-			scores[r.toID] += 0.5 * r.confidence * relationWeight(r.rtype)
+			weight := RelationPerformanceMultiplier(r.shown, r.clicks, r.purchases)
+			scores[r.toID] += 0.5 * r.confidence * relationWeight(r.rtype) * weight
 			sources[r.toID] = "relation"
 			types[r.toID] = r.rtype
 			reasons[r.toID] = r.reason
@@ -412,16 +413,32 @@ type activeRel struct {
 	rtype      string
 	confidence float64
 	reason     string
+	shown      int
+	clicks     int
+	purchases  int
 }
 
 func activeRelationsForItems(ctx context.Context, dbc *sql.DB, owned []string, audience, industry string) ([]activeRel, error) {
 	rows, err := dbc.QueryContext(ctx, `
-		SELECT to_item_id, type, confidence::float8, reason FROM relations
-		WHERE from_item_id = ANY($1)
-		  AND status IN ('active', 'confirmed')
-		  AND type <> 'variant_of'
-		  AND (audience = '' OR audience = $2)
-		  AND (industry = '' OR industry = $3)`, pq.Array(owned), audience, industry)
+		SELECT r.to_item_id, r.type, r.confidence::float8, r.reason,
+		       COALESCE(p.shown, 0), COALESCE(p.clicks, 0), COALESCE(p.purchases, 0)
+		FROM relations r
+		LEFT JOIN (
+			SELECT source_product_id, product_id, relation_type,
+			       count(*) FILTER (WHERE event = 'shown') AS shown,
+			       count(*) FILTER (WHERE event = 'clicked') AS clicks,
+			       count(*) FILTER (WHERE event = 'purchased') AS purchases
+			FROM recommendation_events
+			WHERE candidate_id <> ''
+			GROUP BY source_product_id, product_id, relation_type
+		) p ON p.source_product_id = r.from_item_id
+		   AND p.product_id = r.to_item_id
+		   AND p.relation_type = r.type
+		WHERE r.from_item_id = ANY($1)
+		  AND r.status IN ('active', 'confirmed')
+		  AND r.type <> 'variant_of'
+		  AND (r.audience = '' OR r.audience = $2)
+		  AND (r.industry = '' OR r.industry = $3)`, pq.Array(owned), audience, industry)
 	if err != nil {
 		return nil, err
 	}
@@ -429,7 +446,8 @@ func activeRelationsForItems(ctx context.Context, dbc *sql.DB, owned []string, a
 	var out []activeRel
 	for rows.Next() {
 		var r activeRel
-		if err := rows.Scan(&r.toID, &r.rtype, &r.confidence, &r.reason); err != nil {
+		if err := rows.Scan(&r.toID, &r.rtype, &r.confidence, &r.reason,
+			&r.shown, &r.clicks, &r.purchases); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

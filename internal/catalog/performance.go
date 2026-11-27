@@ -23,6 +23,7 @@ type RelationPerformance struct {
 	Purchases  int        `json:"purchases"`
 	CTR        float64    `json:"ctr"`
 	Conversion float64    `json:"conversion"`
+	Weight     float64    `json:"weight"`
 }
 
 // LoadRelationPerformance returns scoped relation-level CTR and conversion.
@@ -83,6 +84,7 @@ func LoadRelationPerformance(ctx context.Context, dbc *sql.DB, limit int) ([]Rel
 			p.CTR = float64(p.Clicks) / float64(p.Shown)
 			p.Conversion = float64(p.Purchases) / float64(p.Shown)
 		}
+		p.Weight = RelationPerformanceMultiplier(p.Shown, p.Clicks, p.Purchases)
 		out = append(out, p)
 	}
 	return out, rows.Err()
@@ -118,14 +120,15 @@ func AutoReviewRelations(ctx context.Context, dbc *sql.DB, minShown int, minCTR 
 		}
 		status := ""
 		note := ""
+		weight := RelationPerformanceMultiplier(p.Shown, p.Clicks, p.Purchases)
 		switch {
 		case p.CTR >= minCTR || p.Purchases > 0:
 			status = "confirmed"
 			note = fmt.Sprintf("bandit: ctr=%.2f purchases=%d shown=%d", p.CTR, p.Purchases, p.Shown)
 			promoted++
-		case p.Clicks == 0:
+		case p.Shown >= relationRejectShown && weight <= relationRejectWeight:
 			status = "rejected"
-			note = fmt.Sprintf("bandit: 0 clicks at %d impressions", p.Shown)
+			note = fmt.Sprintf("bandit: smoothed weight=%.2f shown=%d clicks=%d", weight, p.Shown, p.Clicks)
 			rejected++
 		default:
 			continue

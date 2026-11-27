@@ -154,7 +154,7 @@ func TestAutoReviewIsScoped(t *testing.T) {
 		t.Fatalf("status=%s valid_until=%v", status, validUntil)
 	}
 
-	logShown("tr-scope-b2c-2", "b2c", "retail", 20, 0)
+	logShown("tr-scope-b2c-2", "b2c", "retail", 170, 0)
 	promoted, rejected, err = catalog.AutoReviewRelations(ctx, dbc, 30, 0.03)
 	if err != nil {
 		t.Fatal(err)

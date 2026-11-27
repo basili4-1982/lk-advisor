@@ -876,13 +876,16 @@ function renderAgentProposal(p){
     el('agent-result').innerHTML = '<div class="preview-item"><b>Связь не предложена</b><small>'+esc((p&&p.reason)||'Нет оснований.')+'</small></div>';
     return;
   }
-  var status = p.status==='llm_suggested' ? 'предложение ИИ' : 'на проверке';
+  var status = p.status==='confirmed' ? 'принята автоматически' : (p.status==='llm_suggested' ? 'кандидат · нужна проверка' : 'карантин');
   var ev = (p.evidence||[]).map(function(e){ return '<div class="hint">• '+esc(e.value)+'</div>'; }).join('');
+  var actions = p.status==='confirmed'
+    ? '<button class="small secondary" data-agent-add="confirm">Добавить в граф</button>'
+    : '<button class="small" data-agent-add="suggest">Добавить как предложение</button> '+
+      '<button class="small secondary" data-agent-add="confirm">Добавить и подтвердить</button>';
   var html = '<div class="preview-item" style="border-color:#bfdbfe"><b>'+esc(p.title)+' · '+esc(p.type)+'</b>'+
     '<small>Уверенность '+Math.round((p.confidence||0)*100)+'% · '+status+' · источник: '+esc(p.source==='llm'?'ИИ':'эвристика')+'</small>'+
     '<div style="margin-top:6px">'+esc(p.reason)+'</div>'+ev+
-    '<div style="margin-top:8px"><button class="small" data-agent-add="suggest">Добавить как предложение</button> '+
-    '<button class="small secondary" data-agent-add="confirm">Добавить и подтвердить</button></div></div>';
+    '<div style="margin-top:8px">'+actions+'</div></div>';
   el('agent-result').innerHTML = html;
 }
 async function runRelationAgent(){
@@ -894,7 +897,7 @@ async function runRelationAgent(){
 }
 async function addAgentRelation(mode){
   var p=lastAgentProposal; if (!p || p.type==='none') return;
-  var status = mode==='confirm' ? 'confirmed' : (p.status==='llm_suggested'?'llm_suggested':'quarantine');
+  var status = mode==='confirm' ? 'confirmed' : (p.status==='llm_suggested'?'llm_suggested':(p.status==='confirmed'?'confirmed':'quarantine'));
   try {
     await api('POST','/v1/admin/relations',{from_id:p.from_id,to_id:p.to_id,type:p.type,status:status,confidence:p.confidence,reason:p.reason,evidence:p.evidence,source:'agent'});
     toast(mode==='confirm'?'Связь добавлена и подтверждена':'Связь добавлена как предложение');
@@ -1051,8 +1054,8 @@ async function loadRelationPerf(){
   try {
     var d=await api('GET','/v1/admin/relations/performance');
     var rows=d.items||[];
-    el('relation-perf').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>Связь</th><th>Тип</th><th>Скоуп</th><th>Показ</th><th>Клик</th><th>CTR</th><th>Покупка</th><th>Статус</th><th>До</th></tr></thead><tbody>'+
-      rows.map(function(x){ return '<tr><td>'+esc(x.title_from)+' → '+esc(x.title_to)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+esc(x.audience||'—')+' / '+esc(x.industry||'—')+'</td><td>'+x.shown+'</td><td>'+x.clicks+'</td><td>'+pct(x.ctr)+'</td><td>'+x.purchases+'</td><td>'+esc(x.status)+'</td><td>'+(x.valid_until?new Date(x.valid_until).toLocaleDateString('ru-RU'):'—')+'</td></tr>'; }).join('')+'</tbody></table></div>' :
+    el('relation-perf').innerHTML = rows.length ? '<div class="tablewrap"><table><thead><tr><th>Связь</th><th>Тип</th><th>Скоуп</th><th>Показ</th><th>Клик</th><th>CTR</th><th>Вес</th><th>Покупка</th><th>Статус</th><th>До</th></tr></thead><tbody>'+
+      rows.map(function(x){ return '<tr><td>'+esc(x.title_from)+' → '+esc(x.title_to)+'</td><td><span class="pill type">'+esc(x.type)+'</span></td><td>'+esc(x.audience||'—')+' / '+esc(x.industry||'—')+'</td><td>'+x.shown+'</td><td>'+x.clicks+'</td><td>'+pct(x.ctr)+'</td><td>'+Math.round((x.weight||0)*100)+'%</td><td>'+x.purchases+'</td><td>'+esc(x.status)+'</td><td>'+(x.valid_until?new Date(x.valid_until).toLocaleDateString('ru-RU'):'—')+'</td></tr>'; }).join('')+'</tbody></table></div>' :
       '<div class="empty">Пока нет показов с привязкой к связи</div>';
   } catch(e){ el('relation-perf').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }

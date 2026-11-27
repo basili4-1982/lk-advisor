@@ -125,10 +125,7 @@ func (h *handler) llmRelationProposal(ctx context.Context, from, to model.Produc
 	if !ok {
 		return relationAgentProposal{}, fmt.Errorf("llm proposed unknown type %q", out.Type)
 	}
-	status := "quarantine"
-	if out.Confidence >= 0.7 {
-		status = "llm_suggested"
-	}
+	status := h.relationPolicy().Status(out.Confidence)
 	evidence := stringEvidence(out.Evidence)
 	if len(evidence) == 0 {
 		evidence = []model.Evidence{{Source: "agent", Value: nonEmpty(out.Reason, "связь по данным карточек")}}
