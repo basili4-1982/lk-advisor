@@ -65,6 +65,29 @@ func (h *handler) adminVendorCandidates(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, res)
 }
 
+// adminRegistryImport parses an XML export of the software registry.
+func (h *handler) adminRegistryImport(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(64 << 20); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid form")
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "file is required")
+		return
+	}
+	defer file.Close()
+	res, err := catalog.ImportRegistryXML(r.Context(), h.db, file)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "registry.xml_import", map[string]string{
+		"added": strconv.Itoa(res.Added), "updated": strconv.Itoa(res.Updated),
+	})
+	writeJSON(w, http.StatusOK, res)
+}
+
 // adminVendorLink resolves external products to catalog SKUs.
 func (h *handler) adminVendorLink(w http.ResponseWriter, r *http.Request) {
 	res, err := catalog.LinkVendorProducts(r.Context(), h.db)

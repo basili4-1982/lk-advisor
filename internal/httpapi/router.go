@@ -111,6 +111,7 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("GET /v1/admin/registry/feed", h.adminRegistryFeed)
 	mux.HandleFunc("GET /v1/admin/vendor-products", h.adminVendorProducts)
 	mux.HandleFunc("POST /v1/admin/vendor-products/import", h.adminVendorImport)
+	mux.HandleFunc("POST /v1/admin/vendor-products/import-registry", h.adminRegistryImport)
 	mux.HandleFunc("POST /v1/admin/vendor-products/link", h.adminVendorLink)
 	mux.HandleFunc("POST /v1/admin/vendor-products/candidates", h.adminVendorCandidates)
 	mux.HandleFunc("GET /v1/admin/registry/items", h.adminCatalogItems)

@@ -132,3 +132,57 @@ func TestVendorCandidatesFromExternalEditions(t *testing.T) {
 		t.Fatalf("relation = %s / %s", typ, source)
 	}
 }
+
+func TestRegistryXMLImport(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	cleanup := func() {
+		dbc.ExecContext(ctx, `DELETE FROM vendor_products WHERE vendor = 'ООО Тест'`)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	xmlBody := `<?xml version="1.0" encoding="utf-8"?>
+<registry>
+  <program>
+    <НомерРеестровойЗаписи>12345</НомерРеестровойЗаписи>
+    <НаименованиеПрограммы>Тестовый Реестровый Продукт</НаименованиеПрограммы>
+    <Правообладатель>ООО Тест</Правообладатель>
+    <КлассПО>Офисное ПО</КлассПО>
+    <Ссылка>https://example.test/registry/12345</Ссылка>
+  </program>
+</registry>`
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	part, err := writer.CreateFormFile("file", "registry.xml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	part.Write([]byte(xmlBody))
+	writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/admin/vendor-products/import-registry", &body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("import: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Added int `json:"added"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Added != 1 {
+		t.Fatalf("added = %d, want 1", out.Added)
+	}
+	var number, url string
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT registry_number, source_url FROM vendor_products
+		WHERE vendor = 'ООО Тест' AND product = 'Тестовый Реестровый Продукт'`).Scan(&number, &url); err != nil {
+		t.Fatal(err)
+	}
+	if number != "12345" || url != "https://example.test/registry/12345" {
+		t.Fatalf("row = %s / %s", number, url)
+	}
+}

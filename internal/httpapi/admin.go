@@ -534,8 +534,10 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
             <div class="form-title">Внешние знания</div>
             <div class="stats" id="vendor-stats"></div>
             <div class="toolbar" style="margin-top:8px">
-              <input type="file" id="vendor-file" accept=".csv" style="max-width:260px">
+              <input type="file" id="vendor-file" accept=".csv" style="max-width:220px">
               <button id="vendor-import" class="secondary small">Импорт CSV</button>
+              <input type="file" id="registry-file" accept=".xml" style="max-width:220px">
+              <button id="registry-import" class="secondary small">Импорт реестра XML</button>
               <button id="vendor-link" class="secondary small">Сопоставить с каталогом</button>
               <button id="vendor-candidates" class="secondary small">Сгенерировать связи</button>
             </div>
@@ -1171,6 +1173,18 @@ el('vendor-import').addEventListener('click', async function(){
     var d=await r.json();
     if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
     el('vendor-result').textContent='Импорт: добавлено '+d.added+', обновлено '+d.updated+', пропущено '+d.skipped;
+    loadVendorKnowledge();
+  } catch(e){ el('vendor-result').textContent=e.message; }
+});
+el('registry-import').addEventListener('click', async function(){
+  var f=el('registry-file').files[0];
+  if(!f){ el('vendor-result').textContent='Выберите XML реестра'; return; }
+  var fd=new FormData(); fd.append('file',f);
+  try {
+    var r=await fetch('/v1/admin/vendor-products/import-registry',{method:'POST',body:fd});
+    var d=await r.json();
+    if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+    el('vendor-result').textContent='Реестр: добавлено '+d.added+', обновлено '+d.updated+', пропущено '+d.skipped;
     loadVendorKnowledge();
   } catch(e){ el('vendor-result').textContent=e.message; }
 });
