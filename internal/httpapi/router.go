@@ -40,7 +40,7 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
-	mux.HandleFunc("GET /{$}", h.demo)
+	mux.HandleFunc("GET /{$}", h.landingPage)
 	mux.HandleFunc("GET /demo", h.demo)
 	mux.HandleFunc("GET /admin", h.adminPage)
 	mux.HandleFunc("GET /lk", h.lkPage)
