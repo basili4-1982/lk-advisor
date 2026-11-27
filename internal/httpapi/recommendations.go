@@ -28,12 +28,13 @@ var allowedEvents = map[string]bool{
 }
 
 type recommendationRequest struct {
-	ClientID string `json:"client_id"`
-	Event    string `json:"event"`
-	Limit    *int   `json:"limit"`
-	Audience string `json:"audience"`
-	Industry string `json:"industry"`
-	Strategy string `json:"strategy"`
+	ClientID      string `json:"client_id"`
+	Event         string `json:"event"`
+	Limit         *int   `json:"limit"`
+	Audience      string `json:"audience"`
+	Industry      string `json:"industry"`
+	Strategy      string `json:"strategy"`
+	CertifiedOnly bool   `json:"certified_only"`
 }
 
 type recommendationResponse struct {
@@ -77,7 +78,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if h.isCatalogClient(r, req.ClientID) {
-		h.recommendCatalog(w, r, req.ClientID, limit)
+		h.recommendCatalog(w, r, req.ClientID, limit, req.CertifiedOnly)
 		return
 	}
 

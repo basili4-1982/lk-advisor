@@ -314,6 +314,7 @@ body.sys-on .card.forced{background:#f8fafc;border-color:#cbd5e1}
         <label for="client" style="color:#94a3b8">клиент</label>
         <select id="client" style="min-width:340px"></select>
         <button id="reload" class="secondary">Показать блок</button>
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:#94a3b8;white-space:nowrap"><input type="checkbox" id="certified-only" style="width:auto"> только сертифицированные</label>
         <button id="new-client-toggle" class="secondary">＋ Создать клиента</button>
       </div>
       <div id="new-client" class="hidden" style="display:grid;gap:8px;margin-bottom:12px;padding:12px;border:1px solid #334155;border-radius:10px">
@@ -409,7 +410,7 @@ async function loadBlock(){
   document.getElementById('sys-client').innerHTML = '';
   box.innerHTML = '<div class="empty">Считаю…</div>';
   try {
-    var d = await api('POST','/v1/recommendations',{client_id:clientID, limit:3});
+    var d = await api('POST','/v1/recommendations',{client_id:clientID, limit:3, certified_only: document.getElementById('certified-only').checked});
     lastData = d;
     trace = d.trace_id;
     renderSystem(d);

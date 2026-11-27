@@ -230,6 +230,8 @@ type Recommendation struct {
 	Rank               int           `json:"rank"`
 	Reason             string        `json:"reason"`
 	Compatibility      string        `json:"compatibility,omitempty"`
+	Certified          bool          `json:"certified,omitempty"`
+	CertExpired        bool          `json:"cert_expired,omitempty"`
 	Fstec              []FstecCert   `json:"fstec,omitempty"`
 	Factors            *ScoreFactors `json:"factors,omitempty"`
 	Evidence           []Evidence    `json:"evidence"`

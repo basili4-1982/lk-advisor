@@ -15,7 +15,7 @@ import (
 
 // recommendCatalog serves recommendations for a real catalog client (lk_clients).
 // It uses the reviewed relations and applies a running hypothesis to treatment.
-func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clientID string, limit int) {
+func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clientID string, limit int, certifiedOnly bool) {
 	ctx := r.Context()
 	audience, industry, ok, err := catalog.ClientAudience(ctx, h.db, clientID)
 	if err != nil || !ok {
@@ -41,6 +41,7 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 	res, err := catalog.Serve(ctx, h.db, catalog.ServeOptions{
 		ClientID: clientID, Limit: limit,
 		ForceItemID: forceID, ForceType: forceType,
+		CertifiedOnly: certifiedOnly,
 	})
 	if err != nil {
 		h.logger.Error("catalog recommendations", "err", err)
@@ -63,6 +64,8 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 			Rank:            i + 1,
 			Reason:          it.Reason,
 			Compatibility:   it.Compatibility,
+			Certified:       it.Certified,
+			CertExpired:     it.CertExpired,
 			Fstec:           certs[it.ItemID],
 			Evidence:        []model.Evidence{},
 			Constraints:     []string{},

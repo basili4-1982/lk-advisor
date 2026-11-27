@@ -39,10 +39,11 @@ func AudienceForClientType(clientType string) string {
 
 // ServeOptions configures one catalog recommendation request.
 type ServeOptions struct {
-	ClientID    string
-	Limit       int
-	ForceItemID string
-	ForceType   string
+	ClientID      string
+	Limit         int
+	ForceItemID   string
+	ForceType     string
+	CertifiedOnly bool
 }
 
 // ServeItem is one recommendation from the catalog graph.
@@ -55,6 +56,8 @@ type ServeItem struct {
 	SourceItemID  string
 	RelationType  string
 	Compatibility string
+	Certified     bool
+	CertExpired   bool
 	Forced        bool
 }
 
@@ -110,18 +113,25 @@ func Serve(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeResult, e
 	}
 
 	res.Items = dedupe(res.Items)
+	res.Items = annotateCertificates(ctx, dbc, res.Items)
+	if opts.CertifiedOnly {
+		res.Items = filterCertified(res.Items)
+	}
 	sort.SliceStable(res.Items, func(i, j int) bool { return res.Items[i].Score > res.Items[j].Score })
 
 	if opts.ForceItemID != "" && !ownedSet[opts.ForceItemID] {
 		if forced, ok := forceCandidate(ctx, dbc, opts.ForceItemID, opts.ForceType); ok {
-			res.Items = removeItem(res.Items, forced.ItemID)
-			pos := 2
-			if pos > len(res.Items) {
-				pos = len(res.Items)
+			forced = annotateCertificates(ctx, dbc, []ServeItem{forced})[0]
+			if !opts.CertifiedOnly || forced.Certified {
+				res.Items = removeItem(res.Items, forced.ItemID)
+				pos := 2
+				if pos > len(res.Items) {
+					pos = len(res.Items)
+				}
+				res.Items = append(res.Items, ServeItem{})
+				copy(res.Items[pos+1:], res.Items[pos:])
+				res.Items[pos] = forced
 			}
-			res.Items = append(res.Items, ServeItem{})
-			copy(res.Items[pos+1:], res.Items[pos:])
-			res.Items[pos] = forced
 		}
 	}
 
@@ -129,6 +139,10 @@ func Serve(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeResult, e
 		popular, err := popularItems(ctx, dbc, audience, industry, owned, opts.Limit*3)
 		if err != nil {
 			return nil, err
+		}
+		popular = annotateCertificates(ctx, dbc, popular)
+		if opts.CertifiedOnly {
+			popular = filterCertified(popular)
 		}
 		chosen := make(map[string]bool, len(res.Items))
 		for _, it := range res.Items {
@@ -198,7 +212,7 @@ func relationCandidates(ctx context.Context, dbc *sql.DB, owned []string, audien
 		if it.RelationType == "upgrade" {
 			it.Type = "upsell"
 		}
-		it.Score = confidence * relationWeight(it.RelationType)
+		it.Score = clampNum(confidence*relationWeight(it.RelationType), 0, 1)
 		it.Reason = fmt.Sprintf("Связь «%s» с купленным товаром, уверенность %.0f%%",
 			typeLabel(it.RelationType), confidence*100)
 		out = append(out, it)
@@ -263,6 +277,70 @@ func popularItems(ctx context.Context, dbc *sql.DB, audience, industry string, o
 		out = append(out, it)
 	}
 	return out, rows.Err()
+}
+
+// annotateCertificates marks FSTEC status and uses it as a ranking signal:
+// a valid certificate adds a bonus, an expired-only product gets a small
+// penalty. The flag is stored on the item for the client card.
+func annotateCertificates(ctx context.Context, dbc *sql.DB, items []ServeItem) []ServeItem {
+	if len(items) == 0 {
+		return items
+	}
+	ids := make([]string, 0, len(items))
+	for _, it := range items {
+		ids = append(ids, it.ItemID)
+	}
+	valid := map[string]bool{}
+	expired := map[string]bool{}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT m.item_id,
+		       bool_or(c.valid_until >= current_date) AS has_valid,
+		       bool_or(c.valid_until < current_date) AS has_expired
+		FROM fstec_certificate_items m
+		JOIN fstec_certificates c ON c.id = m.certificate_id
+		WHERE m.item_id = ANY($1)
+		GROUP BY m.item_id`, pq.Array(ids))
+	if err == nil {
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			var v, e sql.NullBool
+			if rows.Scan(&id, &v, &e) == nil {
+				valid[id] = v.Valid && v.Bool
+				expired[id] = e.Valid && e.Bool
+			}
+		}
+	}
+	for i := range items {
+		items[i].Certified = valid[items[i].ItemID]
+		items[i].CertExpired = expired[items[i].ItemID] && !items[i].Certified
+		if items[i].Certified {
+			items[i].Score = clampNum(items[i].Score+0.06, 0, 1.0)
+		} else if items[i].CertExpired {
+			items[i].Score = clampNum(items[i].Score*0.95, 0, 1)
+		}
+	}
+	return items
+}
+
+func clampNum(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
+	}
+	if v > hi {
+		return hi
+	}
+	return v
+}
+
+func filterCertified(items []ServeItem) []ServeItem {
+	out := items[:0]
+	for _, it := range items {
+		if it.Certified {
+			out = append(out, it)
+		}
+	}
+	return out
 }
 
 func compatibility(requirements string) string {

@@ -15,6 +15,7 @@ func TestServeUsesConfirmedRelationsAndExcludesOwned(t *testing.T) {
 		t.Fatal(err)
 	}
 	cleanup := func() {
+		dbc.ExecContext(ctx, `DELETE FROM fstec_certificates WHERE certificate_number = 'TEST-CERT'`)
 		dbc.ExecContext(ctx, `DELETE FROM relations WHERE from_item_id LIKE 'serve-test-%'`)
 		dbc.ExecContext(ctx, `DELETE FROM lk_orders WHERE order_id LIKE 'serve-test-%'`)
 		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE 'serve-test-%'`)
@@ -59,6 +60,23 @@ func TestServeUsesConfirmedRelationsAndExcludesOwned(t *testing.T) {
 	if res.Items[0].ItemID != "serve-test-target" {
 		t.Fatalf("first item = %s, want target", res.Items[0].ItemID)
 	}
+	mustExec(`INSERT INTO fstec_certificates (certificate_number, product, applicant, valid_until)
+		VALUES ('TEST-CERT', 'Целевой товар', 'Тест', current_date + 365)`)
+	mustExec(`INSERT INTO fstec_certificate_items (certificate_id, item_id, method, confidence)
+		SELECT id, 'serve-test-target', 'test', 1 FROM fstec_certificates WHERE certificate_number='TEST-CERT'`)
+	certified, err := catalog.Serve(ctx, dbc, catalog.ServeOptions{
+		ClientID: "serve-test-c1", Limit: 3, CertifiedOnly: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(certified.Items) != 1 || certified.Items[0].ItemID != "serve-test-target" || !certified.Items[0].Certified {
+		t.Fatalf("certified filter = %+v", certified.Items)
+	}
+	if certified.Items[0].Score < res.Items[0].Score {
+		t.Fatalf("certificate must not lower score: %.3f vs %.3f", certified.Items[0].Score, res.Items[0].Score)
+	}
+
 	if res.Items[0].Compatibility != "unverified" {
 		t.Fatalf("compatibility = %q, want unverified", res.Items[0].Compatibility)
 	}
