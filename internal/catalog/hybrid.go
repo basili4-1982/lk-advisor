@@ -245,14 +245,6 @@ func applyForced(ctx context.Context, dbc *sql.DB, ranked []ServeItem, opts Serv
 	if opts.ForceItemID == "" || owned[opts.ForceItemID] {
 		return ranked
 	}
-	// The target may already be in the precomputed top-N; never duplicate it.
-	filtered := ranked[:0]
-	for _, it := range ranked {
-		if it.ItemID != opts.ForceItemID {
-			filtered = append(filtered, it)
-		}
-	}
-	ranked = filtered
 	forced, ok := forceCandidate(ctx, dbc, opts.ForceItemID, opts.ForceType)
 	if !ok {
 		return ranked
@@ -261,6 +253,19 @@ func applyForced(ctx context.Context, dbc *sql.DB, ranked []ServeItem, opts Serv
 	if opts.CertifiedOnly && !forced.Certified {
 		return ranked
 	}
+	return placeForced(ranked, forced, opts.Limit)
+}
+
+// placeForced pins the experiment target at rank 3 without duplicating an item
+// that is already in the precomputed block.
+func placeForced(ranked []ServeItem, forced ServeItem, limit int) []ServeItem {
+	filtered := ranked[:0]
+	for _, it := range ranked {
+		if it.ItemID != forced.ItemID {
+			filtered = append(filtered, it)
+		}
+	}
+	ranked = filtered
 	pos := 2
 	if pos > len(ranked) {
 		pos = len(ranked)
@@ -268,8 +273,8 @@ func applyForced(ctx context.Context, dbc *sql.DB, ranked []ServeItem, opts Serv
 	ranked = append(ranked, ServeItem{})
 	copy(ranked[pos+1:], ranked[pos:])
 	ranked[pos] = forced
-	if len(ranked) > opts.Limit {
-		ranked = ranked[:opts.Limit]
+	if len(ranked) > limit {
+		ranked = ranked[:limit]
 	}
 	return ranked
 }
