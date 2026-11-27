@@ -45,6 +45,7 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("GET /admin", h.adminPage)
 	mux.HandleFunc("GET /lk", h.lkPage)
 	mux.HandleFunc("GET /v1/lk/clients", h.lkClients)
+	mux.HandleFunc("POST /v1/lk/clients", h.lkCreateClient)
 	mux.HandleFunc("GET /v1/lk/clients/{id}", h.lkClientDetail)
 	mux.HandleFunc("GET /admin/{$}", h.adminPage)
 	mux.HandleFunc("GET /api", h.apiIndex)

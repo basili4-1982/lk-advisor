@@ -137,3 +137,58 @@ func TestStorefrontClientProfileAndHistory(t *testing.T) {
 		t.Fatalf("unknown status = %d", rec.Code)
 	}
 }
+
+func TestStorefrontCanCreateClientProfile(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	cleanup := func() {
+		dbc.ExecContext(ctx, `DELETE FROM lk_clients WHERE client_id LIKE 'lk-new-%'`)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	rec := doJSON(t, h, http.MethodPost, "/v1/lk/clients",
+		`{"client_id":"lk-new-1","client_type":"ЮЛ","industry":"Образование и наука",
+		  "segment":"small","client_group":"G-EDU"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
+	}
+	var created struct {
+		ClientID string `json:"client_id"`
+		Source   string `json:"source"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &created); err != nil {
+		t.Fatal(err)
+	}
+	if created.ClientID != "lk-new-1" || created.Source != "lk_demo" {
+		t.Fatalf("created = %+v", created)
+	}
+
+	rec = doJSON(t, h, http.MethodGet, "/v1/lk/clients/lk-new-1", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("detail: %d %s", rec.Code, rec.Body.String())
+	}
+	var detail struct {
+		ClientType string `json:"client_type"`
+		Industry   string `json:"industry"`
+		Orders     int    `json:"orders"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &detail); err != nil {
+		t.Fatal(err)
+	}
+	if detail.ClientType != "ЮЛ" || detail.Industry != "Образование и наука" || detail.Orders != 0 {
+		t.Fatalf("detail = %+v", detail)
+	}
+
+	rec = doJSON(t, h, http.MethodPost, "/v1/lk/clients",
+		`{"client_id":"lk-new-1","client_type":"ЮЛ"}`)
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("duplicate status = %d, want 409", rec.Code)
+	}
+
+	rec = doJSON(t, h, http.MethodPost, "/v1/lk/clients",
+		`{"client_type":"ООО"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid type status = %d, want 400", rec.Code)
+	}
+}
