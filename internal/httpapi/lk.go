@@ -302,7 +302,7 @@ body.sys-on .card.forced{background:#f8fafc;border-color:#cbd5e1}
 <body>
 <header class="top"><div class="wrap">
   <div class="brand"><div class="logo">LK</div><div><b>Мои рекомендации</b><small>личный кабинет клиента</small></div></div>
-  <nav><a href="/">Главная</a><a href="/admin">Админка</a><a href="/demo/graph">Граф</a><a href="/api">API</a></nav>
+  <nav><a href="/">Главная</a><a href="/admin">Админка</a><a href="/api">API</a></nav>
 </div></header>
 <main class="wrap">
   <h1>Что ещё может пригодиться</h1>

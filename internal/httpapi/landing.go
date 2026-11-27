@@ -61,11 +61,6 @@ h1{font-size:26px;margin:0 0 6px}
       <span>Дашборд качества, каталог связей, гипотезы и решения.</span>
       <span class="badge">/admin</span>
     </a>
-    <a class="card" href="/demo/graph">
-      <b>Граф связей</b>
-      <span>Публичный слой: товары, связи, отрасли и подтверждённые рёбра.</span>
-      <span class="badge">/demo/graph</span>
-    </a>
     <a class="card" href="/agent">
       <b>Как работает агент</b>
       <span>Сигналы из открытых источников, выбор типа связи и холодный старт.</span>

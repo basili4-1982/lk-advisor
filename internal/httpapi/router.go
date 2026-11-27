@@ -91,8 +91,6 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("GET /v1/admin/relations/review", h.adminReviewQueue)
 	mux.HandleFunc("POST /v1/admin/relations/review", h.adminReviewDecision)
 	mux.HandleFunc("GET /v1/admin/solo-products", h.adminSoloProducts)
-	mux.HandleFunc("GET /v1/demo/graph", h.demoGraph)
-	mux.HandleFunc("GET /demo/graph", h.demoGraphPage)
 	mux.HandleFunc("GET /static/3d-force-graph.min.js", h.graph3dAsset)
 	mux.HandleFunc("GET /v1/admin/dataset/coverage", h.adminDatasetCoverage)
 	mux.HandleFunc("GET /v1/admin/dataset/co-purchases", h.adminCoPurchases)
