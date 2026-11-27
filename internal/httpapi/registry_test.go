@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"mime/multipart"
@@ -367,6 +368,29 @@ func TestRegistryImportItemsUpload(t *testing.T) {
 	}
 	if title != "Импортированная позиция" {
 		t.Fatalf("title = %q", title)
+	}
+	var feedUpdated sql.NullTime
+	if err := dbc.QueryRow(`SELECT feed_updated_at FROM lk_items WHERE item_id='TEST-IMPORT-1'`).Scan(&feedUpdated); err != nil {
+		t.Fatal(err)
+	}
+	if !feedUpdated.Valid {
+		t.Fatal("import must set feed_updated_at")
+	}
+
+	rec = doJSON(t, h, http.MethodGet, "/v1/admin/registry/feed", "")
+	if rec.Code != http.StatusOK {
+		t.Fatalf("feed: %d %s", rec.Code, rec.Body.String())
+	}
+	var feed struct {
+		Available int    `json:"available"`
+		Total     int    `json:"total"`
+		UpdatedAt string `json:"updated_at"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &feed); err != nil {
+		t.Fatal(err)
+	}
+	if feed.Available == 0 || feed.Total == 0 || feed.UpdatedAt == "" {
+		t.Fatalf("feed = %+v", feed)
 	}
 }
 

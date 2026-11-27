@@ -1,11 +1,13 @@
 package httpapi
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
 )
@@ -276,6 +278,25 @@ func (h *handler) adminCatalogItems(w http.ResponseWriter, r *http.Request) {
 		out = append(out, it)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+// adminRegistryFeed reports availability and the last feed update.
+func (h *handler) adminRegistryFeed(w http.ResponseWriter, r *http.Request) {
+	var available, total int
+	var updated sql.NullTime
+	if err := h.db.QueryRowContext(r.Context(), `
+		SELECT count(*) FILTER (WHERE available), count(*), max(feed_updated_at)
+		FROM lk_items`).Scan(&available, &total, &updated); err != nil {
+		writeError(w, http.StatusInternalServerError, "feed error")
+		return
+	}
+	updatedAt := ""
+	if updated.Valid {
+		updatedAt = updated.Time.UTC().Format(time.RFC3339)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"available": available, "total": total, "updated_at": updatedAt,
+	})
 }
 
 func (h *handler) adminRegistryReset(w http.ResponseWriter, r *http.Request) {

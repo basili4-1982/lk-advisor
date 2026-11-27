@@ -104,6 +104,7 @@ func newHandler(logger *slog.Logger, dbc *sql.DB, now func() time.Time, client *
 	mux.HandleFunc("POST /v1/admin/registry/import/items", h.adminRegistryImportItems)
 	mux.HandleFunc("POST /v1/admin/registry/reset", h.adminRegistryReset)
 	mux.HandleFunc("GET /v1/admin/registry/metrics", h.adminRegistryMetrics)
+	mux.HandleFunc("GET /v1/admin/registry/feed", h.adminRegistryFeed)
 	mux.HandleFunc("GET /v1/admin/registry/items", h.adminCatalogItems)
 	mux.HandleFunc("POST /v1/admin/rules", h.adminCreateRule)
 	mux.HandleFunc("DELETE /v1/admin/rules/{id}", h.adminDeleteRule)

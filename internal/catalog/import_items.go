@@ -130,15 +130,16 @@ func ImportItemsCSV(ctx context.Context, dbc *sql.DB, src io.Reader) (ImportItem
 		}
 		if _, err := tx.ExecContext(ctx, `
 			INSERT INTO lk_items
-				(item_id, sku, title, category, subcategory, product_group, available, source)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, 'ui_import')
+				(item_id, sku, title, category, subcategory, product_group, available, source, feed_updated_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, 'ui_import', now())
 			ON CONFLICT (item_id) DO UPDATE SET
 				sku = EXCLUDED.sku,
 				title = EXCLUDED.title,
 				category = EXCLUDED.category,
 				subcategory = COALESCE(NULLIF(EXCLUDED.subcategory, ''), lk_items.subcategory),
 				product_group = EXCLUDED.product_group,
-				available = EXCLUDED.available`,
+				available = EXCLUDED.available,
+				feed_updated_at = now()`,
 			id, r.sku, r.title, category, r.subcategory, r.group, r.available); err != nil {
 			return res, fmt.Errorf("upsert item %s: %w", id, err)
 		}

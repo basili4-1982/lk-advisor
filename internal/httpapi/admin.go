@@ -533,6 +533,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           <div class="formbox">
             <div class="form-title">Источник данных</div>
             <div class="stats" id="dataset-cards"></div>
+            <div class="hint" id="dataset-feed" style="margin-top:8px"></div>
             <div class="hint" style="margin-top:8px">Источник: исходный каталог, 817 товаров и 419 product_group; загруженные позиции не входят в офлайн-оценку.</div>
           </div>
         </div>
@@ -1114,6 +1115,7 @@ async function loadDataset(){
   try {
     var c=await api('GET','/v1/admin/dataset/coverage');
     var m=await api('GET','/v1/admin/registry/metrics');
+    var f=await api('GET','/v1/admin/registry/feed');
     var volumes = [
       ['Товары', c.items], ['Клиенты', c.clients],
       ['Заказы', c.orders], ['Инстансы заказов', c.order_instances],
@@ -1131,6 +1133,9 @@ async function loadDataset(){
     el('dataset-registry').innerHTML = live.map(function(x){
       return '<div class="stat"><b>'+esc(x[1])+'</b><span>'+esc(x[0])+'</span></div>';
     }).join('');
+    var feedDate = f.updated_at ? new Date(f.updated_at).toLocaleDateString('ru-RU') : '';
+    el('dataset-feed').innerHTML = 'Фид: доступно <b>'+f.available+'</b> из '+f.total+
+      ' · обновлён: '+(feedDate || 'дата не передана (исторический снимок)');
   } catch(e){ el('dataset-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
 el('dataset-open-catalog').addEventListener('click', function(){
