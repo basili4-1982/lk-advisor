@@ -211,6 +211,17 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 .type-card .hint{margin-top:6px}
 .modal{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:60}
 .modal-box{background:#fff;border-radius:12px;padding:18px;max-width:480px;width:calc(100% - 32px);box-shadow:0 24px 64px rgba(0,0,0,.3)}
+.exp-modal{max-width:760px;max-height:96vh;display:flex;flex-direction:column}
+.exp-modal .exp-form{overflow:auto;min-height:0;padding-right:4px}
+.exp-modal .toolbar{flex:0 0 auto}
+.exp-form{display:grid;gap:8px;margin-top:10px}
+.exp-form label{display:grid;gap:4px;font-size:12px;color:#475569}
+.exp-form input,.exp-form select,.exp-form textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit;font-size:13px;background:#fff}
+.exp-form select[size]{height:76px;padding:4px}
+.exp-form .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.exp-guards{display:flex;gap:16px;align-items:center;flex-wrap:wrap;font-size:13px;color:#334155}
+.exp-guards label{display:flex;align-items:center;gap:6px;font-size:13px;color:#334155}
+.exp-guards input{width:auto}
 .tip{position:fixed;z-index:50;max-width:380px;background:#111827;color:#fff;padding:8px 10px;border-radius:8px;font-size:12px;line-height:1.35;box-shadow:0 12px 32px rgba(0,0,0,.28);pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .12s}
 .tip.on{opacity:1;transform:none}
 .toast{position:fixed;right:20px;bottom:20px;background:#111827;color:#fff;padding:11px 15px;border-radius:10px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:9}
@@ -534,7 +545,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="extend">extend</option>
             </select>
             <button id="experiment-search-btn" class="secondary small">Найти</button>
-            <span class="hint">Демо: 50 клиентов × 10 сессий. Назначение → exposure → метрики → guardrail → решение → база знаний.</span>
+            <span class="hint">Гипотеза создаётся на паре каталога; события показов и покупок приходят из <code>/v1/events</code>.</span>
           </div>
           <div class="stats" id="experiments-summary"></div>
           <div id="experiments-list"></div>
@@ -607,6 +618,59 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
     <div class="toolbar" style="margin-top:14px;justify-content:flex-end">
       <button id="registry-confirm-no" class="secondary small">Отмена</button>
       <button id="registry-confirm-yes" class="small">Подтвердить</button>
+    </div>
+  </div>
+</div>
+<div class="modal hidden" id="experiment-modal">
+  <div class="modal-box exp-modal">
+    <div class="form-title">Новая гипотеза</div>
+    <div class="hint">Пара товаров из каталога, тип связи и условия эксперимента.</div>
+    <div class="exp-form">
+      <div class="row2">
+        <label>Источник
+          <input id="exp-from-search" placeholder="Фильтр по названию…">
+          <select id="exp-from" size="5"></select>
+        </label>
+        <label>Цель
+          <input id="exp-to-search" placeholder="Фильтр по названию…">
+          <select id="exp-to" size="5"></select>
+        </label>
+      </div>
+      <div class="row2">
+        <label>Тип связи<select id="exp-type"></select></label>
+        <label>Аудитория<select id="exp-audience"><option value="b2b">B2B</option><option value="b2c">B2C</option></select></label>
+      </div>
+      <label>Название гипотезы<input id="exp-title" maxlength="200"></label>
+      <label>Формулировка<textarea id="exp-hypothesis" rows="2" maxlength="400"></textarea></label>
+      <div class="row2">
+        <label>Отрасль (необязательно)<input id="exp-industry" placeholder="например, образование"></label>
+        <label>Primary metric<select id="exp-metric">
+          <option value="conversion">conversion</option>
+          <option value="target_conversion">target_conversion</option>
+          <option value="ctr">ctr</option>
+        </select></label>
+      </div>
+      <div class="row2">
+        <label>Traffic split<select id="exp-split">
+          <option value="0.5">50 / 50</option>
+          <option value="0.7">70 / 30</option>
+          <option value="0.8">80 / 20</option>
+          <option value="0.9">90 / 10</option>
+        </select></label>
+        <div style="align-self:end">
+          <div class="hint" style="margin-bottom:6px">Guardrails</div>
+          <div class="exp-guards">
+            <label><input type="checkbox" id="exp-g-renewal" checked> renewal</label>
+            <label><input type="checkbox" id="exp-g-upsell" checked> upsell</label>
+            <label><input type="checkbox" id="exp-g-fallback" checked> fallback</label>
+          </div>
+        </div>
+      </div>
+      <div class="hint" id="exp-form-error" style="color:#b91c1c"></div>
+    </div>
+    <div class="toolbar" style="justify-content:flex-end;margin-top:14px">
+      <button id="exp-cancel" class="secondary small">Отмена</button>
+      <button id="exp-submit" class="success small">Создать гипотезу</button>
     </div>
   </div>
 </div>
@@ -1823,9 +1887,126 @@ el('review-list').addEventListener('click', function(ev){
   var r=reviewItems[Number(ev.target.dataset.reviewIndex)];
   if (r) reviewDecision(mode, [r]);
 });
-el('experiment-seed').addEventListener('click', async function(){
-  try { await api('POST','/v1/admin/experiments/demo',{}); toast('Гипотеза добавлена'); loadExperiments(); loadKnowledge(); }
-  catch(e){ toast(e.message,true); }
+var EXP_ITEMS = null;
+var expTitleDirty = false, expHypDirty = false;
+async function expItemList(){
+  if (EXP_ITEMS) return EXP_ITEMS;
+  var d = await api('GET','/v1/admin/registry/items?limit=5000');
+  EXP_ITEMS = (d.items || []).slice().sort(function(a,b){
+    var pa = a.title.charAt(0) === '(' ? 1 : 0, pb = b.title.charAt(0) === '(' ? 1 : 0;
+    if (pa !== pb) return pa - pb;
+    return a.title.localeCompare(b.title, 'ru');
+  });
+  return EXP_ITEMS;
+}
+var EXP_GENERIC_PREFIXES = [
+  'Предоставление доступа к сервисам ',
+  'Предоставление доступа к ',
+  'Программа контроля полномочий доступа к информационным ресурсам ',
+  'Средство создания модели системы разграничения доступа '
+];
+function expCleanTitle(s){
+  s = String(s||'');
+  var t = s.replace(/^\([^)]*\)\s*/, '').trim();
+  for (var i=0;i<EXP_GENERIC_PREFIXES.length;i++){
+    var p=EXP_GENERIC_PREFIXES[i];
+    if (t.length > p.length && t.indexOf(p) === 0) { t = t.slice(p.length).trim(); break; }
+  }
+  return t || s;
+}
+function expFillItems(sel, filter){
+  var q = String(filter||'').toLowerCase().trim();
+  var prev = sel.value, out = [];
+  for (var i=0;i<EXP_ITEMS.length;i++){
+    var it = EXP_ITEMS[i];
+    if (q && (it.title.toLowerCase().indexOf(q) < 0 &&
+              String(it.product_group||'').toLowerCase().indexOf(q) < 0)) continue;
+    out.push(it);
+    if (out.length >= 900) break;
+  }
+  sel.innerHTML = '<option value="">— выберите товар —</option>' + out.map(function(it){
+    return '<option value="'+esc(it.item_id)+'">'+esc(expCleanTitle(it.title))+'</option>';
+  }).join('');
+  if (prev) sel.value = prev;
+}
+function expClip(s, n){
+  s = String(s||'');
+  if (s.length <= n) return s;
+  var cut = s.slice(0, n);
+  var i = cut.lastIndexOf(' ');
+  if (i > n/2) cut = cut.slice(0, i);
+  return cut.replace(/[\s,.;:\-]+$/,'')+'…';
+}
+function expSelectedTitle(sel){
+  var o = sel.options[sel.selectedIndex];
+  return o ? o.textContent : '';
+}
+function expGenerateNames(){
+  var ft = expSelectedTitle(el('exp-from')), tt = expSelectedTitle(el('exp-to'));
+  if (!ft || !tt) return;
+  var f = expClip(ft, 54), t = expClip(tt, 54);
+  var aud = el('exp-audience').value === 'b2c' ? 'B2C' : 'B2B';
+  if (!expTitleDirty) el('exp-title').value = 'Показ «'+t+'» после «'+f+'»';
+  if (!expHypDirty) el('exp-hypothesis').value = 'Показ «'+t+'» после «'+f+'» повышает конверсию в '+aud;
+}
+function expFillTypes(){
+  var sel = el('exp-type'), list = activeTypes(), opts = [];
+  if (list.length) {
+    list.forEach(function(t){ if (t.code !== 'variant_of') opts.push([t.code, t.title || t.code]); });
+  }
+  if (!opts.length) Object.keys(REL_TYPES).forEach(function(k){ opts.push([k, REL_TYPES[k]]); });
+  sel.innerHTML = opts.map(function(p){ return '<option value="'+esc(p[0])+'">'+esc(p[1])+'</option>'; }).join('');
+}
+async function openExperimentForm(){
+  try { await expItemList(); } catch(e){ toast(e.message, true); return; }
+  expFillTypes();
+  el('exp-from-search').value = ''; el('exp-to-search').value = '';
+  expFillItems(el('exp-from'), ''); expFillItems(el('exp-to'), '');
+  el('exp-audience').value = 'b2b';
+  el('exp-industry').value = '';
+  el('exp-metric').value = 'conversion';
+  el('exp-split').value = '0.5';
+  el('exp-g-renewal').checked = true; el('exp-g-upsell').checked = true; el('exp-g-fallback').checked = true;
+  expTitleDirty = false; expHypDirty = false;
+  el('exp-form-error').textContent = '';
+  expGenerateNames();
+  el('experiment-modal').classList.remove('hidden');
+  el('exp-from-search').focus();
+}
+function closeExperimentForm(){ el('experiment-modal').classList.add('hidden'); }
+el('experiment-seed').addEventListener('click', openExperimentForm);
+el('exp-cancel').addEventListener('click', closeExperimentForm);
+el('experiment-modal').addEventListener('click', function(ev){ if (ev.target === this) closeExperimentForm(); });
+document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape' && !el('experiment-modal').classList.contains('hidden')) closeExperimentForm(); });
+el('exp-from-search').addEventListener('input', function(){ expFillItems(el('exp-from'), this.value); });
+el('exp-to-search').addEventListener('input', function(){ expFillItems(el('exp-to'), this.value); });
+el('exp-from').addEventListener('change', expGenerateNames);
+el('exp-to').addEventListener('change', expGenerateNames);
+el('exp-audience').addEventListener('change', expGenerateNames);
+el('exp-title').addEventListener('input', function(){ expTitleDirty = true; });
+el('exp-hypothesis').addEventListener('input', function(){ expHypDirty = true; });
+el('exp-submit').addEventListener('click', async function(){
+  var from = el('exp-from').value, to = el('exp-to').value;
+  var err = el('exp-form-error');
+  err.textContent = '';
+  if (!from || !to) { err.textContent = 'Выберите источник и цель.'; return; }
+  if (from === to) { err.textContent = 'Источник и цель должны различаться.'; return; }
+  var guards = [];
+  if (el('exp-g-renewal').checked) guards.push('renewal');
+  if (el('exp-g-upsell').checked) guards.push('upsell');
+  if (el('exp-g-fallback').checked) guards.push('fallback');
+  try {
+    var out = await api('POST','/v1/admin/experiments',{
+      from_id: from, to_id: to, relation_type: el('exp-type').value,
+      title: el('exp-title').value.trim(), hypothesis: el('exp-hypothesis').value.trim(),
+      audience: el('exp-audience').value, industry: el('exp-industry').value.trim(),
+      metric: el('exp-metric').value, guardrails: guards.join(', '),
+      traffic_split: Number(el('exp-split').value)
+    });
+    closeExperimentForm();
+    toast(out.created ? 'Гипотеза создана' : 'Гипотеза для этой пары уже идёт');
+    document.querySelector('[data-tab=experiments]').click();
+  } catch(e){ err.textContent = e.message; }
 });
 el('experiment-bad').addEventListener('click', async function(){
   try { await api('POST','/v1/admin/experiments/bad-demo',{}); toast('Демо-провал создан'); loadExperiments(); loadKnowledge(); }

@@ -527,68 +527,98 @@ func SearchKnowledge(ctx context.Context, dbc *sql.DB, query, decision string) (
 	return out, nil
 }
 
-// SeedBadDemo creates a deliberately wrong hypothesis for time-to-reject tests.
-// CreateFromRelation starts an experiment for one catalog relation.
+// CreateFromRelationOptions describes a hypothesis created from the form or
+// from a catalog relation card.
 type CreateFromRelationOptions struct {
 	FromID       string
 	ToID         string
 	RelationType string
+	Title        string
+	Hypothesis   string
 	Audience     string
 	Industry     string
+	Metric       string
+	Guardrails   string
+	TrafficSplit float64
+	SeedDemo     bool
 }
 
-func CreateFromRelation(ctx context.Context, dbc *sql.DB, opts CreateFromRelationOptions) (string, error) {
+func CreateFromRelation(ctx context.Context, dbc *sql.DB, opts CreateFromRelationOptions) (string, bool, error) {
 	if strings.TrimSpace(opts.FromID) == "" || strings.TrimSpace(opts.ToID) == "" {
-		return "", fmt.Errorf("from_id and to_id are required")
+		return "", false, fmt.Errorf("from_id и to_id обязательны")
 	}
 	var existing string
 	if err := dbc.QueryRowContext(ctx, `
 		SELECT id FROM experiments
 		WHERE from_id = $1 AND to_id = $2 AND status = 'running'
 		LIMIT 1`, opts.FromID, opts.ToID).Scan(&existing); err == nil {
-		return existing, nil
+		return existing, false, nil
 	} else if !errors.Is(err, sql.ErrNoRows) {
-		return "", fmt.Errorf("check running experiment: %w", err)
+		return "", false, fmt.Errorf("check running experiment: %w", err)
 	}
 	fromName := clipName(catalogItemName(ctx, dbc, opts.FromID), 54)
 	toName := clipName(catalogItemName(ctx, dbc, opts.ToID), 54)
 	if fromName == "" || toName == "" {
-		return "", fmt.Errorf("items not found")
+		return "", false, fmt.Errorf("товар не найден в каталоге")
 	}
-	audience := opts.Audience
+	audience := strings.TrimSpace(opts.Audience)
 	if audience == "" {
 		audience = "b2b"
 	}
+	title := strings.TrimSpace(opts.Title)
+	if title == "" {
+		title = "Показ «" + toName + "» после «" + fromName + "»"
+	}
+	hypothesis := strings.TrimSpace(opts.Hypothesis)
+	if hypothesis == "" {
+		hypothesis = fmt.Sprintf("Показ «%s» после «%s» повышает конверсию", toName, fromName)
+	}
+	metric := strings.TrimSpace(opts.Metric)
+	switch metric {
+	case "conversion", "target_conversion", "ctr":
+	default:
+		metric = "conversion"
+	}
+	guardrails := strings.TrimSpace(opts.Guardrails)
+	if guardrails == "" {
+		guardrails = "renewal, upsell, fallback"
+	}
+	split := opts.TrafficSplit
+	if split <= 0 || split >= 1 {
+		split = 0.5
+	}
+	variants := fmt.Sprintf(`[{"name":"control","weight":%.3f},{"name":"treatment","weight":%.3f}]`, 1-split, split)
 	id := fmt.Sprintf("exp-catalog-%d", time.Now().UnixNano())
 	tx, err := dbc.BeginTx(ctx, nil)
 	if err != nil {
-		return "", fmt.Errorf("create experiment: begin: %w", err)
+		return "", false, fmt.Errorf("create experiment: begin: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `
 		INSERT INTO experiments
 			(id, title, hypothesis, status, audience, industry, strategy, metric, guardrails,
 			 variants, traffic_split, from_id, to_id, relation_type, treatment, owner, started_at)
-		VALUES ($1, $2, $3, 'running', $4, $5, 'hybrid', 'conversion',
-		        'renewal, upsell, fallback', $6::jsonb, 0.5, $7, $8, $9,
-		        'force_relation', 'demo', now())`,
-		id, "Показ «"+toName+"» после «"+fromName+"»",
-		"Показ «"+toName+"» после «"+fromName+"» повышает конверсию",
-		audience, opts.Industry,
-		`[{"name":"control","weight":0.5},{"name":"treatment","weight":0.5}]`,
+		VALUES ($1, $2, $3, 'running', $4, $5, 'hybrid', $6,
+		        $7, $8::jsonb, $9, $10, $11, $12,
+		        'force_relation', '', now())`,
+		id, title, hypothesis,
+		audience, strings.TrimSpace(opts.Industry), metric,
+		guardrails, variants, split,
 		opts.FromID, opts.ToID, opts.RelationType); err != nil {
-		return "", fmt.Errorf("create experiment: insert: %w", err)
+		return "", false, fmt.Errorf("create experiment: insert: %w", err)
 	}
-	if err := seedVariantEvents(ctx, tx, id, opts.FromID, opts.ToID, "control", 150, 100, 24, 8, 120, 40); err != nil {
-		return "", err
-	}
-	if err := seedVariantEvents(ctx, tx, id, opts.FromID, opts.ToID, "treatment", 150, 120, 48, 15, 118, 42); err != nil {
-		return "", err
+	if opts.SeedDemo {
+		if err := seedVariantEvents(ctx, tx, id, opts.FromID, opts.ToID, "control", 150, 100, 24, 8, 120, 40); err != nil {
+			return "", false, err
+		}
+		if err := seedVariantEvents(ctx, tx, id, opts.FromID, opts.ToID, "treatment", 150, 120, 48, 15, 118, 42); err != nil {
+			return "", false, err
+		}
 	}
 	if err := tx.Commit(); err != nil {
-		return "", fmt.Errorf("create experiment: commit: %w", err)
+		return "", false, fmt.Errorf("create experiment: commit: %w", err)
 	}
-	return id, nil
+	return id, true, nil
 }
 
 func SeedBadDemo(ctx context.Context, dbc *sql.DB) error {
@@ -665,7 +695,27 @@ func seedCatalogExperiment(ctx context.Context, dbc *sql.DB, id string, bad bool
 	return tx.Commit()
 }
 
+var genericNamePrefixes = []string{
+	"Предоставление доступа к сервисам ",
+	"Предоставление доступа к ",
+	"Программа контроля полномочий доступа к информационным ресурсам ",
+	"Средство создания модели системы разграничения доступа ",
+}
+
+// cleanCatalogName drops boilerplate that every item in a product line shares,
+// so generated hypothesis titles stay readable.
+func cleanCatalogName(s string) string {
+	s = strings.TrimSpace(s)
+	for _, p := range genericNamePrefixes {
+		if len(s) > len(p) && strings.HasPrefix(s, p) {
+			return strings.TrimSpace(s[len(p):])
+		}
+	}
+	return s
+}
+
 func clipName(s string, limit int) string {
+	s = cleanCatalogName(s)
 	r := []rune(strings.TrimSpace(s))
 	if len(r) <= limit {
 		return string(r)

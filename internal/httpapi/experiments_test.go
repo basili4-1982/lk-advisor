@@ -78,23 +78,61 @@ func TestCreateExperimentFromCatalogRelation(t *testing.T) {
 			VALUES ($1,$1,'software','EXP-CAT')`, id)
 	}
 	rec := doJSON(t, h, http.MethodPost, "/v1/admin/experiments",
-		`{"from_id":"exp-cat-a","to_id":"exp-cat-b","relation_type":"adjacent_task","audience":"b2b"}`)
+		`{"from_id":"exp-cat-a","to_id":"exp-cat-b","relation_type":"adjacent_task",
+		  "title":"Свой заголовок","hypothesis":"Своя формулировка","audience":"b2b",
+		  "industry":"образование","metric":"ctr","guardrails":"renewal, fallback","traffic_split":0.7}`)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("create experiment: %d %s", rec.Code, rec.Body.String())
 	}
 	var created struct {
-		ID string `json:"id"`
+		ID      string `json:"id"`
+		Created bool   `json:"created"`
 	}
 	json.Unmarshal(rec.Body.Bytes(), &created)
-	if created.ID == "" {
-		t.Fatal("no experiment id")
+	if created.ID == "" || !created.Created {
+		t.Fatalf("created = %+v", created)
+	}
+	var title, hypothesis, metric, guardrails, industry string
+	var split float64
+	if err := dbc.QueryRow(`SELECT title, hypothesis, metric, guardrails, industry, traffic_split::float8
+		FROM experiments WHERE id=$1`, created.ID).Scan(
+		&title, &hypothesis, &metric, &guardrails, &industry, &split); err != nil {
+		t.Fatal(err)
+	}
+	if title != "Свой заголовок" || hypothesis != "Своя формулировка" {
+		t.Fatalf("title/hypothesis = %q / %q", title, hypothesis)
+	}
+	if metric != "ctr" || guardrails != "renewal, fallback" || industry != "образование" || split != 0.7 {
+		t.Fatalf("fields = %q / %q / %q / %v", metric, guardrails, industry, split)
 	}
 	var exposures int
 	if err := dbc.QueryRow(`SELECT count(*) FROM experiment_events
-		WHERE experiment_id=$1 AND event='exposed'`, created.ID).Scan(&exposures); err != nil {
+		WHERE experiment_id=$1`, created.ID).Scan(&exposures); err != nil {
 		t.Fatal(err)
 	}
-	if exposures != 300 {
-		t.Fatalf("exposures = %d, want 300", exposures)
+	if exposures != 0 {
+		t.Fatalf("new hypothesis must start without events, got %d", exposures)
+	}
+	rec = doJSON(t, h, http.MethodPost, "/v1/admin/experiments",
+		`{"from_id":"exp-cat-a","to_id":"exp-cat-b","audience":"b2b"}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("duplicate: %d %s", rec.Code, rec.Body.String())
+	}
+	var dup struct {
+		ID      string `json:"id"`
+		Created bool   `json:"created"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &dup)
+	if dup.ID != created.ID || dup.Created {
+		t.Fatalf("duplicate = %+v", dup)
+	}
+}
+
+func TestCreateExperimentRequiresAudience(t *testing.T) {
+	h, _ := setupAPI(t)
+	rec := doJSON(t, h, http.MethodPost, "/v1/admin/experiments",
+		`{"from_id":"a","to_id":"b"}`)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rec.Code)
 	}
 }

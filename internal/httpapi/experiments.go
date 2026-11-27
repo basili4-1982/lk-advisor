@@ -21,27 +21,46 @@ func (h *handler) adminExperiments(w http.ResponseWriter, r *http.Request) {
 
 func (h *handler) adminCreateExperiment(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		FromID       string `json:"from_id"`
-		ToID         string `json:"to_id"`
-		RelationType string `json:"relation_type"`
-		Audience     string `json:"audience"`
-		Industry     string `json:"industry"`
+		FromID       string  `json:"from_id"`
+		ToID         string  `json:"to_id"`
+		RelationType string  `json:"relation_type"`
+		Title        string  `json:"title"`
+		Hypothesis   string  `json:"hypothesis"`
+		Audience     string  `json:"audience"`
+		Industry     string  `json:"industry"`
+		Metric       string  `json:"metric"`
+		Guardrails   string  `json:"guardrails"`
+		TrafficSplit float64 `json:"traffic_split"`
+		SeedDemo     bool    `json:"seed_demo"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
-	id, err := experiment.CreateFromRelation(r.Context(), h.db, experiment.CreateFromRelationOptions{
+	if req.Audience == "" {
+		writeError(w, http.StatusBadRequest, "аудитория обязательна")
+		return
+	}
+	if req.FromID == req.ToID {
+		writeError(w, http.StatusBadRequest, "источник и цель должны различаться")
+		return
+	}
+	id, created, err := experiment.CreateFromRelation(r.Context(), h.db, experiment.CreateFromRelationOptions{
 		FromID: req.FromID, ToID: req.ToID, RelationType: req.RelationType,
+		Title: req.Title, Hypothesis: req.Hypothesis,
 		Audience: req.Audience, Industry: req.Industry,
+		Metric: req.Metric, Guardrails: req.Guardrails, TrafficSplit: req.TrafficSplit,
+		SeedDemo: req.SeedDemo,
 	})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "experiment.create", map[string]string{
-		"id": id, "from_id": req.FromID, "to_id": req.ToID})
-	writeJSON(w, http.StatusOK, map[string]string{"id": id})
+	if created {
+		_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "experiment.create", map[string]string{
+			"id": id, "from_id": req.FromID, "to_id": req.ToID})
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "created": created})
 }
 
 func (h *handler) adminSeedBadExperiment(w http.ResponseWriter, r *http.Request) {

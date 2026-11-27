@@ -244,6 +244,40 @@ func (h *handler) adminRegistryImportItems(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, res)
 }
 
+func (h *handler) adminCatalogItems(w http.ResponseWriter, r *http.Request) {
+	limit := 2000
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 5000 {
+			limit = v
+		}
+	}
+	rows, err := h.db.QueryContext(r.Context(), `
+		SELECT item_id, title, COALESCE(product_group, '')
+		FROM lk_items
+		ORDER BY title
+		LIMIT $1`, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "items error")
+		return
+	}
+	defer rows.Close()
+	type item struct {
+		ID    string `json:"item_id"`
+		Title string `json:"title"`
+		Group string `json:"product_group"`
+	}
+	out := []item{}
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.ID, &it.Title, &it.Group); err != nil {
+			writeError(w, http.StatusInternalServerError, "items scan error")
+			return
+		}
+		out = append(out, it)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
 func (h *handler) adminRegistryReset(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Confirm string `json:"confirm"`
