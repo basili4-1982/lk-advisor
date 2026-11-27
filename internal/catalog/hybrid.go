@@ -245,6 +245,14 @@ func applyForced(ctx context.Context, dbc *sql.DB, ranked []ServeItem, opts Serv
 	if opts.ForceItemID == "" || owned[opts.ForceItemID] {
 		return ranked
 	}
+	// The target may already be in the precomputed top-N; never duplicate it.
+	filtered := ranked[:0]
+	for _, it := range ranked {
+		if it.ItemID != opts.ForceItemID {
+			filtered = append(filtered, it)
+		}
+	}
+	ranked = filtered
 	forced, ok := forceCandidate(ctx, dbc, opts.ForceItemID, opts.ForceType)
 	if !ok {
 		return ranked

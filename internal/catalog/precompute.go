@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/lib/pq"
@@ -25,9 +26,13 @@ type preItem struct {
 	tokens    map[string]bool
 }
 
+var precomputeMu sync.Mutex
+
 // RebuildClientRecommendations recalculates offline-model top-N for every
 // catalog client and replaces client_recommendations in one transaction.
 func RebuildClientRecommendations(ctx context.Context, dbc *sql.DB, topN int) (PrecomputeResult, error) {
+	precomputeMu.Lock()
+	defer precomputeMu.Unlock()
 	start := time.Now()
 	var res PrecomputeResult
 	if topN <= 0 || topN > 36 {
