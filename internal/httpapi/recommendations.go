@@ -69,8 +69,8 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	limit := 3
 	if req.Limit != nil {
-		if *req.Limit < 1 || *req.Limit > 5 {
-			writeError(w, http.StatusBadRequest, "limit must be between 1 and 5")
+		if *req.Limit < 1 || *req.Limit > 36 {
+			writeError(w, http.StatusBadRequest, "limit must be between 1 and 36")
 			return
 		}
 		limit = *req.Limit
@@ -81,6 +81,10 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 	}
 	if h.isCatalogClient(r, req.ClientID) {
 		h.recommendCatalog(w, r, req.ClientID, limit, req.CertifiedOnly)
+		return
+	}
+	if req.CertifiedOnly != nil && *req.CertifiedOnly {
+		writeError(w, http.StatusBadRequest, "certified_only доступен только для клиентов каталога")
 		return
 	}
 

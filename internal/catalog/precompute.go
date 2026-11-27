@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -26,7 +27,10 @@ type preItem struct {
 	tokens    map[string]bool
 }
 
-var precomputeMu sync.Mutex
+var (
+	precomputeMu     sync.Mutex
+	ErrRecomputeBusy = errors.New("recommendation recompute is already running")
+)
 
 // RebuildClientRecommendations recalculates offline-model top-N for every
 // catalog client and replaces client_recommendations in one transaction.
@@ -83,7 +87,7 @@ func RebuildClientRecommendations(ctx context.Context, dbc *sql.DB, topN int) (P
 	owned := map[string]map[string]bool{}
 	baskets := map[string]map[string]bool{}
 	popSets := map[string]map[string]map[string]bool{
-		"b2b": {}, "b2c": {},
+		"b2b": {}, "b2c": {}, "all": {},
 	}
 	rows, err = dbc.QueryContext(ctx, `
 		SELECT client_id, order_id, order_week::text, item_id FROM lk_orders`)
@@ -109,18 +113,20 @@ func RebuildClientRecommendations(ctx context.Context, dbc *sql.DB, topN int) (P
 		if aud == "" {
 			aud = "b2b"
 		}
-		if popSets[aud][itemID] == nil {
-			popSets[aud][itemID] = map[string]bool{}
+		for _, key := range []string{aud, "all"} {
+			if popSets[key][itemID] == nil {
+				popSets[key][itemID] = map[string]bool{}
+			}
+			popSets[key][itemID][cid] = true
 		}
-		popSets[aud][itemID][cid] = true
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return res, err
 	}
 
-	popularity := map[string]map[string]int{"b2b": {}, "b2c": {}}
-	maxPop := map[string]int{"b2b": 1, "b2c": 1}
+	popularity := map[string]map[string]int{"b2b": {}, "b2c": {}, "all": {}}
+	maxPop := map[string]int{"b2b": 1, "b2c": 1, "all": 1}
 	popList := map[string][]string{}
 	for aud, byItem := range popSets {
 		for item, clients := range byItem {
@@ -181,10 +187,14 @@ func RebuildClientRecommendations(ctx context.Context, dbc *sql.DB, topN int) (P
 		return res, fmt.Errorf("precompute tx: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `TRUNCATE client_recommendations`); err != nil {
-		return res, fmt.Errorf("precompute truncate: %w", err)
+	// Build into a staging table, then swap rows. COPY cannot use ON CONFLICT,
+	// and a direct COPY is fragile if two rebuilds overlap.
+	if _, err := tx.ExecContext(ctx, `
+		CREATE TEMP TABLE client_recommendations_tmp
+		(LIKE client_recommendations INCLUDING DEFAULTS) ON COMMIT DROP`); err != nil {
+		return res, fmt.Errorf("precompute staging: %w", err)
 	}
-	stmt, err := tx.PrepareContext(ctx, pq.CopyIn("client_recommendations",
+	stmt, err := tx.PrepareContext(ctx, pq.CopyIn("client_recommendations_tmp",
 		"client_id", "item_id", "rank", "score", "source", "reason"))
 	if err != nil {
 		return res, fmt.Errorf("precompute copy: %w", err)
@@ -193,8 +203,12 @@ func RebuildClientRecommendations(ctx context.Context, dbc *sql.DB, topN int) (P
 
 	for cid, aud := range audience {
 		ownedSet := owned[cid]
-		recs := recommendForPrecompute(aud, ownedSet, items, popularity[aud], maxPop[aud],
-			popList[aud], neighbours, itemPop, topTokens, topN)
+		popKey := aud
+		if aud == "b2c" {
+			popKey = "all"
+		}
+		recs := recommendForPrecompute(aud, ownedSet, items, popularity[popKey], maxPop[popKey],
+			popList[popKey], neighbours, itemPop, topTokens, topN)
 		for rank, item := range recs {
 			if _, err := stmt.ExecContext(ctx, cid, item, rank+1, 1.0/float64(rank+1),
 				"offline_model", "Подобрано по вашей истории"); err != nil {
@@ -206,6 +220,18 @@ func RebuildClientRecommendations(ctx context.Context, dbc *sql.DB, topN int) (P
 	}
 	if _, err := stmt.ExecContext(ctx); err != nil {
 		return res, fmt.Errorf("precompute flush: %w", err)
+	}
+	if err := stmt.Close(); err != nil {
+		return res, fmt.Errorf("precompute close: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM client_recommendations`); err != nil {
+		return res, fmt.Errorf("precompute clear: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `
+		INSERT INTO client_recommendations (client_id, item_id, rank, score, source, reason)
+		SELECT client_id, item_id, rank, score, source, reason FROM client_recommendations_tmp
+		ON CONFLICT DO NOTHING`); err != nil {
+		return res, fmt.Errorf("precompute swap: %w", err)
 	}
 	if err := tx.Commit(); err != nil {
 		return res, fmt.Errorf("precompute commit: %w", err)
@@ -239,7 +265,10 @@ func recommendForPrecompute(aud string, owned map[string]bool, items map[string]
 
 	scores := map[string]float64{}
 	for a := range owned {
-		for _, nb := range neighbours[a] {
+		for idx, nb := range neighbours[a] {
+			if idx >= 200 {
+				break
+			}
 			b := nb.item
 			if owned[b] || !items[b].available {
 				continue

@@ -88,13 +88,15 @@ func runRecompute(logger *slog.Logger, cfg config.Config) error {
 		return err
 	}
 	defer dbc.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
 	top := 10
 	if raw := os.Getenv("RECOMPUTE_TOP"); raw != "" {
 		if v, err := strconv.Atoi(raw); err == nil && v > 0 && v <= 36 {
 			top = v
 		}
 	}
-	res, err := catalog.RebuildClientRecommendations(context.Background(), dbc, top)
+	res, err := catalog.RebuildClientRecommendations(ctx, dbc, top)
 	if err != nil {
 		return err
 	}
@@ -102,7 +104,7 @@ func runRecompute(logger *slog.Logger, cfg config.Config) error {
 	return nil
 }
 
-func startRecomputeScheduler(logger *slog.Logger, dbc *sql.DB) {
+func startRecomputeScheduler(ctx context.Context, logger *slog.Logger, dbc *sql.DB) {
 	raw := os.Getenv("RECOMPUTE_INTERVAL")
 	if raw == "" {
 		raw = "24h"
@@ -116,7 +118,9 @@ func startRecomputeScheduler(logger *slog.Logger, dbc *sql.DB) {
 		return
 	}
 	run := func() {
-		res, err := catalog.RebuildClientRecommendations(context.Background(), dbc, 10)
+		runCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+		defer cancel()
+		res, err := catalog.RebuildClientRecommendations(runCtx, dbc, 10)
 		if err != nil {
 			logger.Error("recompute", "err", err)
 			return
@@ -129,8 +133,13 @@ func startRecomputeScheduler(logger *slog.Logger, dbc *sql.DB) {
 	go func() {
 		ticker := time.NewTicker(interval)
 		defer ticker.Stop()
-		for range ticker.C {
-			run()
+		for {
+			select {
+			case <-ticker.C:
+				run()
+			case <-ctx.Done():
+				return
+			}
 		}
 	}()
 	logger.Info("recompute scheduler started", "interval", interval.String())
@@ -153,7 +162,9 @@ func serve(logger *slog.Logger, cfg config.Config) {
 	}
 	defer dbc.Close()
 
-	startRecomputeScheduler(logger, dbc)
+	bgCtx, bgCancel := context.WithCancel(context.Background())
+	defer bgCancel()
+	startRecomputeScheduler(bgCtx, logger, dbc)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,

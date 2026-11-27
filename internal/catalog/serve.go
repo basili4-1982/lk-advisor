@@ -113,15 +113,27 @@ func Serve(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeResult, e
 	}
 
 	res.Items = dedupe(res.Items)
-	res.Items = annotateCertificates(ctx, dbc, res.Items)
+	res.Items, err = annotateCertificates(ctx, dbc, res.Items)
+	if err != nil {
+		return nil, err
+	}
 	if opts.CertifiedOnly {
 		res.Items = filterCertified(res.Items)
 	}
-	sort.SliceStable(res.Items, func(i, j int) bool { return res.Items[i].Score > res.Items[j].Score })
+	sort.SliceStable(res.Items, func(i, j int) bool {
+		if res.Items[i].Score == res.Items[j].Score {
+			return res.Items[i].ItemID < res.Items[j].ItemID
+		}
+		return res.Items[i].Score > res.Items[j].Score
+	})
 
 	if opts.ForceItemID != "" && !ownedSet[opts.ForceItemID] {
 		if forced, ok := forceCandidate(ctx, dbc, opts.ForceItemID, opts.ForceType); ok {
-			forced = annotateCertificates(ctx, dbc, []ServeItem{forced})[0]
+			forcedItems, err := annotateCertificates(ctx, dbc, []ServeItem{forced})
+			if err != nil {
+				return nil, err
+			}
+			forced = forcedItems[0]
 			if !opts.CertifiedOnly || forced.Certified {
 				res.Items = removeItem(res.Items, forced.ItemID)
 				pos := 2
@@ -140,7 +152,10 @@ func Serve(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeResult, e
 		if err != nil {
 			return nil, err
 		}
-		popular = annotateCertificates(ctx, dbc, popular)
+		popular, err = annotateCertificates(ctx, dbc, popular)
+		if err != nil {
+			return nil, err
+		}
 		if opts.CertifiedOnly {
 			popular = filterCertified(popular)
 		}
@@ -282,9 +297,9 @@ func popularItems(ctx context.Context, dbc *sql.DB, audience, industry string, o
 // annotateCertificates marks FSTEC status and uses it as a ranking signal:
 // a valid certificate adds a bonus, an expired-only product gets a small
 // penalty. The flag is stored on the item for the client card.
-func annotateCertificates(ctx context.Context, dbc *sql.DB, items []ServeItem) []ServeItem {
+func annotateCertificates(ctx context.Context, dbc *sql.DB, items []ServeItem) ([]ServeItem, error) {
 	if len(items) == 0 {
-		return items
+		return items, nil
 	}
 	ids := make([]string, 0, len(items))
 	for _, it := range items {
@@ -300,16 +315,21 @@ func annotateCertificates(ctx context.Context, dbc *sql.DB, items []ServeItem) [
 		JOIN fstec_certificates c ON c.id = m.certificate_id
 		WHERE m.item_id = ANY($1)
 		GROUP BY m.item_id`, pq.Array(ids))
-	if err == nil {
-		defer rows.Close()
-		for rows.Next() {
-			var id string
-			var v, e sql.NullBool
-			if rows.Scan(&id, &v, &e) == nil {
-				valid[id] = v.Valid && v.Bool
-				expired[id] = e.Valid && e.Bool
-			}
+	if err != nil {
+		return nil, fmt.Errorf("fstec status: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		var v, e sql.NullBool
+		if err := rows.Scan(&id, &v, &e); err != nil {
+			return nil, fmt.Errorf("fstec status scan: %w", err)
 		}
+		valid[id] = v.Valid && v.Bool
+		expired[id] = e.Valid && e.Bool
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("fstec status rows: %w", err)
 	}
 	for i := range items {
 		items[i].Certified = valid[items[i].ItemID]
@@ -318,7 +338,7 @@ func annotateCertificates(ctx context.Context, dbc *sql.DB, items []ServeItem) [
 		// ranking boost: the offline test showed +0.06 slightly lowers P@3.
 		// The certified-only mode filters by it explicitly.
 	}
-	return items
+	return items, nil
 }
 
 func clampNum(v, lo, hi float64) float64 {

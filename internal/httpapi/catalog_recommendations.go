@@ -36,9 +36,15 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 	var assignment experiment.Assignment
 	if list, xerr := experiment.LoadRunning(ctx, h.db, audience, industry, ""); xerr == nil && len(list) > 0 {
 		e := list[0]
-		if a, aerr := experiment.Assign(ctx, h.db, e, clientID); aerr == nil {
-			running = &e
-			assignment = a
+		// A legacy experiment can point to products that are not in the catalog;
+		// it cannot be forced here, so it must not count as a treatment exposure.
+		var exists bool
+		if err := h.db.QueryRowContext(ctx, `
+			SELECT EXISTS (SELECT 1 FROM lk_items WHERE item_id = $1)`, e.ToID).Scan(&exists); err == nil && exists {
+			if a, aerr := experiment.Assign(ctx, h.db, e, clientID); aerr == nil {
+				running = &e
+				assignment = a
+			}
 		}
 	}
 
@@ -105,9 +111,14 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 				upsellShown++
 			}
 		}
-		if err := experiment.RecordExposure(ctx, h.db, assignment, traceID, exposedTarget,
-			renewalShown, upsellShown, res.ColdStart && len(res.Items) == 0); err != nil {
-			h.logger.Warn("catalog exposure", "err", err)
+		// Control has no target by design; treatment must actually show it.
+		if !assignment.Treatment || exposedTarget != "" {
+			if err := experiment.RecordExposure(ctx, h.db, assignment, traceID, exposedTarget,
+				renewalShown, upsellShown, res.ColdStart && len(res.Items) == 0); err != nil {
+				h.logger.Warn("catalog exposure", "err", err)
+			}
+		} else {
+			h.logger.Warn("catalog experiment target not shown", "experiment", running.ID)
 		}
 	}
 

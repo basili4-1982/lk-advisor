@@ -48,8 +48,15 @@ func ServeHybrid(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeRes
 	}
 	popList := sortedPopularity(popularity)
 
-	if pre, err := precomputedForClient(ctx, dbc, opts.ClientID, ownedSet, items, opts); err == nil && len(pre) > 0 {
-		res.Items = applyForced(ctx, dbc, pre, opts, ownedSet)
+	pre, err := precomputedForClient(ctx, dbc, opts.ClientID, ownedSet, items, opts)
+	if err != nil {
+		return nil, err
+	}
+	if len(pre) > 0 {
+		res.Items, err = applyForced(ctx, dbc, pre, opts, ownedSet)
+		if err != nil {
+			return nil, err
+		}
 		return res, nil
 	}
 
@@ -181,13 +188,19 @@ func ServeHybrid(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeRes
 			RelationType: types[id],
 		})
 	}
-	ranked = annotateCertificates(ctx, dbc, ranked)
+	ranked, err = annotateCertificates(ctx, dbc, ranked)
+	if err != nil {
+		return nil, err
+	}
 	if opts.CertifiedOnly {
 		ranked = filterCertified(ranked)
 	}
 	sort.SliceStable(ranked, func(i, j int) bool {
-		if math.Abs(ranked[i].Score-ranked[j].Score) < 0.02 && ranked[i].Certified != ranked[j].Certified {
-			return ranked[i].Certified
+		if math.Abs(ranked[i].Score-ranked[j].Score) < 0.02 {
+			if ranked[i].Certified != ranked[j].Certified {
+				return ranked[i].Certified
+			}
+			return ranked[i].ItemID < ranked[j].ItemID
 		}
 		return ranked[i].Score > ranked[j].Score
 	})
@@ -195,7 +208,10 @@ func ServeHybrid(ctx context.Context, dbc *sql.DB, opts ServeOptions) (*ServeRes
 		ranked = ranked[:opts.Limit]
 	}
 
-	ranked = applyForced(ctx, dbc, ranked, opts, ownedSet)
+	ranked, err = applyForced(ctx, dbc, ranked, opts, ownedSet)
+	if err != nil {
+		return nil, err
+	}
 	res.Items = ranked
 	return res, nil
 }
@@ -222,16 +238,22 @@ func precomputedForClient(ctx context.Context, dbc *sql.DB, clientID string, own
 		out = append(out, ServeItem{
 			ItemID: id, Title: meta.title, Type: "personal",
 			Reason: "Подобрано по вашей истории",
-			Score:  1.0 / float64(rank+1),
+			Score:  1.0 / float64(rank),
 		})
 	}
-	out = annotateCertificates(ctx, dbc, out)
+	out, err = annotateCertificates(ctx, dbc, out)
+	if err != nil {
+		return nil, err
+	}
 	if opts.CertifiedOnly {
 		out = filterCertified(out)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
-		if math.Abs(out[i].Score-out[j].Score) < 0.02 && out[i].Certified != out[j].Certified {
-			return out[i].Certified
+		if math.Abs(out[i].Score-out[j].Score) < 0.02 {
+			if out[i].Certified != out[j].Certified {
+				return out[i].Certified
+			}
+			return out[i].ItemID < out[j].ItemID
 		}
 		return out[i].Score > out[j].Score
 	})
@@ -241,19 +263,23 @@ func precomputedForClient(ctx context.Context, dbc *sql.DB, clientID string, own
 	return out, rows.Err()
 }
 
-func applyForced(ctx context.Context, dbc *sql.DB, ranked []ServeItem, opts ServeOptions, owned map[string]bool) []ServeItem {
+func applyForced(ctx context.Context, dbc *sql.DB, ranked []ServeItem, opts ServeOptions, owned map[string]bool) ([]ServeItem, error) {
 	if opts.ForceItemID == "" || owned[opts.ForceItemID] {
-		return ranked
+		return ranked, nil
 	}
 	forced, ok := forceCandidate(ctx, dbc, opts.ForceItemID, opts.ForceType)
 	if !ok {
-		return ranked
+		return ranked, nil
 	}
-	forced = annotateCertificates(ctx, dbc, []ServeItem{forced})[0]
+	forcedItems, err := annotateCertificates(ctx, dbc, []ServeItem{forced})
+	if err != nil {
+		return nil, err
+	}
+	forced = forcedItems[0]
 	if opts.CertifiedOnly && !forced.Certified {
-		return ranked
+		return ranked, nil
 	}
-	return placeForced(ranked, forced, opts.Limit)
+	return placeForced(ranked, forced, opts.Limit), nil
 }
 
 // placeForced pins the experiment target at rank 3 without duplicating an item

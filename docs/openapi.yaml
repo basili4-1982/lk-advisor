@@ -78,6 +78,18 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+        "409":
+          description: Нет данных для расчёта (legacy-движок)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: Ошибка каталога или сертификатов
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
 
   /v1/events:
     post:
@@ -257,14 +269,14 @@ components:
         audience:
           type: string
           enum: [b2b, b2c]
-          description: Переопределить аудиторию клиента
+          description: Переопределить аудиторию клиента (legacy-движок)
         industry:
           type: string
-          description: Переопределить отрасль клиента
+          description: Переопределить отрасль клиента (legacy-движок)
         strategy:
           type: string
           enum: [hybrid, popular]
-          description: Используется legacy-движком
+          description: Используется legacy-движком; для клиентов каталога игнорируется
         certified_only:
           type: boolean
           nullable: true
@@ -357,6 +369,19 @@ components:
         cert_expired:
           type: boolean
           description: Есть только просроченный сертификат
+        factors:
+          type: object
+          additionalProperties: true
+        feedback_multiplier:
+          type: number
+          format: double
+        exploration:
+          type: boolean
+        candidate_id:
+          type: string
+        promo:
+          type: object
+          additionalProperties: true
         fstec:
           type: array
           items:
