@@ -21,7 +21,7 @@ DSN = os.environ.get(
     "DATABASE_URL", "postgres://lk:lk@localhost:55432/lk?sslmode=disable"
 )
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/120 Safari/537.36"
-CONFIRM_WORDS = ["совмест", "комплект", "входит в состав", "вместе", "интегрир", "совместим"]
+CONFIRM_WORDS = ["совмест", "комплект", "комплекс", "входит в состав", "входят в состав", "вместе", "интегрир", "совместим"]
 
 
 def page_text(url: str) -> str:
@@ -78,9 +78,9 @@ def main() -> None:
             }], ensure_ascii=False)
             cur.execute("""
                 UPDATE relations
-                SET status = 'active', evidence = evidence || $2::jsonb, updated_at = now()
-                WHERE id = $1
-            """, (rel_id, evidence))
+                SET status = 'active', evidence = evidence || %s::jsonb, updated_at = now()
+                WHERE id = %s
+            """, (evidence, rel_id))
             confirmed += 1
             examples.append({"from": from_title, "to": to_title, "url": url})
         else:

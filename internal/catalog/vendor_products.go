@@ -369,7 +369,16 @@ func GenerateVendorCandidates(ctx context.Context, dbc *sql.DB, limit int) (Vend
 		confidence := 0.75
 		reason := fmt.Sprintf("Внешний источник: %s, редакции «%s» и «%s»", p.family, p.editionA, p.editionB)
 		if p.editionA == "" || p.editionB == "" || p.editionA == p.editionB {
-			if p.product != p.productB {
+			enterpriseA := strings.Contains(strings.ToLower(p.product), "enterprise")
+			enterpriseB := strings.Contains(strings.ToLower(p.productB), "enterprise")
+			if p.product != p.productB && enterpriseA != enterpriseB {
+				relType = "bundle"
+				confidence = 0.70
+				reason = fmt.Sprintf("Внешний источник: %s, продукт входит в комплект «%s»", p.family, p.productB)
+				if enterpriseA {
+					reason = fmt.Sprintf("Внешний источник: %s, продукт входит в комплект «%s»", p.family, p.product)
+				}
+			} else if p.product != p.productB {
 				relType = "adjacent_task"
 				confidence = 0.60
 				reason = fmt.Sprintf("Внешний источник: %s, продукты «%s» и «%s»; совместимость требует проверки", p.family, p.product, p.productB)

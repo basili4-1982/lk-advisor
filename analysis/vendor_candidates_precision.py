@@ -27,7 +27,7 @@ def main() -> None:
     conn = psycopg2.connect(DSN)
     cur = conn.cursor()
     cur.execute("""
-        SELECT r.from_item_id, i1.title, r.to_item_id, i2.title, r.type,
+        SELECT r.from_item_id, i1.title, r.to_item_id, i2.title, r.type, r.status,
                COALESCE(r.evidence->0->'details'->>'family', ''),
                COALESCE(r.evidence->0->'details'->>'edition_from', ''),
                COALESCE(r.evidence->0->'details'->>'edition_to', ''),
@@ -37,18 +37,21 @@ def main() -> None:
         FROM relations r
         JOIN lk_items i1 ON i1.item_id = r.from_item_id
         JOIN lk_items i2 ON i2.item_id = r.to_item_id
-        WHERE r.source = 'vendor' AND r.status = 'candidate'
+        WHERE r.source = 'vendor'
         ORDER BY r.id
     """)
     rows = cur.fetchall()
     labels = []
     confirmed = needs_review = invalid = 0
     for row in rows:
-        family, ea, eb = row[5], row[6], row[7]
-        if family and ea and eb and ea != eb:
-            label = "confirmed"
+        status, family, ea, eb = row[5], row[6], row[7], row[8]
+        if row[4] == "variant_of" and family and ea and eb and ea != eb:
+            label = "confirmed_variant"
             confirmed += 1
-        elif family and (row[8] != row[9]):
+        elif row[4] in ("adjacent_task", "bundle") and status == "active":
+            label = "confirmed_complement"
+            confirmed += 1
+        elif family:
             label = "needs_review"
             needs_review += 1
         else:
@@ -59,7 +62,7 @@ def main() -> None:
     with open(OUT, "w", encoding="utf-8", newline="") as fh:
         writer = csv.writer(fh)
         writer.writerow([
-            "from_id", "from_title", "to_id", "to_title", "type", "family",
+            "from_id", "from_title", "to_id", "to_title", "type", "status", "family",
             "edition_from", "edition_to", "platforms_from", "platforms_to",
             "source_url", "label",
         ])
@@ -71,6 +74,7 @@ def main() -> None:
         "confirmed": confirmed,
         "needs_review": needs_review,
         "invalid": invalid,
+        "confirmed_total": confirmed,
         "precision_confirmed_pct": round(100 * confirmed / total, 1) if total else 0,
         "false_positive_pct": round(100 * invalid / total, 1) if total else 0,
     }, ensure_ascii=False, indent=2))
