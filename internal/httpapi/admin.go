@@ -531,6 +531,18 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
           </div>
 
           <div class="formbox">
+            <div class="form-title">Внешние знания</div>
+            <div class="stats" id="vendor-stats"></div>
+            <div class="toolbar" style="margin-top:8px">
+              <input type="file" id="vendor-file" accept=".csv" style="max-width:260px">
+              <button id="vendor-import" class="secondary small">Импорт CSV</button>
+              <button id="vendor-link" class="secondary small">Сопоставить с каталогом</button>
+            </div>
+            <div class="hint">CSV: vendor, product, family, edition, platforms, registry_number, source_url, aliases. Списки — через <code>|</code>.</div>
+            <div class="hint" id="vendor-result"></div>
+          </div>
+
+          <div class="formbox">
             <div class="form-title">Источник данных</div>
             <div class="stats" id="dataset-cards"></div>
             <div class="hint" id="dataset-feed" style="margin-top:8px"></div>
@@ -1111,11 +1123,22 @@ async function reviewDecision(decision, items){
     await loadReview();
   } catch(e){ toast(e.message,true); }
 }
+async function loadVendorKnowledge(){
+  try {
+    var d=await api('GET','/v1/admin/vendor-products');
+    var s=d.stats||{};
+    el('vendor-stats').innerHTML=[
+      ['Внешних продуктов', s.products||0], ['Сопоставлено', s.mapped_products||0],
+      ['Покрыто SKU', s.covered_items||0], ['Из них без связей', s.solo_covered||0]
+    ].map(function(x){ return '<div class="stat"><b>'+x[1]+'</b><span>'+x[0]+'</span></div>'; }).join('');
+  } catch(e){ el('vendor-stats').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
+}
 async function loadDataset(){
   try {
     var c=await api('GET','/v1/admin/dataset/coverage');
     var m=await api('GET','/v1/admin/registry/metrics');
     var f=await api('GET','/v1/admin/registry/feed');
+    loadVendorKnowledge();
     var volumes = [
       ['Товары', c.items], ['Клиенты', c.clients],
       ['Заказы', c.orders], ['Инстансы заказов', c.order_instances],
@@ -1138,6 +1161,25 @@ async function loadDataset(){
       ' · обновлён: '+(feedDate || 'дата не передана (исторический снимок)');
   } catch(e){ el('dataset-cards').innerHTML='<div class="hint" style="color:#b91c1c">'+esc(e.message)+'</div>'; }
 }
+el('vendor-import').addEventListener('click', async function(){
+  var f=el('vendor-file').files[0];
+  if(!f){ el('vendor-result').textContent='Выберите CSV'; return; }
+  var fd=new FormData(); fd.append('file',f);
+  try {
+    var r=await fetch('/v1/admin/vendor-products/import',{method:'POST',body:fd});
+    var d=await r.json();
+    if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+    el('vendor-result').textContent='Импорт: добавлено '+d.added+', обновлено '+d.updated+', пропущено '+d.skipped;
+    loadVendorKnowledge();
+  } catch(e){ el('vendor-result').textContent=e.message; }
+});
+el('vendor-link').addEventListener('click', async function(){
+  try {
+    var d=await api('POST','/v1/admin/vendor-products/link',{});
+    el('vendor-result').textContent='Сопоставлено: '+d.mappings+' связей, '+d.products+' продуктов, '+d.items+' SKU';
+    loadVendorKnowledge();
+  } catch(e){ el('vendor-result').textContent=e.message; }
+});
 el('dataset-open-catalog').addEventListener('click', function(){
   document.querySelector('[data-tab=registry]').click();
   el('registry-status').value='candidate';
