@@ -51,6 +51,39 @@ type VendorStats struct {
 	ClassifiedItems    int `json:"classified_items"`
 }
 
+// ExternalSource is one external knowledge source.
+type ExternalSource struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	Status     string `json:"status"`
+	URL        string `json:"url"`
+	Gives      string `json:"gives"`
+	Limitation string `json:"limitation"`
+}
+
+// ListExternalSources returns the source inventory.
+func ListExternalSources(ctx context.Context, dbc *sql.DB) ([]ExternalSource, error) {
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT id, name, kind, status, url, gives, limitation
+		FROM external_sources ORDER BY
+			CASE status WHEN 'connected' THEN 0 WHEN 'available' THEN 1
+			            WHEN 'blocked' THEN 2 ELSE 3 END, name`)
+	if err != nil {
+		return nil, fmt.Errorf("external sources: %w", err)
+	}
+	defer rows.Close()
+	var out []ExternalSource
+	for rows.Next() {
+		var s ExternalSource
+		if err := rows.Scan(&s.ID, &s.Name, &s.Kind, &s.Status, &s.URL, &s.Gives, &s.Limitation); err != nil {
+			return nil, err
+		}
+		out = append(out, s)
+	}
+	return out, rows.Err()
+}
+
 // VendorClass is one registry product class with coverage.
 type VendorClass struct {
 	Code     string `json:"code"`

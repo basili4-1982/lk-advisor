@@ -25,8 +25,13 @@ func (h *handler) adminVendorProducts(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "vendor classes error")
 		return
 	}
+	sources, err := catalog.ListExternalSources(r.Context(), h.db)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "external sources error")
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"items": items, "stats": stats, "classes": classes,
+		"items": items, "stats": stats, "classes": classes, "sources": sources,
 	})
 }
 
