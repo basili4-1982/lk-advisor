@@ -57,6 +57,7 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 			RelationType:    it.RelationType,
 			Rank:            i + 1,
 			Reason:          it.Reason,
+			Compatibility:   it.Compatibility,
 			Evidence:        []model.Evidence{},
 			Constraints:     []string{},
 		})

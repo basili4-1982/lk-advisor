@@ -47,14 +47,15 @@ type ServeOptions struct {
 
 // ServeItem is one recommendation from the catalog graph.
 type ServeItem struct {
-	ItemID       string
-	Title        string
-	Type         string
-	Reason       string
-	Score        float64
-	SourceItemID string
-	RelationType string
-	Forced       bool
+	ItemID        string
+	Title         string
+	Type          string
+	Reason        string
+	Score         float64
+	SourceItemID  string
+	RelationType  string
+	Compatibility string
+	Forced        bool
 }
 
 // ServeResult is the ranked block for one client.
@@ -170,7 +171,8 @@ func ownedItems(ctx context.Context, dbc *sql.DB, clientID string) ([]string, er
 
 func relationCandidates(ctx context.Context, dbc *sql.DB, owned []string, audience, industry string) ([]ServeItem, error) {
 	rows, err := dbc.QueryContext(ctx, `
-		SELECT r.from_item_id, r.to_item_id, r.type, r.confidence::float8, i.title
+		SELECT r.from_item_id, r.to_item_id, r.type, r.confidence::float8, i.title,
+		       COALESCE(i.system_requirements::text, '{}')
 		FROM relations r
 		JOIN lk_items i ON i.item_id = r.to_item_id AND i.available
 		WHERE r.from_item_id = ANY($1)
@@ -187,9 +189,11 @@ func relationCandidates(ctx context.Context, dbc *sql.DB, owned []string, audien
 	for rows.Next() {
 		var it ServeItem
 		var confidence float64
-		if err := rows.Scan(&it.SourceItemID, &it.ItemID, &it.RelationType, &confidence, &it.Title); err != nil {
+		var requirements string
+		if err := rows.Scan(&it.SourceItemID, &it.ItemID, &it.RelationType, &confidence, &it.Title, &requirements); err != nil {
 			return nil, err
 		}
+		it.Compatibility = compatibility(requirements)
 		it.Type = "cross_sell"
 		if it.RelationType == "upgrade" {
 			it.Type = "upsell"
@@ -203,9 +207,10 @@ func relationCandidates(ctx context.Context, dbc *sql.DB, owned []string, audien
 }
 
 func forceCandidate(ctx context.Context, dbc *sql.DB, itemID, relationType string) (ServeItem, bool) {
-	var title string
+	var title, requirements string
 	err := dbc.QueryRowContext(ctx, `
-		SELECT title FROM lk_items WHERE item_id = $1 AND available`, itemID).Scan(&title)
+		SELECT title, COALESCE(system_requirements::text, '{}')
+		FROM lk_items WHERE item_id = $1 AND available`, itemID).Scan(&title, &requirements)
 	if err != nil {
 		return ServeItem{}, false
 	}
@@ -215,10 +220,11 @@ func forceCandidate(ctx context.Context, dbc *sql.DB, itemID, relationType strin
 	}
 	return ServeItem{
 		ItemID: itemID, Title: title, Type: typ,
-		Reason:       "Гипотеза: показ в эксперименте",
-		Score:        0.99,
-		RelationType: relationType,
-		Forced:       true,
+		Reason:        "Гипотеза: показ в эксперименте",
+		Score:         0.99,
+		RelationType:  relationType,
+		Compatibility: compatibility(requirements),
+		Forced:        true,
 	}, true
 }
 
@@ -227,7 +233,7 @@ func popularItems(ctx context.Context, dbc *sql.DB, audience, industry string, o
 		limit = 9
 	}
 	rows, err := dbc.QueryContext(ctx, `
-		SELECT i.item_id, i.title, count(*) AS purchases
+		SELECT i.item_id, i.title, COALESCE(i.system_requirements::text, '{}'), count(*) AS purchases
 		FROM lk_orders o
 		JOIN lk_items i ON i.item_id = o.item_id AND i.available
 		JOIN lk_clients c ON c.client_id = o.client_id
@@ -246,15 +252,25 @@ func popularItems(ctx context.Context, dbc *sql.DB, audience, industry string, o
 	for rows.Next() {
 		var it ServeItem
 		var purchases int
-		if err := rows.Scan(&it.ItemID, &it.Title, &purchases); err != nil {
+		var requirements string
+		if err := rows.Scan(&it.ItemID, &it.Title, &requirements, &purchases); err != nil {
 			return nil, err
 		}
+		it.Compatibility = compatibility(requirements)
 		it.Type = "popular"
 		it.Score = 0.35
 		it.Reason = "Популярно у клиентов вашего профиля"
 		out = append(out, it)
 	}
 	return out, rows.Err()
+}
+
+func compatibility(requirements string) string {
+	req := strings.TrimSpace(requirements)
+	if req == "" || req == "{}" || req == "null" {
+		return "unverified"
+	}
+	return "ok"
 }
 
 func relationWeight(relType string) float64 {

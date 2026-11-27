@@ -59,6 +59,18 @@ func TestServeUsesConfirmedRelationsAndExcludesOwned(t *testing.T) {
 	if res.Items[0].ItemID != "serve-test-target" {
 		t.Fatalf("first item = %s, want target", res.Items[0].ItemID)
 	}
+	if res.Items[0].Compatibility != "unverified" {
+		t.Fatalf("compatibility = %q, want unverified", res.Items[0].Compatibility)
+	}
+	mustExec(`UPDATE lk_items SET system_requirements='{"os":"Windows"}'::jsonb
+		WHERE item_id='serve-test-target'`)
+	res, err = catalog.Serve(ctx, dbc, catalog.ServeOptions{ClientID: "serve-test-c1", Limit: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Items[0].Compatibility != "ok" {
+		t.Fatalf("compatibility = %q, want ok", res.Items[0].Compatibility)
+	}
 	for _, it := range res.Items {
 		if it.ItemID == "serve-test-cand" {
 			t.Fatalf("candidate relation leaked into serving: %+v", res.Items)

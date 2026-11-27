@@ -222,6 +222,7 @@ type Recommendation struct {
 	CandidateID        string        `json:"candidate_id,omitempty"`
 	Rank               int           `json:"rank"`
 	Reason             string        `json:"reason"`
+	Compatibility      string        `json:"compatibility,omitempty"`
 	Factors            *ScoreFactors `json:"factors,omitempty"`
 	Evidence           []Evidence    `json:"evidence"`
 	Constraints        []string      `json:"constraints"`

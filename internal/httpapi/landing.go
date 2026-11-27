@@ -32,7 +32,7 @@ body{margin:0;background:#f6f7fb;color:var(--ink);font:16px/1.5 -apple-system,Bl
 main{padding:32px 0 48px}
 h1{font-size:26px;margin:0 0 6px}
 .lead{color:var(--muted);margin:0 0 24px;max-width:760px}
-.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
 .card{display:block;background:#fff;border:1px solid var(--line);border-radius:14px;padding:20px;text-decoration:none;color:inherit;box-shadow:0 4px 18px rgba(15,23,42,.05);transition:.15s}
 .card:hover{transform:translateY(-2px);box-shadow:0 12px 30px rgba(15,23,42,.1);border-color:#c7d2fe}
 .card b{display:block;font-size:18px;margin-bottom:6px}
@@ -65,6 +65,11 @@ h1{font-size:26px;margin:0 0 6px}
       <b>Граф связей</b>
       <span>Публичный слой: товары, связи, отрасли и подтверждённые рёбра.</span>
       <span class="badge">/demo/graph</span>
+    </a>
+    <a class="card" href="/agent">
+      <b>Как работает агент</b>
+      <span>Сигналы из открытых источников, выбор типа связи и холодный старт.</span>
+      <span class="badge">/agent</span>
     </a>
   </div>
   <div class="foot">Сырые данные датасета не публикуются. Демо доступно только на закрытом стенде.</div>

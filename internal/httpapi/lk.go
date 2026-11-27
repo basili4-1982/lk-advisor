@@ -426,6 +426,7 @@ async function loadBlock(){
           '<div><b>forced_by_experiment:</b> '+(forced?'true':'false')+'</div>'+
           '<div><b>source_product_id:</b> '+esc(r.source_product_id || '—')+'</div>'+
           '<div><b>score:</b> '+Number(r.score||0).toFixed(3)+'</div>'+
+          '<div><b>compatibility:</b> '+esc(r.compatibility || '—')+'</div>'+
           '<div><b>system_reason:</b> '+esc(r.reason || '—')+'</div>'+
         '</div>'+
       '</div>';
