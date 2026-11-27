@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -42,6 +43,24 @@ func (h *handler) adminVendorImport(w http.ResponseWriter, r *http.Request) {
 	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "vendor.import", map[string]string{
 		"added":   strconv.Itoa(res.Added),
 		"updated": strconv.Itoa(res.Updated),
+	})
+	writeJSON(w, http.StatusOK, res)
+}
+
+// adminVendorCandidates creates relation candidates from external products.
+func (h *handler) adminVendorCandidates(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Limit int `json:"limit"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	res, err := catalog.GenerateVendorCandidates(r.Context(), h.db, req.Limit)
+	if err != nil {
+		h.logger.Error("vendor candidates", "err", err)
+		writeError(w, http.StatusInternalServerError, "vendor candidates error")
+		return
+	}
+	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "vendor.candidates", map[string]string{
+		"created": strconv.Itoa(res.Created),
 	})
 	writeJSON(w, http.StatusOK, res)
 }

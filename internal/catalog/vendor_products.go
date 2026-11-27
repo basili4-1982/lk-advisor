@@ -244,6 +244,178 @@ func matchTokens(alias string) []string {
 	return out
 }
 
+// VendorCandidatesResult reports relation candidates built from external data.
+type VendorCandidatesResult struct {
+	Created  int                    `json:"created"`
+	Skipped  int                    `json:"skipped"`
+	Examples []VendorCandidateBrief `json:"examples"`
+}
+
+// VendorCandidateBrief is one generated candidate.
+type VendorCandidateBrief struct {
+	FromID   string `json:"from_id"`
+	ToID     string `json:"to_id"`
+	From     string `json:"from"`
+	To       string `json:"to"`
+	Type     string `json:"type"`
+	Vendor   string `json:"vendor"`
+	Family   string `json:"family"`
+	EditionA string `json:"edition_from"`
+	EditionB string `json:"edition_to"`
+	URL      string `json:"source_url"`
+}
+
+// GenerateVendorCandidates creates variant/alternative candidates from the
+// external product layer. It only links items that have no relation yet, so
+// the result is measurable novelty rather than another co-purchase edge.
+func GenerateVendorCandidates(ctx context.Context, dbc *sql.DB, limit int) (VendorCandidatesResult, error) {
+	var res VendorCandidatesResult
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT m1.item_id, i1.title, m2.item_id, i2.title,
+		       v1.vendor, v1.family, v1.product, v2.product, v1.edition, v2.edition,
+		       v1.platforms::text, v2.platforms::text, v1.source_url,
+		       v1.id, v2.id
+		FROM vendor_product_items m1
+		JOIN vendor_products v1 ON v1.id = m1.vendor_product_id
+		JOIN lk_items i1 ON i1.item_id = m1.item_id AND i1.available
+		JOIN vendor_product_items m2 ON m2.vendor_product_id <> m1.vendor_product_id
+		JOIN vendor_products v2 ON v2.id = m2.vendor_product_id
+		JOIN lk_items i2 ON i2.item_id = m2.item_id AND i2.available
+		WHERE m1.item_id < m2.item_id
+		  AND v1.family <> '' AND v1.family = v2.family
+		  AND (v1.edition <> v2.edition OR v1.platforms::text <> v2.platforms::text)
+		  AND NOT EXISTS (
+		      SELECT 1 FROM relations r
+		      WHERE (r.from_item_id = m1.item_id AND r.to_item_id = m2.item_id)
+		         OR (r.from_item_id = m2.item_id AND r.to_item_id = m1.item_id)
+		  )
+		ORDER BY v1.id, v2.id, m1.item_id, m2.item_id
+		LIMIT $1`, limit*40)
+	if err != nil {
+		return res, fmt.Errorf("vendor candidate pairs: %w", err)
+	}
+	type pair struct {
+		fromID, fromTitle, toID, toTitle  string
+		vendor, family, product, productB string
+		editionA, editionB                string
+		platformsA, platformsB            string
+		url                               string
+		vpA, vpB                          int64
+	}
+	var pairs []pair
+	for rows.Next() {
+		var p pair
+		if err := rows.Scan(&p.fromID, &p.fromTitle, &p.toID, &p.toTitle,
+			&p.vendor, &p.family, &p.product, &p.productB, &p.editionA, &p.editionB,
+			&p.platformsA, &p.platformsB, &p.url, &p.vpA, &p.vpB); err != nil {
+			rows.Close()
+			return res, err
+		}
+		pairs = append(pairs, p)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return res, err
+	}
+
+	// At most two SKU pairs per external product pair: the month/user SKUs of
+	// one edition should not flood the registry with duplicates.
+	perPair := map[string]int{}
+	byFamily := map[string][]pair{}
+	familyOrder := []string{}
+	for _, p := range pairs {
+		key := fmt.Sprintf("%d|%d", p.vpA, p.vpB)
+		if perPair[key] >= 10 {
+			continue
+		}
+		perPair[key]++
+		if _, ok := byFamily[p.family]; !ok {
+			familyOrder = append(familyOrder, p.family)
+		}
+		byFamily[p.family] = append(byFamily[p.family], p)
+	}
+	balanced := make([]pair, 0, limit)
+	for i := 0; len(balanced) < limit; i++ {
+		added := false
+		for _, family := range familyOrder {
+			list := byFamily[family]
+			if i < len(list) {
+				balanced = append(balanced, list[i])
+				added = true
+				if len(balanced) >= limit {
+					break
+				}
+			}
+		}
+		if !added {
+			break
+		}
+	}
+	pairs = balanced
+
+	tx, err := dbc.BeginTx(ctx, nil)
+	if err != nil {
+		return res, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	for _, p := range pairs {
+		if res.Created >= limit {
+			break
+		}
+		relType := "variant_of"
+		confidence := 0.75
+		reason := fmt.Sprintf("Внешний источник: %s, редакции «%s» и «%s»", p.family, p.editionA, p.editionB)
+		if p.editionA == "" || p.editionB == "" || p.editionA == p.editionB {
+			if p.product != p.productB {
+				relType = "adjacent_task"
+				confidence = 0.60
+				reason = fmt.Sprintf("Внешний источник: %s, продукты «%s» и «%s»; совместимость требует проверки", p.family, p.product, p.productB)
+			} else {
+				relType = "alternative"
+				confidence = 0.65
+				reason = fmt.Sprintf("Внешний источник: %s, разные платформы", p.family)
+			}
+		}
+		evidence, _ := json.Marshal([]map[string]any{{
+			"kind":    "vendor_doc",
+			"summary": reason,
+			"details": map[string]any{
+				"url": p.url, "vendor": p.vendor, "family": p.family,
+				"edition_from": p.editionA, "edition_to": p.editionB,
+				"platforms_from": p.platformsA, "platforms_to": p.platformsB,
+			},
+		}})
+		result, err := tx.ExecContext(ctx, `
+			INSERT INTO relations
+				(from_item_id, to_item_id, type, confidence, status, source,
+				 provenance_kind, reason, evidence, audience, industry)
+			VALUES ($1, $2, $3, $4, 'candidate', 'vendor', 'vendor', $5, $6::jsonb, '', '')
+			ON CONFLICT DO NOTHING`,
+			p.fromID, p.toID, relType, confidence, reason, string(evidence))
+		if err != nil {
+			return res, fmt.Errorf("insert vendor candidate: %w", err)
+		}
+		if n, _ := result.RowsAffected(); n > 0 {
+			res.Created++
+			if len(res.Examples) < 10 {
+				res.Examples = append(res.Examples, VendorCandidateBrief{
+					FromID: p.fromID, ToID: p.toID, From: p.fromTitle, To: p.toTitle,
+					Type: relType, Vendor: p.vendor, Family: p.family,
+					EditionA: p.editionA, EditionB: p.editionB, URL: p.url,
+				})
+			}
+		}
+	}
+	res.Skipped = len(pairs) - res.Created
+	if err := tx.Commit(); err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
 // ListVendorProducts returns external products with mapping counts.
 func ListVendorProducts(ctx context.Context, dbc *sql.DB) ([]VendorProduct, error) {
 	rows, err := dbc.QueryContext(ctx, `

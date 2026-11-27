@@ -79,3 +79,56 @@ func TestVendorProductsImportAndLink(t *testing.T) {
 		t.Fatalf("stats = %+v", list.Stats)
 	}
 }
+
+func TestVendorCandidatesFromExternalEditions(t *testing.T) {
+	h, dbc := setupAPI(t)
+	ctx := context.Background()
+	cleanup := func() {
+		dbc.ExecContext(ctx, `DELETE FROM relations
+			WHERE source = 'vendor' AND evidence->0->'details'->>'vendor' = 'TEST-VC'`)
+		dbc.ExecContext(ctx, `DELETE FROM vendor_products WHERE vendor = 'TEST-VC'`)
+		dbc.ExecContext(ctx, `DELETE FROM lk_items WHERE item_id LIKE '000-VC-%'`)
+	}
+	cleanup()
+	t.Cleanup(cleanup)
+
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO lk_items (item_id, title, category) VALUES
+		('000-VC-1', 'Тестовый продукт Старт', 'office'),
+		('000-VC-2', 'Тестовый продукт Бизнес', 'office')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO vendor_products (vendor, product, family, edition, platforms, aliases) VALUES
+		('TEST-VC', 'Тестовый продукт', 'Тестовая линейка', 'Старт', '["Web"]', '["Тестовый продукт Старт"]'),
+		('TEST-VC', 'Тестовый продукт', 'Тестовая линейка', 'Бизнес', '["Web"]', '["Тестовый продукт Бизнес"]')`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dbc.ExecContext(ctx, `
+		INSERT INTO vendor_product_items (vendor_product_id, item_id, method, confidence)
+		SELECT id, CASE edition WHEN 'Старт' THEN '000-VC-1' ELSE '000-VC-2' END, 'test', 0.9
+		FROM vendor_products WHERE vendor = 'TEST-VC'`); err != nil {
+		t.Fatal(err)
+	}
+
+	rec := doJSON(t, h, http.MethodPost, "/v1/admin/vendor-products/candidates", `{"limit":200}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("candidates: %d %s", rec.Code, rec.Body.String())
+	}
+	var out struct {
+		Created int `json:"created"`
+	}
+	json.Unmarshal(rec.Body.Bytes(), &out)
+	if out.Created < 1 {
+		t.Fatalf("created = %d, want at least 1", out.Created)
+	}
+	var typ, source string
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT type, source FROM relations
+		WHERE from_item_id = '000-VC-1' AND to_item_id = '000-VC-2'`).Scan(&typ, &source); err != nil {
+		t.Fatal(err)
+	}
+	if typ != "variant_of" || source != "vendor" {
+		t.Fatalf("relation = %s / %s", typ, source)
+	}
+}

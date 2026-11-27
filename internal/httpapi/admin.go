@@ -537,6 +537,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <input type="file" id="vendor-file" accept=".csv" style="max-width:260px">
               <button id="vendor-import" class="secondary small">Импорт CSV</button>
               <button id="vendor-link" class="secondary small">Сопоставить с каталогом</button>
+              <button id="vendor-candidates" class="secondary small">Сгенерировать связи</button>
             </div>
             <div class="hint">CSV: vendor, product, family, edition, platforms, registry_number, source_url, aliases. Списки — через <code>|</code>.</div>
             <div class="hint" id="vendor-result"></div>
@@ -1170,6 +1171,13 @@ el('vendor-import').addEventListener('click', async function(){
     var d=await r.json();
     if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
     el('vendor-result').textContent='Импорт: добавлено '+d.added+', обновлено '+d.updated+', пропущено '+d.skipped;
+    loadVendorKnowledge();
+  } catch(e){ el('vendor-result').textContent=e.message; }
+});
+el('vendor-candidates').addEventListener('click', async function(){
+  try {
+    var d=await api('POST','/v1/admin/vendor-products/candidates',{limit:50});
+    el('vendor-result').textContent='Создано кандидатов: '+d.created+', пропущено: '+d.skipped;
     loadVendorKnowledge();
   } catch(e){ el('vendor-result').textContent=e.message; }
 });

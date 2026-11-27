@@ -36,3 +36,4 @@ __pycache__/
 
 # external knowledge probe outputs (contain catalog item ids)
 analysis/external_probe_*.json
+analysis/vendor_candidates_precision.csv
