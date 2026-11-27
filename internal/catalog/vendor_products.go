@@ -142,9 +142,42 @@ func splitList(raw string) []string {
 // LinkVendorProducts matches external products to catalog items by aliases.
 func LinkVendorProducts(ctx context.Context, dbc *sql.DB) (VendorLinkResult, error) {
 	var res VendorLinkResult
+	// Registry records are too numerous for per-product queries; match them in
+	// two set-based passes: full product name and alternative names.
+	nameRes, err := dbc.ExecContext(ctx, `
+		INSERT INTO vendor_product_items (vendor_product_id, item_id, method, confidence)
+		SELECT DISTINCT v.id, i.item_id, 'registry_name', 0.75
+		FROM vendor_products v
+		JOIN lk_items i ON i.title ILIKE '%' || v.product || '%'
+		WHERE v.registry_number <> ''
+		  AND length(v.product) >= 8
+		  AND v.vendor NOT IN ('', '-')
+		  AND lower(v.product) NOT IN ('процессор','программа','программное обеспечение','средство','система','модуль','комплекс','платформа','компонент','утилита','драйвер')
+		ON CONFLICT DO NOTHING`)
+	if err != nil {
+		return res, fmt.Errorf("registry name link: %w", err)
+	}
+	nameMappings, _ := nameRes.RowsAffected()
+	aliasRes, err := dbc.ExecContext(ctx, `
+		INSERT INTO vendor_product_items (vendor_product_id, item_id, method, confidence)
+		SELECT DISTINCT v.id, i.item_id, 'registry_alias', 0.70
+		FROM vendor_products v
+		CROSS JOIN LATERAL jsonb_array_elements_text(v.aliases) a
+		JOIN lk_items i ON i.title ILIKE '%' || a || '%'
+		WHERE v.registry_number <> ''
+		  AND length(a) >= 10
+		  AND v.vendor NOT IN ('', '-')
+		  AND lower(a) NOT IN ('процессор','программа','программное обеспечение','средство','система','модуль','комплекс','платформа','компонент','утилита','драйвер')
+		ON CONFLICT DO NOTHING`)
+	if err != nil {
+		return res, fmt.Errorf("registry alias link: %w", err)
+	}
+	aliasMappings, _ := aliasRes.RowsAffected()
+	res.Mappings += int(nameMappings + aliasMappings)
+
 	rows, err := dbc.QueryContext(ctx, `
 		SELECT id, product, edition, aliases::text
-		FROM vendor_products ORDER BY id`)
+		FROM vendor_products WHERE registry_number = '' ORDER BY id`)
 	if err != nil {
 		return res, fmt.Errorf("vendor products: %w", err)
 	}
@@ -217,8 +250,16 @@ func LinkVendorProducts(ctx context.Context, dbc *sql.DB) (VendorLinkResult, err
 			itemRows.Close()
 		}
 	}
-	res.Items = len(matchedItems)
-	res.Products = len(matchedProducts)
+	_ = matchedItems
+	_ = matchedProducts
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(DISTINCT vendor_product_id) FROM vendor_product_items`).Scan(&res.Products); err != nil {
+		return res, err
+	}
+	if err := dbc.QueryRowContext(ctx, `
+		SELECT count(DISTINCT item_id) FROM vendor_product_items`).Scan(&res.Items); err != nil {
+		return res, err
+	}
 	return res, nil
 }
 
