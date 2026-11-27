@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/basili4-1982/lk-advisor/internal/model"
 )
@@ -94,7 +95,7 @@ func Get(ctx context.Context, dbc *sql.DB, clientID string) (model.Profile, erro
 		fmt.Sprintf("SELECT facts FROM client_profile_s%d WHERE client_id = $1", shard),
 		clientID).Scan(&raw)
 	if errors.Is(err, sql.ErrNoRows) {
-		return model.Profile{}, ErrNotFound
+		return catalogProfile(ctx, dbc, clientID)
 	}
 	if err != nil {
 		return model.Profile{}, fmt.Errorf("get profile %s: %w", clientID, err)
@@ -115,5 +116,49 @@ func Get(ctx context.Context, dbc *sql.DB, clientID string) (model.Profile, erro
 		Licenses:    f.Licenses,
 		Purchases:   f.Purchases,
 		Environment: f.Environment,
+	}, nil
+}
+
+// catalogProfile builds a minimal profile for catalog clients (lk_* tables)
+// that do not have a materialized legacy profile.
+func catalogProfile(ctx context.Context, dbc *sql.DB, clientID string) (model.Profile, error) {
+	var clientType, industry, segment string
+	err := dbc.QueryRowContext(ctx, `
+		SELECT client_type, industry, segment FROM lk_clients WHERE client_id = $1`,
+		clientID).Scan(&clientType, &industry, &segment)
+	if errors.Is(err, sql.ErrNoRows) {
+		return model.Profile{}, ErrNotFound
+	}
+	if err != nil {
+		return model.Profile{}, fmt.Errorf("catalog profile %s: %w", clientID, err)
+	}
+	audience := "b2b"
+	if clientType == "ФЛ" {
+		audience = "b2c"
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT item_id, order_week FROM lk_orders WHERE client_id = $1 ORDER BY order_week`,
+		clientID)
+	if err != nil {
+		return model.Profile{}, fmt.Errorf("catalog purchases %s: %w", clientID, err)
+	}
+	defer rows.Close()
+	purchases := []model.Purchase{}
+	for rows.Next() {
+		var itemID string
+		var week time.Time
+		if err := rows.Scan(&itemID, &week); err != nil {
+			return model.Profile{}, err
+		}
+		purchases = append(purchases, model.Purchase{
+			ClientID: clientID, ProductID: itemID, Date: week, Quantity: 1,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return model.Profile{}, err
+	}
+	return model.Profile{
+		ClientID: clientID, Segment: segment, Industry: industry,
+		Audience: audience, Purchases: purchases,
 	}, nil
 }
