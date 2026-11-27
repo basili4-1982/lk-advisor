@@ -46,7 +46,7 @@ def main() -> None:
         FROM relations r
         JOIN lk_items i1 ON i1.item_id = r.from_item_id
         JOIN lk_items i2 ON i2.item_id = r.to_item_id
-        WHERE r.source = 'vendor' AND r.type = 'adjacent_task' AND r.status = 'candidate'
+        WHERE r.source = 'vendor' AND r.type IN ('adjacent_task', 'bundle') AND r.status = 'candidate'
         ORDER BY r.id
     """)
     rows = cur.fetchall()
