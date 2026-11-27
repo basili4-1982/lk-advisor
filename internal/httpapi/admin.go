@@ -403,8 +403,22 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
 
         <div id="tab-types" class="hidden">
           <div class="formbox">
-            <div class="form-title">Шаблоны связей</div>
-            <p class="hint">Справочник шаблонов. Редактирование отключено: набор, описания и примеры меняются только через релиз, чтобы промпт разметки нельзя было изменить на живую.</p>
+            <div class="form-title">Шаблон связи</div>
+            <p class="hint">Название и описание идут в промпт разметки. Поведение говорит движку, как использовать связь: показывать как допродажу, апгрейд, замену или только хранить.</p>
+            <div class="grid g3">
+              <div><label>Код</label><input id="type-code" placeholder="industry_addon"></div>
+              <div><label>Название</label><input id="type-title" placeholder="Отраслевое дополнение"></div>
+              <div><label>Поведение</label><select id="type-behavior"></select></div>
+              <div><label>Направление</label><select id="type-direction"><option value="forward">От купленного к предлагаемому</option><option value="symmetric">Симметричная</option></select></div>
+              <div><label>Уверенность по умолчанию, %</label><input id="type-confidence" type="number" min="0" max="100" value="80"></div>
+              <div><label>Статус</label><select id="type-status"><option value="active">Включён</option><option value="draft">Черновик</option><option value="disabled">Отключён</option></select></div>
+            </div>
+            <div class="grid" style="margin-top:10px">
+              <div><label>Что и как связывать</label><textarea id="type-description" placeholder="Опишите, когда связь уместна и чем она отличается от замены или апгрейда."></textarea></div>
+              <div><label>Примеры и контрпримеры</label><textarea id="type-examples" placeholder="X → Y; A → B. Не связывать: C и D, потому что..."></textarea></div>
+            </div>
+            <div class="row" style="margin-top:10px"><button id="type-save">Сохранить шаблон</button><button id="type-reset" class="secondary">Новый шаблон</button></div>
+            <p class="hint" id="type-edit-hint"></p>
           </div>
           <div id="type-list"></div>
         </div>
@@ -834,6 +848,7 @@ function fillStaticSelects(){
     Object.keys(REL_TYPES).map(function(k){ return '<option value="'+k+'">'+REL_TYPES[k]+'</option>'; }).join('');
   el('rel-status').innerHTML = Object.keys(REL_STATUS).map(function(k){ return '<option value="'+k+'">'+REL_STATUS[k]+'</option>'; }).join('');
   el('rule-type').innerHTML = Object.keys(RULE_TYPES).map(function(k){ return '<option value="'+k+'">'+RULE_TYPES[k]+'</option>'; }).join('');
+  el('type-behavior').innerHTML = Object.keys(BEHAVIORS).map(function(k){ return '<option value="'+k+'">'+BEHAVIORS[k]+'</option>'; }).join('');
   el('rel-filter-type').innerHTML = '<option value="">Все типы</option>' + allTypes.map(function(t){ return '<option value="'+esc(t.code)+'">'+esc(t.title)+'</option>'; }).join('');
   el('rel-filter-status').innerHTML = '<option value="">Все статусы</option>' + Object.keys(REL_STATUS).map(function(k){ return '<option value="'+k+'">'+REL_STATUS[k]+'</option>'; }).join('');
   if (state.products.length > 1 && el('rel-from').value === el('rel-to').value) {
@@ -1729,8 +1744,27 @@ function renderTypes(){
       '<span class="hint">'+(t.direction==='symmetric'?'симметричная':'направленная')+' · '+Math.round((t.default_confidence||0)*100)+'%</span></div>'+
       '<div class="hint">'+esc(t.description)+'</div>'+
       (t.examples?'<div class="hint">Примеры: '+esc(t.examples)+'</div>':'')+
-      '</div>';
+      '<div style="margin-top:8px"><button class="secondary small" data-type-edit="'+esc(t.code)+'">Изменить</button> '+
+      (t.builtin?'':'<button class="ghost small" data-type-del="'+esc(t.code)+'">Удалить</button>')+'</div></div>';
   }).join('');
+}
+function resetTypeForm(){
+  el('type-code').value=''; el('type-title').value=''; el('type-behavior').value='cross_sell';
+  el('type-direction').value='forward'; el('type-confidence').value=80; el('type-status').value='active';
+  el('type-description').value=''; el('type-examples').value='';
+  el('type-code').disabled=false; el('type-behavior').disabled=false; el('type-direction').disabled=false;
+  el('type-confidence').disabled=false; el('type-edit-hint').textContent='';
+}
+function editType(code){
+  var t=null; (state.relation_types||[]).forEach(function(x){ if(x.code===code) t=x; });
+  if (!t) return;
+  el('type-code').value=t.code; el('type-title').value=t.title; el('type-behavior').value=t.behavior;
+  el('type-direction').value=t.direction; el('type-confidence').value=Math.round((t.default_confidence||0)*100);
+  el('type-status').value=t.status; el('type-description').value=t.description||''; el('type-examples').value=t.examples||'';
+  el('type-code').disabled=true;
+  el('type-behavior').disabled=t.builtin; el('type-direction').disabled=t.builtin; el('type-confidence').disabled=t.builtin;
+  el('type-edit-hint').textContent = t.builtin ? 'Встроенный шаблон: код, поведение и направление зафиксированы. Описание, примеры и статус можно менять.' : 'Пользовательский шаблон можно менять полностью.';
+  el('type-title').focus();
 }
 function renderRules(){
   if (!state.rules.length) { el('rule-list').innerHTML='<div class="empty">Правил пока нет</div>'; return; }
@@ -1943,6 +1977,27 @@ el('rel-search').addEventListener('input', renderRelations);
 el('rel-filter-type').addEventListener('change', renderRelations);
 el('rel-filter-status').addEventListener('change', renderRelations);
 el('rule-type').addEventListener('change', syncRuleFields);
+el('type-reset').addEventListener('click', function(){ resetTypeForm(); el('type-code').disabled=false; });
+el('type-save').addEventListener('click', async function(){
+  var body={
+    code:el('type-code').value.trim(), title:el('type-title').value.trim(),
+    behavior:el('type-behavior').value, direction:el('type-direction').value,
+    default_confidence:Number(el('type-confidence').value)/100,
+    status:el('type-status').value, description:el('type-description').value.trim(),
+    examples:el('type-examples').value.trim()
+  };
+  try { await api('POST','/v1/admin/relation-types', body); toast('Шаблон сохранён'); resetTypeForm(); await load(); }
+  catch(e){ toast(e.message,true); }
+});
+el('type-list').addEventListener('click', async function(ev){
+  var edit=ev.target.dataset.typeEdit, del=ev.target.dataset.typeDel;
+  if (edit) { editType(edit); return; }
+  if (del) {
+    if (!confirm('Удалить шаблон '+del+'? Связи этого типа останутся, но станут неизвестными.')) return;
+    try { await api('DELETE','/v1/admin/relation-types/'+encodeURIComponent(del)); toast('Шаблон удалён'); resetTypeForm(); await load(); }
+    catch(e){ toast(e.message,true); }
+  }
+});
 el('review-refresh').addEventListener('click', loadReview);
 el('review-filter').addEventListener('change', loadReview);
 el('review-search').addEventListener('input', renderReview);
