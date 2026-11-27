@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/basili4-1982/lk-advisor/internal/catalog"
@@ -83,11 +84,18 @@ func (h *handler) adminProposeRelation(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, heuristicRelationProposal(from, to, active))
 }
 
+// relationSystemPrompt is kept server-side. The full prompt is supplied through
+// RELATION_SYSTEM_PROMPT and is not part of the repository.
+func relationSystemPrompt() string {
+	if v := strings.TrimSpace(os.Getenv("RELATION_SYSTEM_PROMPT")); v != "" {
+		return v
+	}
+	return `Ты агент разметки связей между товарами. Верни только JSON без markdown.
+Схема: {"type":"код или none","confidence":0.0,"reason":"кратко","evidence":["факт"]}.`
+}
+
 func (h *handler) llmRelationProposal(ctx context.Context, from, to model.Product, types []model.RelationType) (relationAgentProposal, error) {
-	system := `Ты агент разметки связей между товарами в каталоге ПО. Верни ТОЛЬКО JSON без markdown.
-Схема: {"type":"код или none","confidence":0.0,"reason":"кратко по-русски","evidence":["факт из карточек"]}.
-Используй только коды из реестра ниже. Не придумывай новые типы. Если связи нет — type=none.
-Уверенность от 0 до 1. reason должен опираться на категорию, подкатегорию, назначение товаров.`
+	system := relationSystemPrompt()
 
 	var b strings.Builder
 	b.WriteString(relationtype.Prompt(types))

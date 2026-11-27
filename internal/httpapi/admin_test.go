@@ -142,42 +142,6 @@ func minInt(a, b int) int {
 	return b
 }
 
-func TestRelationTypeCRUDAndPrompt(t *testing.T) {
-	h, _ := setupAPI(t)
-	body := `{"code":"industry_addon","title":"Отраслевое дополнение","description":"Отраслевой модуль к платформе: закрывает отраслевую задачу и не заменяет платформу.","examples":"1С → отраслевой модуль; CAD → библиотека ГОСТ.","behavior":"cross_sell","direction":"forward","default_confidence":0.85,"status":"active"}`
-	rec := doJSON(t, h, http.MethodPost, "/v1/admin/relation-types", body)
-	if rec.Code != http.StatusOK {
-		t.Fatalf("create: %d %s", rec.Code, rec.Body.String())
-	}
-	defer doJSON(t, h, http.MethodDelete, "/v1/admin/relation-types/industry_addon", "")
-
-	rec = doJSON(t, h, http.MethodGet, "/v1/admin/state", "")
-	var st adminState
-	if err := json.Unmarshal(rec.Body.Bytes(), &st); err != nil {
-		t.Fatal(err)
-	}
-	found := false
-	for _, rt := range st.RelationTypes {
-		if rt.Code == "industry_addon" {
-			found = true
-			if rt.Description == "" || rt.Behavior != "cross_sell" {
-				t.Fatalf("type = %+v", rt)
-			}
-		}
-	}
-	if !found {
-		t.Fatal("custom type not in state")
-	}
-}
-
-func TestBuiltinRelationTypeCannotBeDeleted(t *testing.T) {
-	h, _ := setupAPI(t)
-	rec := doJSON(t, h, http.MethodDelete, "/v1/admin/relation-types/upgrade", "")
-	if rec.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want 404", rec.Code)
-	}
-}
-
 func TestSymmetricRelationCreatesReverse(t *testing.T) {
 	h, dbc := setupAPI(t)
 	body := `{"from_id":"prod-pdf","to_id":"prod-backup","type":"compatibility","status":"confirmed","confidence":0.8}`

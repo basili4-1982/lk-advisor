@@ -470,64 +470,6 @@ func (h *handler) relationTypeFor(ctx context.Context, code string) (model.Relat
 	return model.RelationType{}, err
 }
 
-func (h *handler) adminUpsertRelationType(w http.ResponseWriter, r *http.Request) {
-	var rt model.RelationType
-	if err := json.NewDecoder(r.Body).Decode(&rt); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	rt.Code = strings.TrimSpace(rt.Code)
-	rt.Title = strings.TrimSpace(rt.Title)
-	rt.Description = strings.TrimSpace(rt.Description)
-	rt.Examples = strings.TrimSpace(rt.Examples)
-	if rt.Direction == "" {
-		rt.Direction = "forward"
-	}
-	if rt.Status == "" {
-		rt.Status = "active"
-	}
-	if rt.DefaultConfidence == 0 {
-		rt.DefaultConfidence = 0.8
-	}
-
-	existing, err := catalog.RelationType(r.Context(), h.db, rt.Code)
-	if err == nil {
-		rt.Builtin = existing.Builtin
-		if existing.Builtin {
-			rt.Behavior = existing.Behavior
-			rt.Direction = existing.Direction
-			rt.DefaultConfidence = existing.DefaultConfidence
-		}
-	}
-	if err := relationtype.Validate(rt); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if err := catalog.UpsertRelationType(r.Context(), h.db, rt); err != nil {
-		h.logger.Error("upsert relation type", "err", err)
-		writeError(w, http.StatusInternalServerError, "relation type save error")
-		return
-	}
-	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "relation_type.upsert", rt)
-	writeJSON(w, http.StatusOK, rt)
-}
-
-func (h *handler) adminDeleteRelationType(w http.ResponseWriter, r *http.Request) {
-	code := r.PathValue("code")
-	ok, err := catalog.DeleteRelationType(r.Context(), h.db, code)
-	if err != nil {
-		h.logger.Error("delete relation type", "err", err)
-		writeError(w, http.StatusInternalServerError, "relation type delete error")
-		return
-	}
-	if !ok {
-		writeError(w, http.StatusNotFound, "пользовательский тип не найден")
-		return
-	}
-	_ = catalog.LogAdminChange(r.Context(), h.db, "admin", "relation_type.delete", map[string]string{"code": code})
-	writeJSON(w, http.StatusOK, map[string]bool{"deleted": true})
-}
-
 type reviewItem struct {
 	model.Relation
 	FromTitle string `json:"from_title"`
