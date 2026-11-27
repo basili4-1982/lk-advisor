@@ -7,57 +7,79 @@ import (
 )
 
 // lkClients lists clients that can be opened in the client-facing page.
+type lkClient struct {
+	ClientID   string `json:"client_id"`
+	ClientType string `json:"client_type"`
+	Industry   string `json:"industry"`
+	Orders     int    `json:"orders"`
+	ColdStart  bool   `json:"cold_start"`
+}
+
 func (h *handler) lkClients(w http.ResponseWriter, r *http.Request) {
-	limit := 50
 	var audience, target string
 	_ = h.db.QueryRowContext(r.Context(), `
 		SELECT audience, to_id FROM experiments
 		WHERE status = 'running' ORDER BY created_at DESC LIMIT 1`).Scan(&audience, &target)
 
-	query := `
+	out := []lkClient{}
+	audienceSQL := ""
+	if audience == "b2b" {
+		audienceSQL = " AND c.client_type IN ('ЮЛ', 'ИП')"
+	} else if audience == "b2c" {
+		audienceSQL = " AND c.client_type = 'ФЛ'"
+	}
+
+	// 40 clients with purchase history.
+	warmQuery := `
 		SELECT c.client_id, c.client_type, COALESCE(c.industry, ''), count(o.item_id) AS orders
 		FROM lk_clients c
 		JOIN lk_orders o ON o.client_id = c.client_id
-		WHERE 1 = 1`
-	args := []any{}
-	if audience == "b2b" {
-		query += " AND c.client_type IN ('ЮЛ', 'ИП')"
-	} else if audience == "b2c" {
-		query += " AND c.client_type = 'ФЛ'"
-	}
+		WHERE 1 = 1` + audienceSQL
+	warmArgs := []any{}
 	if target != "" {
-		query += ` AND NOT EXISTS (
+		warmQuery += ` AND NOT EXISTS (
 			SELECT 1 FROM lk_orders x
 			WHERE x.client_id = c.client_id AND x.item_id = $1)`
-		args = append(args, target)
+		warmArgs = append(warmArgs, target)
 	}
-	query += fmt.Sprintf(" GROUP BY 1, 2, 3 ORDER BY orders DESC, c.client_id LIMIT $%d", len(args)+1)
-	args = append(args, limit)
-
-	rows, err := h.db.QueryContext(r.Context(), query, args...)
-	if err != nil {
+	warmQuery += fmt.Sprintf(" GROUP BY 1, 2, 3 ORDER BY orders DESC, c.client_id LIMIT $%d", len(warmArgs)+1)
+	warmArgs = append(warmArgs, 40)
+	if err := appendClients(r, h, warmQuery, warmArgs, &out); err != nil {
 		writeError(w, http.StatusInternalServerError, "clients error")
 		return
 	}
-	defer rows.Close()
-	type client struct {
-		ClientID   string `json:"client_id"`
-		ClientType string `json:"client_type"`
-		Industry   string `json:"industry"`
-		Orders     int    `json:"orders"`
+
+	// 10 clients without history, so cold start is always demonstrable.
+	coldQuery := `
+		SELECT c.client_id, c.client_type, COALESCE(c.industry, ''), 0
+		FROM lk_clients c
+		WHERE NOT EXISTS (SELECT 1 FROM lk_orders x WHERE x.client_id = c.client_id)` + audienceSQL + `
+		ORDER BY c.client_id LIMIT $1`
+	if err := appendClients(r, h, coldQuery, []any{10}, &out); err != nil {
+		writeError(w, http.StatusInternalServerError, "clients error")
+		return
 	}
-	out := []client{}
-	for rows.Next() {
-		var c client
-		if err := rows.Scan(&c.ClientID, &c.ClientType, &c.Industry, &c.Orders); err != nil {
-			writeError(w, http.StatusInternalServerError, "clients scan error")
-			return
-		}
-		out = append(out, c)
-	}
+
 	writeJSON(w, http.StatusOK, map[string]any{
 		"items": out, "experiment_target": target,
 	})
+}
+
+func appendClients(r *http.Request, h *handler, query string, args []any, out *[]lkClient) error {
+	rows, err := h.db.QueryContext(r.Context(), query, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var c lkClient
+		if err := rows.Scan(&c.ClientID, &c.ClientType, &c.Industry, &c.Orders); err != nil {
+			return err
+		}
+		c.ColdStart = c.Orders == 0
+		*out = append(*out, c)
+	}
+	return rows.Err()
 }
 
 // lkPage renders the client block. The technical context (variant, ids,
@@ -166,7 +188,7 @@ async function loadClients(){
   var d = await api('GET','/v1/lk/clients?limit=50');
   var sel = document.getElementById('client');
   sel.innerHTML = (d.items||[]).map(function(c){
-    return '<option value="'+esc(c.client_id)+'">'+esc(c.client_id)+' · '+esc(c.client_type)+' · '+esc(c.industry||'без отрасли')+' · покупок '+c.orders+'</option>';
+    return '<option value="'+esc(c.client_id)+'">'+esc(c.client_id)+' · '+esc(c.client_type)+' · '+esc(c.industry||'без отрасли')+' · '+(c.cold_start?'без покупок':'покупок '+c.orders)+'</option>';
   }).join('');
 }
 function renderSystem(d){
