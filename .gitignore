@@ -33,3 +33,6 @@ coverage.*
 # Python
 __pycache__/
 *.pyc
+
+# external knowledge probe outputs (contain catalog item ids)
+analysis/external_probe_*.json
