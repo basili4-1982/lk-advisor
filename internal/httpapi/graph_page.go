@@ -99,6 +99,7 @@ main{display:grid;grid-template-columns:1fr 390px;height:calc(100vh - 124px)}
   <div class="controls">
     <input id="search" type="search" placeholder="Найти товар…">
     <label class="toggle"><input id="solo" type="checkbox"> solo</label>
+    <label class="toggle"><input id="confirmed" type="checkbox"> только подтверждённые</label>
     <a class="link" href="/admin#relations">Работа со связями</a>
     <a class="link" href="/">Кабинет</a>
     <span class="status" id="status"></span>
@@ -141,7 +142,7 @@ const wrap=$('graph-wrap');
 const COLORS={security:'#f87171',office:'#60a5fa',graphics:'#c084fc',backup:'#4ade80',devtools:'#fbbf24',training:'#2dd4bf',other:'#94a3b8'};
 const CAT_RU={security:'Безопасность',office:'Офис',graphics:'Графика',backup:'Бэкап',devtools:'Разработка',training:'Обучение',other:'Другое'};
 let DATA=null,nodes=[],edges=[],byId={},selected=null,hover=null,focusMode=false,selectedNeighbors=new Set(),selectedComponent=new Set(),selectedDepths={},linkSource=null,linkTarget=null,relationTypes=[];
-let audience='b2b',soloOn=false,categoryFilter=null,search='',initialIndustry=new URLSearchParams(location.search).get('industry')||'',initialSegment=new URLSearchParams(location.search).get('segment')||'',initialFamily=new URLSearchParams(location.search).get('family')||'',industryFilter=initialIndustry,segmentFilter=initialSegment,familyFilter=initialFamily;
+let audience='b2b',soloOn=false,confirmedOnly=false,categoryFilter=null,search='',initialIndustry=new URLSearchParams(location.search).get('industry')||'',initialSegment=new URLSearchParams(location.search).get('segment')||'',initialFamily=new URLSearchParams(location.search).get('family')||'',industryFilter=initialIndustry,segmentFilter=initialSegment,familyFilter=initialFamily;
 let periods=[],currentPeriod='',initialPeriod=new URLSearchParams(location.search).get('period')||'',page=Math.max(1,parseInt(new URLSearchParams(location.search).get('page')||'1',10)||1),pageSize=Math.max(250,Math.min(1000,parseInt(new URLSearchParams(location.search).get('page_size')||'1000',10)||1000)),totalPages=1;
 let graph=null,autoFitDone=false,userInteracted=false;
 function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
@@ -181,9 +182,11 @@ function nodeVisible(n){
   if(focusMode&&selected){return selectedComponent.has(n.id)}
   return true;
 }
+function isConfirmed(l){return l.status==='active'||l.status==='confirmed'}
 function linkVisible(l){
   const a=byId[sourceID(l)],b=byId[targetID(l)];
   if(!(a&&b&&nodeVisible(a)&&nodeVisible(b)))return false;
+  if(confirmedOnly&&!isConfirmed(l))return false;
   return true;
 }
 function nodeVal(n){
@@ -217,7 +220,9 @@ function linkColor(l){
   if(selected&&(sourceID(l)===selected.id||targetID(l)===selected.id))return 'rgba(96,165,250,.9)';
   if(focusMode)return 'rgba(100,116,139,.3)';
   if(hover&&(sourceID(l)===hover.id||targetID(l)===hover.id))return 'rgba(96,165,250,.55)';
-  return 'rgba(148,163,184,.4)';
+  if(isConfirmed(l))return 'rgba(74,222,128,.5)';
+  if(l.status==='candidate')return 'rgba(251,191,36,.65)';
+  return 'rgba(148,163,184,.35)';
 }
 function refresh(){
   if(!graph)return;
@@ -314,6 +319,8 @@ function drawLegend(){
   let h='<button class="leg '+(categoryFilter===null?'active':'')+'" data-cat="all"><i style="background:#e2e8f0"></i>Все</button>';
   if((DATA.external_edges||[]).length)h+='<span class="leg"><i style="background:#fbbf24"></i>за страницей</span>';
   if((DATA.edges||[]).some(e=>e.manual))h+='<span class="leg"><i style="background:#4ade80"></i>ручная связь</span>';
+  h+='<span class="leg"><i style="background:#4ade80"></i>подтверждено</span>';
+  h+='<span class="leg"><i style="background:#fbbf24"></i>требует проверки</span>';
   Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).forEach(c=>{
     h+='<button class="leg '+(categoryFilter===c?'active':'')+'" data-cat="'+esc(c)+'"><i style="background:'+(COLORS[c]||COLORS.other)+'"></i>'+esc(CAT_RU[c]||c)+' · '+counts[c]+'</button>';
   });
@@ -423,6 +430,7 @@ $('time').addEventListener('change',e=>{const p=periods[Number(e.target.value)];
 $('search').addEventListener('input',e=>{search=e.target.value;refresh()});
 $('search').addEventListener('keydown',e=>{if(e.key!=='Enter')return;const q=search.trim().toLowerCase();if(!q)return;const n=nodes.find(x=>x.title.toLowerCase().indexOf(q)>=0);if(n){showNode(n);focusNode(n)}});
 $('solo').addEventListener('change',e=>{soloOn=e.target.checked;refresh()});
+$('confirmed').addEventListener('change',e=>{confirmedOnly=e.target.checked;refresh()});
 $('legend').addEventListener('click',e=>{const b=e.target.closest('[data-cat]');if(!b)return;categoryFilter=b.dataset.cat==='all'?null:b.dataset.cat;drawLegend();refresh()});
 document.querySelectorAll('[data-audience]').forEach(b=>b.addEventListener('click',()=>{audience=b.dataset.audience;document.querySelectorAll('[data-audience]').forEach(x=>x.classList.toggle('active',x===b));industryFilter='';segmentFilter='';familyFilter='';focusMode=false;initialPeriod='';load().catch(err=>{$('status').textContent='Ошибка: '+err.message})}));
 window.addEventListener('resize',()=>{resizeGraph()});

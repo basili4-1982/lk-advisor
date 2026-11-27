@@ -169,6 +169,9 @@ func LoadDemoGraphPage(ctx context.Context, dbc *sql.DB, audience, industry, seg
 	if err := appendManualEdges(ctx, dbc, &graph); err != nil {
 		return DemoGraph{}, err
 	}
+	if err := applyRelationStatuses(ctx, dbc, &graph); err != nil {
+		return DemoGraph{}, err
+	}
 	graph.Families = applyFamilyLabels(graph.Nodes)
 	periods, err := loadGraphPeriods(ctx, dbc)
 	if err != nil {
@@ -325,6 +328,60 @@ func filterLabel(audience, industry, segment string) string {
 		parts = append(parts, segment)
 	}
 	return strings.Join(parts, " · ")
+}
+
+// applyRelationStatuses marks public co-purchase edges that have a reviewed
+// relation. Everything else is explicitly "unconfirmed".
+func applyRelationStatuses(ctx context.Context, dbc *sql.DB, g *DemoGraph) error {
+	if len(g.Nodes) == 0 || len(g.Edges) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(g.Nodes))
+	for _, n := range g.Nodes {
+		ids = append(ids, n.ID)
+	}
+	rows, err := dbc.QueryContext(ctx, `
+		SELECT from_item_id, to_item_id, status
+		FROM relations
+		WHERE from_item_id = ANY($1) AND to_item_id = ANY($1)
+		  AND status IN ('active', 'confirmed', 'candidate')`, pq.Array(ids))
+	if err != nil {
+		return fmt.Errorf("graph relation statuses: %w", err)
+	}
+	defer rows.Close()
+	statuses := map[string]string{}
+	for rows.Next() {
+		var from, to, status string
+		if err := rows.Scan(&from, &to, &status); err != nil {
+			return err
+		}
+		key := from + "|" + to
+		if cur, ok := statuses[key]; !ok || status == "active" || status == "confirmed" {
+			if cur == "active" || cur == "confirmed" {
+				continue
+			}
+			statuses[key] = status
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for i := range g.Edges {
+		e := &g.Edges[i]
+		if e.Manual && e.Status != "" {
+			continue
+		}
+		if status, ok := statuses[e.Source+"|"+e.Target]; ok {
+			e.Status = status
+			continue
+		}
+		if status, ok := statuses[e.Target+"|"+e.Source]; ok {
+			e.Status = status
+			continue
+		}
+		e.Status = "unconfirmed"
+	}
+	return nil
 }
 
 func appendManualEdges(ctx context.Context, dbc *sql.DB, g *DemoGraph) error {
