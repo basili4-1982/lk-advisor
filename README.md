@@ -105,14 +105,11 @@ docs/              демо и прогон
 | `agent-layer.md` | контракт и устройство `/v1/ask` |
 | `chat-rules.md` | правила чата и защита от ухода в сторону |
 | `acceptance-tests.md` | сценарии, правила, контракт, метрики |
-| `sprint-scope.md` | скоуп на 48 часов |
 | `pitch-3min.md` | речь на 3 минуты и таймлайн |
 | `economics.md` | стоимость запроса, ресурсы, внедрение |
 | `docs/admin-rules.md` | админка правил, шаблоны связей и ИИ-помощник |
 | `docs/relation-agent.md` | агент разметки связей и batch после данных партнёра |
 | `docs/data-request.md` | минимальный сет для проверки гипотезы solo |
-| `docs/kickoff-2026-11-26.md` | разбор презентации кик-оффа и изменения плана |
-| `docs/lk-test-account.md` | что внутри тестового ЛК: профиль, продукты, API рекомендаций |
 | `docs/lk-adapter.md` | адаптер под `cross_sell/list` и реальный кейс `lk-36612` |
 | `analysis/README.md` | разбор датасета v5, baseline и наш бэктест |
 | `analysis/evaluate.py` | воспроизводимый Precision@3 / Fill Rate |
@@ -127,7 +124,6 @@ docs/              демо и прогон
 | `docs/demo-graph.md` | демо-граф публичного слоя: `/demo/graph` |
 | `docs/data-handling.md` | что можно и нельзя коммитить |
 | `docs/hypothesis-platform.md` | вертикальный срез платформы гипотез |
-| `docs/superpowers/plans/2026-11-26-agentic-analytics.md` | хранение аналитики, авто-А/Б, веса, авто-перестройка |
 | `docs/relation-validation.md` | ручная очередь проверки связей |
 | `docs/demo-run.md` | прогон демо и ожидаемые ответы |
 | `docs/demo.sh` | пять demo-команд |

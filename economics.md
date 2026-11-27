@@ -1,7 +1,7 @@
 # Экономика и ресурсы: ИИ-агент рекомендаций в ЛК
 
 **Дата:** 25.11.2026. **Версия:** 1.0 (до старта спринта).
-**Основание:** `one-pager.md` §5, `sprint-scope.md`, `algorithm.md`.
+**Основание:** `one-pager.md` §5, `algorithm.md`.
 **Форма:** `economics/ИИкузница — калькулятор экономики решения.xlsx`.
 
 ## 1. Коротко
@@ -56,7 +56,7 @@
 | Инфраструктура | локально + GitHub Pages | 0 ₽ |
 | Данные | синтетика, свой генератор | 0 ₽ |
 
-Часы по ролям из `sprint-scope.md`: Data — 8, Engine — 14, API — 3, Agent — 3, QA — 3, PM — 3. Итого 34 ч.
+Часы по ролям: Data — 8, Engine — 14, API — 3, Agent — 3, QA — 3, PM — 3. Итого 34 ч.
 
 ## 5. Внедрение
 
@@ -90,4 +90,4 @@
 
 - RouterAI, `api/v1/models`, `deepseek/deepseek-v4.1-flash` — цены на 25.11.2026.
 - ЦБ РФ, `XML_daily.asp` — 82,1664 ₽ за 1 $ на 25.11.2026.
-- `lk-advisor/one-pager.md` §5, `lk-advisor/sprint-scope.md`, `lk-advisor/algorithm.md` §7.
+- `lk-advisor/one-pager.md` §5, `lk-advisor/algorithm.md` §7.
