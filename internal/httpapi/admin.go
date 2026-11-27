@@ -540,6 +540,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
         <div id="tab-experiments" class="hidden">
           <div class="toolbar">
             <button id="experiment-seed" class="success">Добавить гипотезу</button>
+            <button id="open-lk" class="secondary small">Витрина клиента</button>
             <button id="experiment-refresh" class="secondary small">Обновить</button>
             <input id="experiment-search" type="search" placeholder="Поиск по базе знаний…" style="max-width:220px">
             <select id="experiment-decision-filter" style="max-width:170px">
@@ -549,7 +550,7 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
               <option value="extend">extend</option>
             </select>
             <button id="experiment-search-btn" class="secondary small">Найти</button>
-            <span class="hint">Гипотеза создаётся на паре каталога; прогон на профиле заполняет события, реальные показы приходят из <code>/v1/events</code>.</span>
+            <span class="hint">Гипотеза создаётся на паре каталога; показы идут через <code>/lk</code>, клики и покупки — из ЛК через <code>/v1/events</code>.</span>
           </div>
           <div class="stats" id="experiments-summary"></div>
           <div id="experiments-list"></div>
@@ -704,38 +705,6 @@ pre.prompt{white-space:pre-wrap;background:#0f172a;color:#e5e7eb;border-radius:1
     <div class="toolbar" style="justify-content:flex-end;margin-top:14px">
       <button id="emu-cancel" class="secondary small">Закрыть</button>
       <button id="emu-run" class="success small">Запустить прогон</button>
-    </div>
-  </div>
-</div>
-<div class="modal hidden" id="live-modal">
-  <div class="modal-box exp-modal" style="max-width:760px">
-    <div class="form-title">Живой прогон</div>
-    <div class="hint" id="live-hypothesis"></div>
-    <div class="exp-form">
-      <div class="row2">
-        <label>Клиентов каталога<select id="live-clients">
-          <option value="10">10</option>
-          <option value="25">25</option>
-          <option value="50" selected>50</option>
-        </select></label>
-        <label>Сессий на клиента<select id="live-sessions">
-          <option value="1">1</option>
-          <option value="3">3</option>
-          <option value="5" selected>5</option>
-          <option value="10">10</option>
-        </select></label>
-      </div>
-      <label>Поведение клиентов (модель)<select id="live-behavior">
-        <option value="fit" selected>по модели попадания</option>
-        <option value="neutral">нейтральное</option>
-      </select></label>
-      <label style="display:flex;align-items:center;gap:8px;flex-direction:row"><input type="checkbox" id="live-reset" checked style="width:auto"> Начать с чистого листа — очистить предыдущие события эксперимента</label>
-      <div class="hint">Клиенты — реальные записи датасета <code>lk_clients</code>, показы — настоящие вызовы <code>/v1/recommendations</code>. Клики и покупки моделируются: в режиме «по модели попадания» целевой товар выбирают чаще, в нейтральном — все варианты одинаково. Это модель поведения, а не действия этих клиентов.</div>
-      <div class="hint" id="live-progress"></div>
-    </div>
-    <div class="toolbar" style="justify-content:flex-end;margin-top:14px">
-      <button id="live-cancel" class="secondary small">Закрыть</button>
-      <button id="live-run" class="success small">Отправить трафик</button>
     </div>
   </div>
 </div>
@@ -998,7 +967,6 @@ async function loadExperiments(){
           '<button class="ghost" data-exp-decision="reject" data-exp-id="'+esc(x.id)+'">Отклонить</button>'+
           '<button class="secondary" data-exp-decision="extend" data-exp-id="'+esc(x.id)+'">Продлить</button>'+
           (x.status==='running'?'<button class="secondary" data-exp-emulate="'+esc(x.id)+'">Прогнать на эмуляторе</button>':'')+
-          (x.status==='running'?'<button class="secondary" data-exp-live="'+esc(x.id)+'">Живой прогон</button>':'')+
           (x.status==='running'?'<button class="secondary small" data-exp-monitor="'+esc(x.id)+'">Проверить guardrails</button>':'')+
         '</div>';
       }
@@ -2047,7 +2015,7 @@ function closeExperimentForm(){ el('experiment-modal').classList.add('hidden'); 
 el('experiment-seed').addEventListener('click', openExperimentForm);
 el('exp-cancel').addEventListener('click', closeExperimentForm);
 el('experiment-modal').addEventListener('click', function(ev){ if (ev.target === this) closeExperimentForm(); });
-document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') { if (!el('experiment-modal').classList.contains('hidden')) closeExperimentForm(); if (!el('emulation-modal').classList.contains('hidden')) closeEmulation(); if (!el('live-modal').classList.contains('hidden')) closeLive(); } });
+document.addEventListener('keydown', function(ev){ if (ev.key === 'Escape') { if (!el('experiment-modal').classList.contains('hidden')) closeExperimentForm(); if (!el('emulation-modal').classList.contains('hidden')) closeEmulation(); } });
 el('exp-from-search').addEventListener('input', function(){ expFillItems(el('exp-from'), this.value); });
 el('exp-to-search').addEventListener('input', function(){ expFillItems(el('exp-to'), this.value); });
 el('exp-from').addEventListener('change', expGenerateNames);
@@ -2154,67 +2122,7 @@ el('emu-run').addEventListener('click', async function(){
   } catch(e){ err.textContent = e.message; }
   finally { btn.disabled = false; }
 });
-var LIVE_EXP = null;
-function openLive(id){
-  var x = (EXPERIMENTS||[]).filter(function(e){ return e.id===id; })[0];
-  if (!x) { toast('Гипотеза не найдена', true); return; }
-  LIVE_EXP = x;
-  el('live-hypothesis').innerHTML = '<b>'+esc(x.title)+'</b><br>'+esc(x.from_title||x.from_id)+' → '+esc(x.to_title||x.to_id);
-  el('live-progress').textContent = '';
-  el('live-modal').classList.remove('hidden');
-}
-function closeLive(){ el('live-modal').classList.add('hidden'); }
-el('live-cancel').addEventListener('click', closeLive);
-el('live-modal').addEventListener('click', function(ev){ if (ev.target === this) closeLive(); });
-el('live-run').addEventListener('click', async function(){
-  var btn = this, progress = el('live-progress');
-  btn.disabled = true;
-  var clientCount = Number(el('live-clients').value);
-  var sessions = Number(el('live-sessions').value);
-  var behavior = el('live-behavior').value;
-  var shown = 0, clicks = 0, purchases = 0;
-  try {
-    if (el('live-reset').checked) {
-      await api('POST','/v1/admin/experiments/'+encodeURIComponent(LIVE_EXP.id)+'/reset-events',{});
-    }
-    var q = '/v1/admin/catalog-clients?limit='+clientCount;
-    if (LIVE_EXP.audience) q += '&audience='+encodeURIComponent(LIVE_EXP.audience);
-    if (LIVE_EXP.to_id) q += '&exclude_item='+encodeURIComponent(LIVE_EXP.to_id);
-    var d = await api('GET', q);
-    var clients = d.items || [];
-    if (!clients.length) { progress.textContent = 'Нет клиентов с историей покупок.'; return; }
-    var fit = (LIVE_EXP.emulation && LIVE_EXP.emulation.fit) || 0.6;
-    for (var i=0;i<clients.length;i++){
-      for (var s=0;s<sessions;s++){
-        var r = await api('POST','/v1/recommendations',{client_id:clients[i].client_id, limit:3});
-        shown++;
-        var recs = r.recommendations || [];
-        var target = null, chosen = recs[0] || null, pClick = 0.18;
-        for (var k=0;k<recs.length;k++) if (recs[k].product_id === LIVE_EXP.to_id) target = recs[k];
-        if (behavior === 'fit') {
-          if (target) { chosen = target; pClick = 0.15 + 0.45*fit; }
-          else { chosen = recs[0] || null; pClick = 0.18; }
-        }
-        if (chosen && Math.random() < pClick) {
-          await api('POST','/v1/events',{trace_id:r.trace_id, client_id:clients[i].client_id, product_id:chosen.product_id, event:'clicked'});
-          clicks++;
-          if (Math.random() < 0.25) {
-            await api('POST','/v1/events',{trace_id:r.trace_id, client_id:clients[i].client_id, product_id:chosen.product_id, event:'purchased'});
-            purchases++;
-          }
-        }
-        if (shown % 10 === 0) {
-          progress.textContent = 'Показов: '+shown+' · кликов: '+clicks+' · покупок: '+purchases;
-        }
-      }
-    }
-    progress.textContent = 'Готово: клиентов '+clients.length+', показов '+shown+', кликов '+clicks+', покупок '+purchases+'.';
-    toast('Живой прогон: '+shown+' показов');
-    loadExperiments();
-    loadKnowledge();
-  } catch(e){ progress.textContent = e.message; }
-  finally { btn.disabled = false; }
-});
+el('open-lk').addEventListener('click', function(){ window.open('/lk','_blank'); });
 el('experiment-refresh').addEventListener('click', function(){ loadExperiments(); loadKnowledge(); });
 el('experiment-search-btn').addEventListener('click', loadKnowledge);
 el('experiment-decision-filter').addEventListener('change', loadKnowledge);
@@ -2222,8 +2130,6 @@ el('experiment-search').addEventListener('keydown', function(e){ if(e.key==='Ent
 el('experiments-list').addEventListener('click', async function(ev){
   var emu=ev.target.dataset.expEmulate;
   if(emu){ openEmulation(emu); return; }
-  var live=ev.target.dataset.expLive;
-  if(live){ openLive(live); return; }
   var mon=ev.target.dataset.expMonitor;
   if(mon){
     try { var r=await api('POST','/v1/admin/experiments/'+encodeURIComponent(mon)+'/monitor',{}); toast(r.stopped?'Остановлено: '+r.outcome:'Guardrails ok'); loadExperiments(); loadKnowledge(); }

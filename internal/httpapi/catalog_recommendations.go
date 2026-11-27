@@ -92,7 +92,7 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 		}
 	}
 
-	writeJSON(w, http.StatusOK, recommendationResponse{
+	resp := recommendationResponse{
 		TraceID:         traceID,
 		ClientID:        clientID,
 		Strategy:        "catalog",
@@ -102,7 +102,12 @@ func (h *handler) recommendCatalog(w http.ResponseWriter, r *http.Request, clien
 		Fallback:        false,
 		ColdStart:       res.ColdStart,
 		GeneratedAt:     h.now(),
-	})
+	}
+	if running != nil {
+		resp.ExperimentID = running.ID
+		resp.Variant = assignment.Variant
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // isCatalogClient reports whether the id belongs to the real catalog dataset.

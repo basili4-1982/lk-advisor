@@ -45,6 +45,8 @@ type recommendationResponse struct {
 	Recommendations []model.Recommendation `json:"recommendations"`
 	Fallback        bool                   `json:"fallback"`
 	ColdStart       bool                   `json:"cold_start,omitempty"`
+	ExperimentID    string                 `json:"experiment_id,omitempty"`
+	Variant         string                 `json:"variant,omitempty"`
 	GeneratedAt     time.Time              `json:"generated_at"`
 }
 
@@ -350,7 +352,7 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	writeJSON(w, http.StatusOK, recommendationResponse{
+	resp := recommendationResponse{
 		TraceID:         traceID,
 		ClientID:        req.ClientID,
 		Strategy:        strategyName,
@@ -359,7 +361,12 @@ func (h *handler) recommendations(w http.ResponseWriter, r *http.Request) {
 		Recommendations: recs,
 		Fallback:        fallback,
 		GeneratedAt:     h.now().UTC(),
-	})
+	}
+	if runningExperiment != nil {
+		resp.ExperimentID = runningExperiment.ID
+		resp.Variant = assignment.Variant
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 func (h *handler) expiresAt(c model.Candidate, p model.Profile) time.Time {
